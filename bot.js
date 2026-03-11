@@ -14,16 +14,24 @@ async function start() {
             logger,
             auth: state,
             browser: ['Ubuntu', 'Chrome', '120'],
-            syncFullHistory: false,
-            shouldSyncHistoryMessage: () => false
+            syncFullHistory: false
         });
 
         sock.ev.on('creds.update', saveCreds);
 
         sock.ev.on('connection.update', (update) => {
             const { connection, qr, lastDisconnect } = update;
-            if (qr) qrcode.toFile('qr.png', qr, { width: 300 }, () => {});
-            if (connection === 'open') console.log('✅ ONLINE');
+            if (qr) {
+                qrcode.toFile('qr.png', qr, { width: 300 }, () => {
+                    console.log('✅ QR gerado. Escaneie em 10 segundos...');
+                    setTimeout(() => {
+                        console.log('⏳ QR ainda disponível...');
+                    }, 5000);
+                });
+            }
+            if (connection === 'open') {
+                console.log('✅ BOT ONLINE!');
+            }
             if (connection === 'close') {
                 if ((lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut) {
                     setTimeout(start, 3000);
@@ -49,7 +57,7 @@ async function start() {
 
             if (text?.startsWith('!ban ') && isGroup) {
                 const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
-                if (mentioned?.length > 0) {
+                if (mentioned && mentioned.length > 0) {
                     await sock.groupParticipantsUpdate(from, mentioned, 'remove');
                     await sock.sendMessage(from, { text: 'Você atrapalhou minha foda, receba a gozada divina 🍆💦' });
                 }
@@ -61,4 +69,8 @@ async function start() {
     }
 }
 
-start();
+// Delay para dar tempo de escanear
+setTimeout(() => {
+    console.log('⏳ Bot iniciando em 5 segundos...');
+    start();
+}, 5000);

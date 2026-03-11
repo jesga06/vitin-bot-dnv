@@ -1,20 +1,12 @@
 {
   "name": "bot-whatsapp-kronos",
   "version": "1.0.0",
-  "description": "Bot de WhatsApp com comandos de brincadeira, figurinha e administração",
+  "description": "Bot de WhatsApp com comandos, figurinhas e brincadeiras",
   "main": "bot.js",
   "type": "commonjs",
   "scripts": {
     "start": "node bot.js"
   },
-  "keywords": [
-    "whatsapp",
-    "bot",
-    "baileys",
-    "bot-whatsapp"
-  ],
-  "author": "Você",
-  "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.5",
     "pino": "^8.17.0",

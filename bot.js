@@ -96,7 +96,6 @@ if(cmd === "!menu"){
 await sock.sendMessage(from,{
 text:
 `╔════ BOTZAP MENU ════╗
-!ping
 !ola
 !fig
 !figtexto

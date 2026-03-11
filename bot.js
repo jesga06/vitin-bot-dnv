@@ -132,3 +132,9 @@ console.log("Servidor ativo porta 3000")
 startBot()
 
 })
+const http = require("http")
+
+http.createServer((req,res)=>{
+res.writeHead(200)
+res.end("bot online")
+}).listen(3000)

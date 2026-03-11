@@ -1,28 +1,29 @@
 const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require("@whiskeysockets/baileys")
 const express = require("express")
 const pino = require("pino")
+const QRCode = require("qrcode")
 
 const app = express()
 const logger = pino({ level: "silent" })
 
-let qrCode = null
+let qrImage = null
 let muted = {}
 
-app.get("/", (req,res)=>{
+app.get("/", async (req,res)=>{
 
-if(!qrCode){
+if(!qrImage){
 return res.send("<h2>Bot conectado ou aguardando QR...</h2>")
 }
 
 res.send(`
 <h2>Escaneie o QR</h2>
-<img src="https://api.qrserver.com/v1/create-qr-code/?size=350x350&data=${qrCode}">
+<img src="${qrImage}">
 <p>Atualize se o QR mudar</p>
 `)
 
 })
 
-app.listen(3000, ()=> console.log("🌐 Site QR rodando"))
+app.listen(3000, ()=> console.log("🌐 QR SITE ONLINE"))
 
 async function startBot(){
 
@@ -39,24 +40,29 @@ keepAliveIntervalMs:30000
 
 sock.ev.on("creds.update", saveCreds)
 
-sock.ev.on("connection.update", (update)=>{
+sock.ev.on("connection.update", async (update)=>{
 
 const { connection, qr, lastDisconnect } = update
 
 if(qr){
-qrCode = qr
-console.log("QR gerado, abra o site")
+qrImage = await QRCode.toDataURL(qr)
+console.log("QR GERADO")
 }
 
 if(connection === "open"){
 console.log("BOT ONLINE")
-qrCode = null
+qrImage = null
 }
 
 if(connection === "close"){
+
 if((lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut){
+
+console.log("RECONectando...")
 startBot()
+
 }
+
 }
 
 })
@@ -78,7 +84,6 @@ msg.message.extendedTextMessage?.text ||
 
 const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []
 
-// apagar mensagens mutadas
 if(isGroup && muted[from] && muted[from].includes(sender)){
 await sock.sendMessage(from,{ delete: msg.key })
 return
@@ -86,12 +91,11 @@ return
 
 const cmd = text.toLowerCase()
 
-// MENU
 if(cmd === "!menu"){
 
 await sock.sendMessage(from,{
 text:
-`╔══ BOTZAP MENU ══╗
+`╔════ BOTZAP MENU ════╗
 !ping
 !ola
 !fig
@@ -106,26 +110,24 @@ text:
 !chute
 rank corno
 rank gay
-╚═══════════════╝`
+╚═══════════════════╝`
 })
 
 }
 
-// OLA
 if(cmd === "!ola"){
 await sock.sendMessage(from,{ text:"Não posso responder agora, estou ocupado comendo o Kronos" })
 }
 
-// XINGAMENTO
 if(cmd === "!xingamento"){
 await sock.sendMessage(from,{ text:"Kronos Kornos Cabeça de Filtro de Barro" })
 }
 
-// PING
 if(cmd === "!ping" && isGroup){
 
 const meta = await sock.groupMetadata(from)
 const users = meta.participants.map(p=>p.id)
+
 const rand = users[Math.floor(Math.random()*users.length)]
 
 await sock.sendMessage(from,{
@@ -135,7 +137,6 @@ mentions:[rand]
 
 }
 
-// FIGURINHA
 if(cmd === "!fig" || cmd === "!sticker"){
 
 if(msg.message.imageMessage || msg.message.videoMessage){
@@ -150,7 +151,6 @@ sticker: buffer
 
 }
 
-// FIG TEXTO
 if(cmd.startsWith("!figtexto")){
 
 let texto = text.replace("!figtexto","").trim()
@@ -161,7 +161,6 @@ sticker:{ url:`https://api.memegen.link/images/custom/${encodeURIComponent(texto
 
 }
 
-// MUTE
 if(cmd.startsWith("!mute") && mentioned.length){
 
 let alvo = mentioned[0]
@@ -176,7 +175,6 @@ text:"minha gala seca silenciou sua boca piranha >:D"
 
 }
 
-// UNMUTE
 if(cmd.startsWith("!unmute") && mentioned.length){
 
 let alvo = mentioned[0]
@@ -191,7 +189,6 @@ text:"Usuário desmutado"
 
 }
 
-// CASAR
 if(cmd.startsWith("!casar") && mentioned.length){
 
 let alvo = mentioned[0]
@@ -204,7 +201,6 @@ mentions:[sender,alvo]
 
 }
 
-// BEIJO
 if(cmd.startsWith("!beijo") && mentioned.length){
 
 let alvo = mentioned[0]
@@ -217,7 +213,6 @@ mentions:[sender,alvo]
 
 }
 
-// TAPA
 if(cmd.startsWith("!tapa") && mentioned.length){
 
 let alvo = mentioned[0]
@@ -230,7 +225,6 @@ mentions:[sender,alvo]
 
 }
 
-// ABRACO
 if(cmd.startsWith("!abraco") && mentioned.length){
 
 let alvo = mentioned[0]
@@ -243,7 +237,6 @@ mentions:[sender,alvo]
 
 }
 
-// CHUTE
 if(cmd.startsWith("!chute") && mentioned.length){
 
 let alvo = mentioned[0]
@@ -256,7 +249,6 @@ mentions:[sender,alvo]
 
 }
 
-// RANK CORNO
 if(cmd === "rank corno" && isGroup){
 
 const meta = await sock.groupMetadata(from)
@@ -275,7 +267,6 @@ mentions:m.map(x=>x.id)
 
 }
 
-// RANK GAY
 if(cmd === "rank gay" && isGroup){
 
 const meta = await sock.groupMetadata(from)

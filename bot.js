@@ -1,39 +1,33 @@
-const {
-default: makeWASocket,
-useMultiFileAuthState,
-fetchLatestBaileysVersion,
-DisconnectReason
-} = require("@whiskeysockets/baileys")
-
+const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require("@whiskeysockets/baileys")
+const express = require("express")
 const pino = require("pino")
-const qrcode = require("qrcode-terminal")
-const http = require("http")
 
+const app = express()
 const logger = pino({ level: "silent" })
 
-async function startBot(){
+let qrCode = "Carregando..."
+
+async function startBot() {
 
 const { state, saveCreds } = await useMultiFileAuthState("./auth_info")
-
 const { version } = await fetchLatestBaileysVersion()
 
 const sock = makeWASocket({
 version,
 auth: state,
 logger,
-browser: ["Bot","Chrome","1.0"],
-keepAliveIntervalMs: 30000
+browser: ["KronosBot","Chrome","1.0"]
 })
 
 sock.ev.on("creds.update", saveCreds)
 
 sock.ev.on("connection.update", (update) => {
 
-const { connection, qr, lastDisconnect } = update
+const { connection, lastDisconnect, qr } = update
 
 if(qr){
-console.log("ESCANEIE O QR")
-qrcode.generate(qr,{small:true})
+qrCode = qr
+console.log("QR gerado")
 }
 
 if(connection === "open"){
@@ -48,7 +42,7 @@ if(reason !== DisconnectReason.loggedOut){
 console.log("Reconectando...")
 startBot()
 }else{
-console.log("Sessão encerrada. Delete auth_info e conecte novamente.")
+console.log("Sessão encerrada")
 }
 
 }
@@ -57,9 +51,8 @@ console.log("Sessão encerrada. Delete auth_info e conecte novamente.")
 
 sock.ev.on("messages.upsert", async ({ messages }) => {
 
-try{
-
 const msg = messages[0]
+
 if(!msg.message) return
 if(msg.key.fromMe) return
 
@@ -70,32 +63,10 @@ msg.message.conversation ||
 msg.message.extendedTextMessage?.text ||
 ""
 
-console.log("Mensagem:", text)
-
 if(text === "!ping"){
 
 await sock.sendMessage(from,{
 text:"🏓 Pong!"
-})
-
-}
-
-if(text === "!menu"){
-
-await sock.sendMessage(from,{
-text:`🤖 MENU
-
-!ping
-!ola
-!fig
-!tapa
-!abraco
-!chute
-!beijo
-!casar
-!ship
-!corno
-!gay`
 })
 
 }
@@ -108,19 +79,22 @@ text:"Não posso responder agora, estou ocupado comendo o Kronos"
 
 }
 
-}catch(err){
-
-console.log("Erro:", err)
-
-}
-
 })
 
 }
 
-http.createServer((req,res)=>{
-res.writeHead(200)
-res.end("Bot online 24h")
-}).listen(3000)
+app.get("/", (req,res)=>{
+
+res.send(`
+<h2>Escaneie o QR</h2>
+<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${qrCode}">
+<p>Atualize a página se o QR mudar</p>
+`)
+
+})
+
+app.listen(3000, ()=>{
+console.log("Servidor web rodando")
+})
 
 startBot()

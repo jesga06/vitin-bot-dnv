@@ -11,7 +11,7 @@ const http = require("http")
 
 const logger = pino({ level: "silent" })
 
-async function startBot() {
+async function startBot(){
 
 const { state, saveCreds } = await useMultiFileAuthState("./auth_info")
 
@@ -19,11 +19,9 @@ const { version } = await fetchLatestBaileysVersion()
 
 const sock = makeWASocket({
 version,
-logger,
-printQRInTerminal: false,
 auth: state,
-browser: ["Bot","Chrome","1.0.0"],
-syncFullHistory: false,
+logger,
+browser: ["Bot","Chrome","1.0"],
 keepAliveIntervalMs: 30000
 })
 
@@ -33,24 +31,24 @@ sock.ev.on("connection.update", (update) => {
 
 const { connection, qr, lastDisconnect } = update
 
-if (qr) {
+if(qr){
 console.log("ESCANEIE O QR")
-qrcode.generate(qr, { small: true })
+qrcode.generate(qr,{small:true})
 }
 
-if (connection === "open") {
-console.log("BOT CONECTADO COM SUCESSO")
+if(connection === "open"){
+console.log("BOT CONECTADO")
 }
 
-if (connection === "close") {
+if(connection === "close"){
 
 const reason = lastDisconnect?.error?.output?.statusCode
 
-if (reason === DisconnectReason.loggedOut) {
-console.log("Sessão encerrada. Apague a pasta auth_info e escaneie novamente.")
-} else {
+if(reason !== DisconnectReason.loggedOut){
 console.log("Reconectando...")
 startBot()
+}else{
+console.log("Sessão encerrada. Delete auth_info e conecte novamente.")
 }
 
 }
@@ -59,11 +57,11 @@ startBot()
 
 sock.ev.on("messages.upsert", async ({ messages }) => {
 
-try {
+try{
 
 const msg = messages[0]
-if (!msg.message) return
-if (msg.key.fromMe) return
+if(!msg.message) return
+if(msg.key.fromMe) return
 
 const from = msg.key.remoteJid
 
@@ -74,18 +72,18 @@ msg.message.extendedTextMessage?.text ||
 
 console.log("Mensagem:", text)
 
-if (text === "!ping") {
+if(text === "!ping"){
 
-await sock.sendMessage(from, {
-text: "🏓 Pong!"
+await sock.sendMessage(from,{
+text:"Não quero!"
 })
 
 }
 
-if (text === "!menu") {
+if(text === "!menu"){
 
-await sock.sendMessage(from, {
-text: `🤖 MENU
+await sock.sendMessage(from,{
+text:`🤖 MENU
 
 !ping
 !ola
@@ -102,17 +100,17 @@ text: `🤖 MENU
 
 }
 
-if (text === "!ola") {
+if(text === "!ola"){
 
-await sock.sendMessage(from, {
-text: "Não posso responder agora, estou ocupado comendo o Kronos"
+await sock.sendMessage(from,{
+text:"Não posso responder agora, estou ocupado comendo o Kronos"
 })
 
 }
 
-} catch (err) {
+}catch(err){
 
-console.log("Erro ao processar mensagem:", err)
+console.log("Erro:", err)
 
 }
 
@@ -121,20 +119,8 @@ console.log("Erro ao processar mensagem:", err)
 }
 
 http.createServer((req,res)=>{
-
 res.writeHead(200)
-res.end("BOT ONLINE")
-
-}).listen(3000,()=>{
-
-console.log("Servidor ativo porta 3000")
+res.end("Bot online 24h")
+}).listen(3000)
 
 startBot()
-
-})
-const http = require("http")
-
-http.createServer((req,res)=>{
-res.writeHead(200)
-res.end("bot online")
-}).listen(3000)

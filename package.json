@@ -1,7 +1,6 @@
 {
   "name": "vitin-bot-novo",
   "version": "1.0.0",
-  "description": "Bot WhatsApp Vitin",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
@@ -9,6 +8,6 @@
   "dependencies": {
     "@whiskeysockets/baileys": "latest",
     "pino": "latest",
-    "qrcode": "latest"
+    "qrcode-terminal": "latest"
   }
 }

@@ -1,13 +1,13 @@
 {
-  "name": "vitin-bot-novo",
+  "name": "whatsapp-bot",
   "version": "1.0.0",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "latest",
-    "pino": "latest",
-    "qrcode-terminal": "latest"
+    "@whiskeysockets/baileys": "^6.7.5",
+    "pino": "^8.0.0",
+    "qrcode-terminal": "^0.12.0"
   }
 }

@@ -1,6 +1,7 @@
 const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
+const http = require('http');
 
 const logger = pino({ level: 'fatal' });
 
@@ -68,7 +69,14 @@ async function start() {
     }
 }
 
-setTimeout(() => {
-    console.log('⏳ Bot iniciando em 5 segundos...');
-    start();
-}, 5000);
+// Servidor HTTP para o Render detectar a porta
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot rodando!');
+}).listen(3000, () => {
+    console.log('🌐 Servidor HTTP na porta 3000');
+    setTimeout(() => {
+        console.log('⏳ Bot iniciando em 5 segundos...');
+        start();
+    }, 5000);
+});

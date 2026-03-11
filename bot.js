@@ -6,12 +6,10 @@ const logger = pino({ level: 'info' });
 
 async function start() {
     try {
-        console.log('🚀 Iniciando Vitin come o Kronos...');
-        
+        console.log('🚀 Iniciando Vitin...');
         const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
         const { version } = await fetchLatestBaileysVersion();
-
-        console.log('📦 Versão do Baileys:', version);
+        console.log('📦 Versão:', version);
 
         const sock = makeWASocket({
             version,
@@ -24,75 +22,31 @@ async function start() {
 
         sock.ev.on('connection.update', (update) => {
             const { connection, qr, lastDisconnect } = update;
-            
             if (qr) {
-                console.log('');
-                console.log('═══════════════════════════════════════');
-                console.log('📱 ESCANEIE O QR CODE ABAIXO:');
-                console.log('═══════════════════════════════════════');
+                console.log('📱 QR CODE:');
                 qrcode.generate(qr, { small: true });
-                console.log('═══════════════════════════════════════');
-                console.log('');
             }
-            
             if (connection === 'open') {
-                console.log('');
-                console.log('═══════════════════════════════════════');
-                console.log('✅ VITIN COME O KRONOS ESTÁ ONLINE!');
-                console.log('═══════════════════════════════════════');
-                console.log('');
+                console.log('✅ BOT ONLINE!');
             }
-            
             if (connection === 'close') {
-                console.log('⚠️ Conexão perdida. Reconectando...');
                 const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-                if (shouldReconnect) {
-                    setTimeout(start, 3000);
-                }
+                if (shouldReconnect) setTimeout(start, 3000);
             }
         });
 
         sock.ev.on('messages.upsert', async ({ messages }) => {
             const msg = messages;
             if (!msg.message) return;
-
             const from = msg.key.remoteJid;
             const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-            const isGroup = from.endsWith('@g.us');
-
-            try {
-                if (text === '!ola') {
-                    await sock.sendMessage(from, { text: 'Não posso responder agora, estou ocupado comendo o Kronos' });
-                    return;
-                }
-
-                if ((text === '!s' || text === '!sticker') && (msg.message.imageMessage || msg.message.videoMessage)) {
-                    await sock.sendMessage(from, { text: 'Estou terminando de comer o Kronos, aguarde um momento' });
-                    const media = await sock.downloadMediaMessage(msg.message);
-                    await sock.sendMessage(from, { sticker: media });
-                    return;
-                }
-
-                if (text?.startsWith('!ban ') && isGroup) {
-                    const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
-                    if (mentioned && mentioned.length > 0) {
-                        try {
-                            await sock.groupParticipantsUpdate(from, mentioned, 'remove');
-                            await sock.sendMessage(from, { text: 'Você atrapalhou minha foda, receba a gozada divina 🍆💦' });
-                        } catch (e) {
-                            await sock.sendMessage(from, { text: 'Erro ao banir. Talvez eu não seja admin?' });
-                        }
-                    }
-                    return;
-                }
-
-            } catch (e) {
-                console.log('❌ Erro ao processar mensagem:', e.message);
+            if (text === '!ola') {
+                await sock.sendMessage(from, { text: 'Oi!' });
             }
         });
 
     } catch (e) {
-        console.log('❌ Erro ao iniciar:', e.message);
+        console.log('❌ Erro:', e.message);
         setTimeout(start, 5000);
     }
 }

@@ -3,23 +3,21 @@ const pino = require('pino');
 const fs = require('fs');
 const path = require('path');
 const qrcode = require('qrcode');
-const http = require('http');
 
-const logger = pino({ level: 'info' });
-const QR_PATH = path.join(__dirname, 'qr.png');
+const logger = pino({ level: 'error' });
+const QR_PATH = 'qr.png';
 
 async function start() {
     try {
-        console.log('🚀 Iniciando Vitin...');
-        const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
+        const { state, saveCreds } = await useMultiFileAuthState('auth_info');
         const { version } = await fetchLatestBaileysVersion();
-        console.log('📦 Versão:', version);
 
         const sock = makeWASocket({
             version,
             logger,
             auth: state,
-            browser: ['Ubuntu', 'Chrome', '120']
+            browser: ['Ubuntu', 'Chrome', '120'],
+            syncFullHistory: false
         });
 
         sock.ev.on('creds.update', saveCreds);
@@ -28,78 +26,69 @@ async function start() {
             const { connection, qr, lastDisconnect } = update;
             
             if (qr) {
-                qrcode.toFile(QR_PATH, qr, { width: 300, margin: 2 }, (err) => {
-                    if (!err) {
-                        console.log('✅ QR salvo em: qr.png');
-                        console.log('📱 Acesse: http://localhost:3000/qr.html');
-                    }
+                qrcode.toFile(QR_PATH, qr, { width: 300 }, () => {
+                    console.log('✅ QR salvo');
                 });
             }
             
             if (connection === 'open') {
-                console.log('✅ BOT ONLINE!');
+                console.log('✅ BOT ONLINE');
             }
             
             if (connection === 'close') {
-                const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-                if (shouldReconnect) setTimeout(start, 3000);
+                if ((lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut) {
+                    setTimeout(start, 3000);
+                }
             }
         });
 
         sock.ev.on('messages.upsert', async ({ messages }) => {
-            const msg = messages;
-            if (!msg.message) return;
-            const from = msg.key.remoteJid;
-            const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-            
-            if (text === '!ola') {
-                await sock.sendMessage(from, { text: 'Oi!' });
+            for (const msg of messages) {
+                if (!msg.message) return;
+
+                const from = msg.key.remoteJid;
+                const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+                const isGroup = from.endsWith('@g.us');
+
+                try {
+                    // ✅ Comando: !ola
+                    if (text === '!ola') {
+                        await sock.sendMessage(from, { text: 'Não posso responder agora, estou ocupado comendo o Kronos' });
+                        return;
+                    }
+
+                    // ✅ Comando: !s ou !sticker
+                    if ((text === '!s' || text === '!sticker') && (msg.message.imageMessage || msg.message.videoMessage)) {
+                        await sock.sendMessage(from, { text: 'Estou terminando de comer o Kronos, aguarde um momento' });
+                        const media = await sock.downloadMediaMessage(msg.message);
+                        await sock.sendMessage(from, { sticker: media });
+                        return;
+                    }
+
+                    // ✅ Comando: !ban @nome
+                    if (text?.startsWith('!ban ') && isGroup) {
+                        const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid;
+                        if (mentioned && mentioned.length > 0) {
+                            try {
+                                await sock.groupParticipantsUpdate(from, mentioned, 'remove');
+                                await sock.sendMessage(from, { text: 'Você atrapalhou minha foda, receba a gozada divina 🍆💦' });
+                            } catch (e) {
+                                await sock.sendMessage(from, { text: 'Erro ao banir. Talvez eu não seja admin?' });
+                            }
+                        }
+                        return;
+                    }
+
+                } catch (e) {
+                    console.log('❌ Erro ao processar mensagem:', e.message);
+                }
             }
         });
 
     } catch (e) {
-        console.log('❌ Erro:', e.message);
+        console.log('❌ Erro ao iniciar:', e.message);
         setTimeout(start, 5000);
     }
 }
-
-// Servidor HTTP para servir QR
-http.createServer((req, res) => {
-    if (req.url === '/qr.html') {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`
-<!DOCTYPE html>
-<html>
-<head>
-    <title>QR Code</title>
-    <style>
-        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0f0f0; }
-        .container { text-align: center; background: white; padding: 20px; border-radius: 10px; }
-        img { width: 400px; height: 400px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📱 Escaneie o QR</h1>
-        <img src="/qr.png" alt="QR">
-    </div>
-</body>
-</html>
-        `);
-    } else if (req.url === '/qr.png') {
-        fs.readFile(QR_PATH, (err, data) => {
-            if (err) {
-                res.writeHead(404);
-                res.end('QR não encontrado');
-                return;
-            }
-            res.writeHead(200, { 'Content-Type': 'image/png' });
-            res.end(data);
-        });
-    } else {
-        res.writeHead(200);
-        res.end('Bot rodando!');
-    }
-}).listen(3000, () => console.log('🌐 Servidor rodando na porta 3000'));
 
 start();

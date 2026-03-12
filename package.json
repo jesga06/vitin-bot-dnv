@@ -1,6 +1,7 @@
 {
 "name": "botzap",
 "version": "1.0.0",
+"description": "bot whatsapp",
 "main": "bot.js",
 "scripts": {
 "start": "node bot.js"

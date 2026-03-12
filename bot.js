@@ -19,7 +19,7 @@ const dono = "557398579450@s.whatsapp.net"
 
 let qrImage = null
 let muted = {}
-let jarvisContext = {}
+let jarvisResponses = {} // para controlar respostas do Jarvis
 
 app.get("/", (req,res)=>{
   if(!qrImage){
@@ -39,8 +39,8 @@ app.listen(PORT,()=>{
 async function videoToSticker(buffer){
   const input = "./input.mp4"
   const output = "./output.webp"
-
   fs.writeFileSync(input, buffer)
+
   await new Promise((resolve,reject)=>{
     ffmpeg(input)
     .outputOptions([
@@ -108,11 +108,7 @@ async function startBot(){
     const sender = msg.key.participant || msg.key.remoteJid
     const isGroup = from.endsWith("@g.us")
 
-    const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      ""
-
+    const text = msg.message.conversation || msg.message.extendedTextMessage?.text || ""
     const cmd = text.toLowerCase()
     const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []
     let quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
@@ -124,25 +120,7 @@ async function startBot(){
       quoted?.videoMessage
 
     // =========================
-    // DELETAR MENSAGENS DE USUÁRIOS MUTADOS
-    // =========================
-    if(isGroup && muted[from]?.includes(sender)){
-      try {
-        const metadata = await sock.groupMetadata(from)
-        const botNumber = sock.user.id.split(":")[0] + "@s.whatsapp.net"
-        const botAdmin = metadata.participants.find(p => p.id === botNumber)?.admin
-
-        if(botAdmin){
-          await sock.sendMessage(from, { delete: msg.key })
-        }
-      } catch(err){
-        console.log("Erro ao apagar mensagem do mutado:", err)
-      }
-      return
-    }
-
-    // =========================
-    // COMANDOS DE MUTE / UNMUTE
+    // COMANDOS MUTE / UNMUTE
     // =========================
     if(isGroup && (cmd === prefix+"mute" || cmd === prefix+"unmute") && mentioned.length){
       const metadata = await sock.groupMetadata(from)
@@ -156,14 +134,34 @@ async function startBot(){
         if(!muted[from].includes(alvo)){
           muted[from].push(alvo)
         }
-        await sock.sendMessage(from,{text:"Não grita 🤫"})
+        await sock.sendMessage(from, { text: "Não grita 🤫" })
       }
 
       if(cmd === prefix+"unmute"){
         if(muted[from]){
           muted[from] = muted[from].filter(u => u !== alvo)
         }
-        await sock.sendMessage(from,{text:"Fala baixo nengue"})
+        await sock.sendMessage(from, { text: "Fala baixo nengue" })
+      }
+      return
+    }
+
+    // =========================
+    // APAGAR MENSAGENS DE USUÁRIOS MUTADOS
+    // =========================
+    if(isGroup && muted[from]?.includes(sender)){
+      try {
+        const metadata = await sock.groupMetadata(from)
+        const botNumber = sock.user.id.split(":")[0] + "@s.whatsapp.net"
+        const botAdmin = metadata.participants.find(p => p.id === botNumber)?.admin
+
+        if(botAdmin){
+          await sock.sendMessage(from, { delete: msg.key })
+        } else {
+          console.log("Não posso apagar mensagem, preciso ser admin")
+        }
+      } catch(err){
+        console.log("Erro ao apagar mensagem do mutado:", err)
       }
       return
     }
@@ -172,23 +170,22 @@ async function startBot(){
     // COMANDO JARVIS
     // =========================
     if(cmd === prefix+"jarvis"){
-      await sock.sendMessage(from,{
-        text:"O que deseja senhor?\n1- Amoleça meu pinto\n2- Mate o Kronos\n3- Deixa pra la"
-      })
-      jarvisContext[from] = true
+      jarvisResponses[from] = true
+      await sock.sendMessage(from, { text: `O que deseja senhor?\n1- Amoleça meu pinto\n2- Mate o Kronos\n3- Deixa pra la` })
       return
     }
 
-    // Responder opções do Jarvis
-    if(jarvisContext[from] && quoted?.conversation?.includes("O que deseja senhor?")){
-      if(text === "1"){
-        await sock.sendMessage(from,{text:"Claro senhor, estarei enviando no seu privado uma foto da sua vó pelada"})
-      } else if(text === "2"){
-        await sock.sendMessage(from,{text:"Não precisa pedir 2 vezes"})
-      } else if(text === "3"){
-        await sock.sendMessage(from,{text:"Vai tomar no cú então"})
+    // RESPOSTA AO JARVIS
+    if(jarvisResponses[from] && msg.message.conversation){
+      const reply = msg.message.conversation.trim()
+      if(reply === "1"){
+        await sock.sendMessage(from, { text: "Claro senhor, estarei enviando no seu privado uma foto gerada da sua vó pelada" })
+      } else if(reply === "2"){
+        await sock.sendMessage(from, { text: "Não precisa pedir 2 vezes" })
+      } else if(reply === "3"){
+        await sock.sendMessage(from, { text: "Vai tomar no cú então" })
       }
-      delete jarvisContext[from]
+      delete jarvisResponses[from]
       return
     }
 
@@ -259,7 +256,7 @@ async function startBot(){
           .resize(512,512,{ fit:"fill" })
           .webp({quality:90})
           .toBuffer()
-      } else {
+      }else{
         sticker = await videoToSticker(buffer)
       }
 
@@ -282,7 +279,6 @@ async function startBot(){
       await sock.groupParticipantsUpdate(from,[alvo],"remove")
       await sock.sendMessage(from,{text:"Receba a leitada divina "})
     }
-
   })
 }
 

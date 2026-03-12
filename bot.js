@@ -16,7 +16,7 @@ const app = express()
 const logger = pino({ level: "silent" })
 
 const prefix = "!"
-const dono = "5573998579450@s.whatsapp.net"
+const dono = "557398579450@s.whatsapp.net"
 
 let qrImage = null
 let muted = {}
@@ -52,10 +52,11 @@ await new Promise((resolve,reject)=>{
 ffmpeg(input)
 .outputOptions([
 "-vcodec libwebp",
-"-vf scale=512:512:force_original_aspect_ratio=decrease,fps=15",
+"-vf scale=512:512:flags=lanczos,fps=15",
 "-loop 0",
 "-preset default",
-"-an"
+"-an",
+"-vsync 0"
 ])
 .toFormat("webp")
 .save(output)
@@ -152,6 +153,9 @@ text:`
 ╭━━━〔 🤖 VITIN BOT 〕━━━╮
 
 ${prefix}menu
+${prefix}s
+${prefix}f
+${prefix}fig
 ${prefix}sticker
 ${prefix}mute
 ${prefix}unmute
@@ -185,7 +189,7 @@ if(!media){
 return sock.sendMessage(from,{text:"Envie ou responda uma mídia"})
 }
 
-await sock.sendMessage(from,{text:"Criando figurinha..."})
+await sock.sendMessage(from,{text:"Aguarde um momento, em breve enviarei sua figurinha..."})
 
 let mediaMsg = quoted ? { message: quoted } : msg
 
@@ -205,8 +209,7 @@ if(media.imageMessage){
 
 sticker = await sharp(buffer)
 .resize(512,512,{
-fit:"contain",
-background:{r:0,g:0,b:0,alpha:0}
+fit:"fill"
 })
 .webp({quality:90})
 .toBuffer()
@@ -276,7 +279,7 @@ return sock.sendMessage(from,{text:"Não pode banir o dono seu otário"})
 
 await sock.groupParticipantsUpdate(from,[alvo],"remove")
 
-await sock.sendMessage(from,{text:"Receba a leitada divina"})
+await sock.sendMessage(from,{text:"Receba a leitada divina "})
 
 }
 

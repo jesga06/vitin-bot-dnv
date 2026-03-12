@@ -25,11 +25,16 @@ app.get("/", (req,res)=>{
   if(!qrImage){
     return res.send("<h2>Bot conectado</h2>")
   }
-  res.send(`<h2>Escaneie o QR Code</h2><img src="${qrImage}">`)
+  res.send(`
+<h2>Escaneie o QR Code</h2>
+<img src="${qrImage}">
+`)
 })
 
 const PORT = process.env.PORT || 3000
-app.listen(PORT,()=>{ console.log("Servidor rodando na porta " + PORT) })
+app.listen(PORT,()=>{
+  console.log("Servidor rodando na porta " + PORT)
+})
 
 async function videoToSticker(buffer){
   const input = "./input.mp4"
@@ -76,11 +81,23 @@ async function startBot(){
 
   sock.ev.on("connection.update", async(update)=>{
     const { connection, qr, lastDisconnect } = update
-    if(qr){ qrImage = await QRCode.toDataURL(qr); console.log("QR GERADO") }
-    if(connection === "open"){ console.log("BOT ONLINE"); qrImage = null }
+
+    if(qr){
+      qrImage = await QRCode.toDataURL(qr)
+      console.log("QR GERADO")
+    }
+
+    if(connection === "open"){
+      console.log("BOT ONLINE")
+      qrImage = null
+    }
+
     if(connection === "close"){
       const reason = lastDisconnect?.error?.output?.statusCode
-      if(reason !== DisconnectReason.loggedOut){ console.log("Reconectando..."); setTimeout(startBot,5000) }
+      if(reason !== DisconnectReason.loggedOut){
+        console.log("Reconectando...")
+        setTimeout(startBot,5000)
+      }
     }
   })
 
@@ -93,14 +110,43 @@ async function startBot(){
     const sender = msg.key.participant || msg.key.remoteJid
     const isGroup = from.endsWith("@g.us")
 
-    const text = msg.message.conversation || msg.message.extendedTextMessage?.text || ""
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      ""
+
     const cmd = text.toLowerCase()
     const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []
-    const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
-    const media = msg.message?.imageMessage || msg.message?.videoMessage || quoted?.imageMessage || quoted?.videoMessage
+    let quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
+
+    let media =
+      msg.message?.imageMessage ||
+      msg.message?.videoMessage ||
+      quoted?.imageMessage ||
+      quoted?.videoMessage
 
     // =========================
-    // COMANDOS DE MUTE / UNMUTE (APENAS ADMINS)
+    // DELETAR MENSAGENS DOS MUTADOS
+    // =========================
+    if(isGroup && muted[from]?.includes(sender)){
+      try {
+        const metadata = await sock.groupMetadata(from)
+        const botNumber = sock.user.id.split(":")[0] + "@s.whatsapp.net"
+        const botAdmin = metadata.participants.find(p => p.id === botNumber)?.admin
+
+        if(botAdmin){
+          await sock.sendMessage(from, { delete: msg.key })
+        } else {
+          console.log("Não posso apagar mensagem, preciso ser admin")
+        }
+      } catch(err){
+        console.log("Erro ao apagar mensagem do mutado:", err)
+      }
+      return // ignora processamento da mensagem
+    }
+
+    // =========================
+    // COMANDOS MUTE / UNMUTE
     // =========================
     if(isGroup && (cmd === prefix+"mute" || cmd === prefix+"unmute") && mentioned.length){
       const metadata = await sock.groupMetadata(from)
@@ -111,40 +157,25 @@ async function startBot(){
 
       if(cmd === prefix+"mute"){
         if(!muted[from]) muted[from] = []
-        if(!muted[from].includes(alvo)) muted[from].push(alvo)
+        if(!muted[from].includes(alvo)){
+          muted[from].push(alvo)
+        }
         await sock.sendMessage(from,{text:"Não grita 🤫"})
       }
 
       if(cmd === prefix+"unmute"){
-        if(muted[from]) muted[from] = muted[from].filter(u => u !== alvo)
+        if(muted[from]){
+          muted[from] = muted[from].filter(u => u !== alvo)
+        }
         await sock.sendMessage(from,{text:"Fala baixo nengue"})
       }
-      return
-    }
-
-    // =========================
-    // APAGAR MENSAGENS DOS MUTADOS
-    // =========================
-    if(isGroup && muted[from]?.includes(sender)){
-      try {
-        const metadata = await sock.groupMetadata(from)
-        const botNumber = sock.user.id.split(":")[0] + "@s.whatsapp.net"
-        const botAdmin = metadata.participants.find(p => p.id === botNumber)?.admin
-        if(botAdmin){
-          await sock.sendMessage(from, { delete: msg.key })
-        } else {
-          console.log("Não posso apagar mensagem, preciso ser admin")
-        }
-      } catch(err){
-        console.log("Erro ao apagar mensagem do mutado:", err)
-      }
-      return
     }
 
     // MENU
     if(cmd === prefix+"menu"){
       await sock.sendMessage(from,{
-        text:`╭━━━〔 🤖 VITIN BOT 〕━━━╮
+        text:`
+╭━━━〔 🤖 VITIN BOT 〕━━━╮
 │ 👑 Status: Online
 │ ⚙️ Sistema: Baileys
 ╰━━━━━━━━━━━━━━━━━━━━╯
@@ -165,26 +196,47 @@ async function startBot(){
 
 ╭━━━〔 👑 DONO 〕━━━╮
 │ ${prefix}dono
-╰━━━━━━━━━━━━━━━━━━━━╯`
+╰━━━━━━━━━━━━━━━━━━━━╯
+`
       })
     }
 
     // DONO
     if(cmd === prefix+"dono"){
       const numero = dono.split("@")[0]
-      await sock.sendMessage(from,{ text:`👑 Dono: @${numero}`, mentions:[dono] })
+      await sock.sendMessage(from,{
+        text:`👑 Dono: @${numero}`,
+        mentions:[dono]
+      })
     }
 
     // STICKER
     if(["!s","!fig","!sticker","!f"].includes(cmd)){
-      if(!media) return sock.sendMessage(from,{text:"Envie ou responda uma mídia"})
+      if(!media){
+        return sock.sendMessage(from,{text:"Envie ou responda uma mídia"})
+      }
+
       await sock.sendMessage(from,{text:"Aguarde um momento, em breve enviarei sua figurinha..."})
-      const mediaMsg = quoted ? { message: quoted } : msg
-      const buffer = await downloadMediaMessage(mediaMsg,"buffer",{}, { logger, reuploadRequest: sock.updateMediaMessage })
-      const sticker = media.imageMessage ? 
-        await sharp(buffer).resize(512,512,{fit:"fill"}).webp({quality:90}).toBuffer() : 
-        await videoToSticker(buffer)
-      await sock.sendMessage(from,{sticker})
+      let mediaMsg = quoted ? { message: quoted } : msg
+
+      const buffer = await downloadMediaMessage(
+        mediaMsg,
+        "buffer",
+        {},
+        { logger, reuploadRequest: sock.updateMediaMessage }
+      )
+
+      let sticker
+      if(media.imageMessage){
+        sticker = await sharp(buffer)
+          .resize(512,512,{ fit:"fill" })
+          .webp({quality:90})
+          .toBuffer()
+      }else{
+        sticker = await videoToSticker(buffer)
+      }
+
+      await sock.sendMessage(from,{ sticker })
     }
 
     // BAN
@@ -194,11 +246,13 @@ async function startBot(){
       if(!admin) return
 
       const alvo = mentioned[0]
-      if(alvo === dono) return sock.sendMessage(from,{text:"Não pode banir o dono seu otário"})
+      if(alvo === dono){
+        return sock.sendMessage(from,{text:"Não pode banir o dono seu otário"})
+      }
+
       await sock.groupParticipantsUpdate(from,[alvo],"remove")
       await sock.sendMessage(from,{text:"Receba a leitada divina "})
     }
-
   })
 }
 

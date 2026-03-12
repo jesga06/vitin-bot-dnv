@@ -57,8 +57,7 @@ ffmpeg(input)
 "-loop 0",
 "-preset default",
 "-an",
-"-vsync 0",
-"-compression_level 6"
+"-vsync 0"
 ])
 .toFormat("webp")
 .save(output)
@@ -126,9 +125,6 @@ setTimeout(startBot,5000)
 }
 
 }
-
-})
-
 sock.ev.on("messages.upsert", async ({messages})=>{
 
 const msg = messages
@@ -156,7 +152,7 @@ msg.message?.videoMessage ||
 quoted?.imageMessage ||
 quoted?.videoMessage
 
-// MENU 
+// MENU BONITO
 if(cmd === "!menu"){
 
 await sock.sendMessage(from,{
@@ -182,7 +178,7 @@ text:`
 
 📌 *Como usar figurinha*
 
-Envie uma mídia e responda 
+Envie ou responda uma mídia
 com um comando de figurinha
 
 ╰━━━━━━━━━━━━━━━━╯
@@ -234,11 +230,13 @@ let sticker
 if(media.imageMessage){
 
 sticker = await sharp(buffer)
-.resize(512, 512, {
-fit: "cover",
-position: "center"
+.resize(512,512,{
+fit:"contain",
+background:{ r:0, g:0, b:0, alpha:0 }
 })
-.webp({ quality: 75 })
+.webp({
+quality:90
+})
 .toBuffer()
 
 }else{
@@ -266,7 +264,7 @@ if(!muted[from]) muted[from] = []
 muted[from].push(alvo)
 
 await sock.sendMessage(from,{
-text:"Não grita 🤫"
+text:"Minha gala seca silenciou sua boca piranha >:D"
 })
 
 }
@@ -304,7 +302,7 @@ let alvo = mentioned
 if(alvo === dono){
 
 await sock.sendMessage(from,{
-text:"Você não pode banir o criador do bot seu otário"
+text:"Você não pode banir o criador do bot 😎"
 })
 
 return
@@ -323,3 +321,4 @@ text:"Receba a leitada divina"
 }
 
 startBot()
+})

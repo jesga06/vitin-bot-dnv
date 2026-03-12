@@ -247,59 +247,49 @@ async function startBot(){
     }
 
     // =========================
-    // MUTE / UNMUTE / BAN
-    // =========================
-    if(isGroup && mentioned.length){
-      const metadata = await sock.groupMetadata(from)
-      const admin = metadata.participants.find(p => p.id === sender)?.admin
-      if(!admin) return
-
-      const alvo = mentioned[0]
-
-      // MUTE
-      if(cmd.startsWith(prefix+"mute")){
-        if(alvo === dono) return sock.sendMessage(from,{text:"Não pode mutar o dono!"})
-        if(!mutedUsers[from]) mutedUsers[from] = []
-        if(!mutedUsers[from].includes(alvo)) mutedUsers[from].push(alvo)
-        await sock.sendMessage(from,{text:`Não grita 🤫`})
-        return
-      }
-
-      // UNMUTE
-      if(cmd.startsWith(prefix+"unmute")){
-        if(mutedUsers[from] && mutedUsers[from].includes(alvo)){
-          mutedUsers[from] = mutedUsers[from].filter(u => u !== alvo)
-          if(mutedWarned[from]){
-            mutedWarned[from] = mutedWarned[from].filter(u => u !== alvo)
-          }
-        }
-        await sock.sendMessage(from,{text:`Pode falar nengue`})
-        return
-      }
-
-     // =========================
-// BAN CORRIGIDO
+// MUTE / UNMUTE / BAN ORGANIZADO
 // =========================
-if(isGroup && cmd.startsWith(prefix+"ban") && mentioned.length){
+if(isGroup && mentioned.length){
   const metadata = await sock.groupMetadata(from)
   const admin = metadata.participants.find(p => p.id === sender)?.admin
-  if(!admin) return sock.sendMessage(from, { text: "Somente admins podem banir." })
+  if(!admin) return sock.sendMessage(from, { text: "Somente admins podem usar este comando." })
 
   const alvo = mentioned[0]
 
-  if(alvo === dono){
-    return sock.sendMessage(from, { text: "Não pode banir o dono!" })
+  // MUTE
+  if(cmd.startsWith(prefix+"mute")){
+    if(alvo === dono) return sock.sendMessage(from,{text:"Não pode mutar o dono!"})
+    if(!mutedUsers[from]) mutedUsers[from] = []
+    if(!mutedUsers[from].includes(alvo)) mutedUsers[from].push(alvo)
+    await sock.sendMessage(from,{text:`Não grita 🤫`})
+    return
   }
 
-  try {
-    // remove o participante do grupo
-    await sock.groupParticipantsUpdate(from, [alvo], "remove")
-    await sock.sendMessage(from, { text: "Usuário banido do grupo." })
-  } catch (e) {
-    console.log("Erro ao banir participante:", e)
-    await sock.sendMessage(from, { text: "Não foi possível banir o usuário." })
+  // UNMUTE
+  if(cmd.startsWith(prefix+"unmute")){
+    if(mutedUsers[from] && mutedUsers[from].includes(alvo)){
+      mutedUsers[from] = mutedUsers[from].filter(u => u !== alvo)
+      if(mutedWarned[from]){
+        mutedWarned[from] = mutedWarned[from].filter(u => u !== alvo)
+      }
+    }
+    await sock.sendMessage(from,{text:`Pode falar nengue`})
+    return
   }
-  return
+
+  // BAN
+  if(cmd.startsWith(prefix+"ban")){
+    if(alvo === dono) return sock.sendMessage(from,{text:"Não pode banir o dono!"})
+
+    try {
+      await sock.groupParticipantsUpdate(from,[alvo],"remove")
+      await sock.sendMessage(from,{text:"Usuário banido do grupo."})
+    } catch(e){
+      console.log("Erro ao banir participante:", e)
+      await sock.sendMessage(from,{text:"Não foi possível banir o usuário."})
+    }
+    return
+  }
 }
 
   })

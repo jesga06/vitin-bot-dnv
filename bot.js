@@ -126,7 +126,7 @@ async function startBot(){
       quoted?.videoMessage
 
     // =========================
-    // BLOQUEIO DE MENSAGENS DOS MUTADOS
+    // APAGAR MENSAGENS DOS MUTADOS
     // =========================
     if(isGroup && muted[from]?.includes(sender)){
       try {
@@ -137,9 +137,9 @@ async function startBot(){
         if(botAdmin){
           await sock.sendMessage(from, { delete: msg.key })
         } else {
-          console.log("Não posso apagar, preciso ser admin")
+          console.log("Não posso apagar mensagem, preciso ser admin")
         }
-      } catch (err) {
+      } catch(err){
         console.log("Erro ao apagar mensagem do mutado:", err)
       }
       return // ignora processamento da mensagem
@@ -157,8 +157,8 @@ async function startBot(){
 ╭━━━〔 🎨 FIGURINHAS 〕━━━╮
 │ ${prefix}s / ${prefix}fig / ${prefix}sticker / ${prefix}f
 │ Envie a mídia e logo em seguida
-│ marque a imagem e use o comando
-│   para criar sua figurinha
+│  marque a imagem com o comando
+│    para criar sua figurinha
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
 ╭━━━〔 👮 ADMIN 〕━━━╮
@@ -214,34 +214,29 @@ async function startBot(){
     }
 
     // =========================
-    // MUTE
+    // MUTE / UNMUTE
     // =========================
-    if(isGroup && cmd === prefix+"mute" && mentioned.length){
+    if(isGroup && (cmd === prefix+"mute" || cmd === prefix+"unmute") && mentioned.length){
       const metadata = await sock.groupMetadata(from)
       const admin = metadata.participants.find(p => p.id === sender)?.admin
-      if(!admin) return
+      if(!admin) return // apenas admins podem usar
 
       const alvo = mentioned[0]
-      if(!muted[from]) muted[from] = []
-      if(!muted[from].includes(alvo)){
-        muted[from].push(alvo)
+
+      if(cmd === prefix+"mute"){
+        if(!muted[from]) muted[from] = []
+        if(!muted[from].includes(alvo)){
+          muted[from].push(alvo)
+        }
+        await sock.sendMessage(from,{text:"Não grita 🤫"})
       }
 
-      await sock.sendMessage(from,{text:"Não grita 🤫"})
-    }
-
-    // UNMUTE
-    if(isGroup && cmd === prefix+"unmute" && mentioned.length){
-      const metadata = await sock.groupMetadata(from)
-      const admin = metadata.participants.find(p => p.id === sender)?.admin
-      if(!admin) return
-
-      const alvo = mentioned[0]
-      if(muted[from]){
-        muted[from] = muted[from].filter(u => u !== alvo)
+      if(cmd === prefix+"unmute"){
+        if(muted[from]){
+          muted[from] = muted[from].filter(u => u !== alvo)
+        }
+        await sock.sendMessage(from,{text:"Fala baixo nengue"})
       }
-
-      await sock.sendMessage(from,{text:"Fala vaixo nengue"})
     }
 
     // BAN

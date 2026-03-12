@@ -19,7 +19,8 @@ const dono = "557398579450@s.whatsapp.net"
 
 let qrImage = null
 let jarvisContext = {}
-let mutedUsers = {} // guarda usuários mutados por grupo
+let mutedUsers = {}       // usuários mutados por grupo
+let mutedWarned = {}      // usuários já avisados sobre mutado
 
 app.get("/", (req,res)=>{
   if(!qrImage){
@@ -128,14 +129,17 @@ async function startBot(){
       quoted?.videoMessage
 
     // =========================
-    // BLOQUEIO DE USUÁRIOS MUTADOS
+    // BLOQUEIO DE USUÁRIOS MUTADOS (AVISO 1X)
     // =========================
     if(isGroup && mutedUsers[from] && mutedUsers[from].includes(sender)){
       try {
-        await sock.sendMessage(from,{text:"Você está mutado e não pode enviar mensagens"})
-        await sock.sendMessage(from,{
-          delete: { remoteJid: from, fromMe: false, id: msg.key.id }
-        })
+        if(!mutedWarned[from]) mutedWarned[from] = []
+        if(!mutedWarned[from].includes(sender)){
+          await sock.sendMessage(from, { text: "Cala boca quenga" })
+          mutedWarned[from].push(sender)
+        }
+        // deleta a mensagem
+        await sock.sendMessage(from, { delete: msg.key })
       } catch(e){
         console.log("Erro ao deletar mensagem do mutado:", e)
       }
@@ -153,10 +157,9 @@ async function startBot(){
       return
     }
 
-    // Responder opções do Jarvis
     if(jarvisContext[from]){
       if(text === "1"){
-        await sock.sendMessage(from,{text:"Claro senhor, estarei enviando no seu privado uma foto gerada da sua vó pelada"})
+        await sock.sendMessage(from,{text:"Claro senhor, estarei enviando no seu privado uma foto da sua vó pelada"})
       } else if(text === "2"){
         await sock.sendMessage(from,{text:"Não precisa pedir 2 vezes"})
       } else if(text === "3"){
@@ -258,16 +261,19 @@ async function startBot(){
         if(alvo === dono) return sock.sendMessage(from,{text:"Não pode mutar o dono!"})
         if(!mutedUsers[from]) mutedUsers[from] = []
         if(!mutedUsers[from].includes(alvo)) mutedUsers[from].push(alvo)
-        await sock.sendMessage(from,{text:`Usuário mutado.`})
+        await sock.sendMessage(from,{text:`Não grita 🤫`})
         return
       }
 
       // UNMUTE
       if(cmd.startsWith(prefix+"unmute")){
-        if(mutedUsers[from]) {
+        if(mutedUsers[from] && mutedUsers[from].includes(alvo)){
           mutedUsers[from] = mutedUsers[from].filter(u => u !== alvo)
+          if(mutedWarned[from]){
+            mutedWarned[from] = mutedWarned[from].filter(u => u !== alvo)
+          }
         }
-        await sock.sendMessage(from,{text:`Usuário desmutado.`})
+        await sock.sendMessage(from,{text:`Pode falar nengue`})
         return
       }
 

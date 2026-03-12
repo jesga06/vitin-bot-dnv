@@ -156,15 +156,19 @@ text:"Usuário desmutado"
 if(cmd.startsWith("!ban") && mentioned.length && isGroup){
 
 let alvo = mentioned[0]
+let botNumber = sock.user.id.split(":")[0] + "@s.whatsapp.net"
+
+if(alvo === botNumber){
+await sock.sendMessage(from,{
+text:"Não vou me leitar, seu otário"
+})
+return
+}
 
 await sock.groupParticipantsUpdate(from,[alvo],"remove")
 
 await sock.sendMessage(from,{
 text:"Receba a leitada divina"
-})
-
-}
-
 })
 
 }

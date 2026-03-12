@@ -6,6 +6,8 @@ const express = require("express")
 const pino = require("pino")
 const QRCode = require("qrcode")
 const sharp = require("sharp")
+const fs = require("fs")
+const ffmpeg = require("fluent-ffmpeg")
 
 const app = express()
 const logger = pino({ level: "silent" })
@@ -43,10 +45,7 @@ version,
 auth: state,
 logger,
 printQRInTerminal:false,
-browser:["BotZap","Chrome","1.0"],
-keepAliveIntervalMs:30000,
-connectTimeoutMs:60000,
-defaultQueryTimeoutMs:0
+browser:["BotZap","Chrome","1.0"]
 })
 
 sock.ev.on("creds.update", saveCreds)
@@ -70,6 +69,7 @@ if(connection === "close"){
 const reason = lastDisconnect?.error?.output?.statusCode
 
 if(reason !== DisconnectReason.loggedOut){
+
 console.log("Reconectando em 5 segundos")
 
 setTimeout(()=>{
@@ -97,32 +97,65 @@ msg.message.conversation ||
 msg.message.extendedTextMessage?.text ||
 ""
 
+const cmd = text.toLowerCase()
+
 const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []
+
+const metadata = isGroup ? await sock.groupMetadata(from) : null
+const admins = isGroup ? metadata.participants.filter(p=>p.admin).map(p=>p.id) : []
+const isAdmin = admins.includes(sender)
 
 if(isGroup && muted[from] && muted[from].includes(sender)){
 await sock.sendMessage(from,{ delete: msg.key })
 return
 }
 
-const cmd = text.toLowerCase()
-
-// ===== FIGURINHA =====
-
 let quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
 
-let image =
-msg.message.imageMessage ||
-quoted?.imageMessage
+// MENU
+
+if(cmd === "!menu"){
+
+await sock.sendMessage(from,{
+text:
+`🤖 MENU DO BOT
+
+🎨 FIGURINHAS
+!f
+!fig
+!s
+!sticker
+
+👮 MODERAÇÃO (ADM)
+!ban @membro
+!mute @membro
+!unmute @membro
+!promote @membro
+!demote @membro`
+})
+
+}
+
+// FIGURINHA
 
 if(["!f","!fig","!sticker","!s"].includes(cmd)){
 
-if(!image) return
+let media =
+msg.message.imageMessage ||
+msg.message.videoMessage ||
+quoted?.imageMessage ||
+quoted?.videoMessage
+
+if(!media) return
 
 await sock.sendMessage(from,{
 text:"Aguarde um momento, estou fazendo sua figurinha"
 })
 
-const stream = await downloadContentFromMessage(image,"image")
+const stream = await downloadContentFromMessage(
+media,
+media.mimetype?.includes("video") ? "video" : "image"
+)
 
 let buffer = Buffer.from([])
 
@@ -130,10 +163,40 @@ for await(const chunk of stream){
 buffer = Buffer.concat([buffer,chunk])
 }
 
-const webpBuffer = await sharp(buffer)
-.resize(512,512,{ fit:"contain" })
+let webpBuffer
+
+if(media.mimetype?.includes("video")){
+
+fs.writeFileSync("temp.mp4",buffer)
+
+await new Promise((resolve,reject)=>{
+
+ffmpeg("temp.mp4")
+.outputOptions([
+"-vcodec libwebp",
+"-vf scale=512:512:force_original_aspect_ratio=decrease,fps=15",
+"-loop 0",
+"-t 5",
+"-preset default",
+"-an",
+"-vsync 0"
+])
+.save("temp.webp")
+.on("end",resolve)
+.on("error",reject)
+
+})
+
+webpBuffer = fs.readFileSync("temp.webp")
+
+}else{
+
+webpBuffer = await sharp(buffer)
+.resize(512,512,{fit:"contain"})
 .webp()
 .toBuffer()
+
+}
 
 await sock.sendMessage(from,{
 sticker:webpBuffer
@@ -141,9 +204,25 @@ sticker:webpBuffer
 
 }
 
-// ===== MUTE =====
+// BAN
+
+if(cmd.startsWith("!ban") && mentioned.length && isGroup){
+
+if(!isAdmin) return
+
+await sock.groupParticipantsUpdate(from,[mentioned[0]],"remove")
+
+await sock.sendMessage(from,{
+text:"Receba a leitada divina"
+})
+
+}
+
+// MUTE
 
 if(cmd.startsWith("!mute") && mentioned.length){
+
+if(!isAdmin) return
 
 let alvo = mentioned[0]
 
@@ -157,14 +236,16 @@ text:"Não grita 🤫"
 
 }
 
-// ===== UNMUTE =====
+// UNMUTE
 
 if(cmd.startsWith("!unmute") && mentioned.length){
+
+if(!isAdmin) return
 
 let alvo = mentioned[0]
 
 if(muted[from]){
-muted[from] = muted[from].filter(u => u !== alvo)
+muted[from] = muted[from].filter(u=>u!==alvo)
 }
 
 await sock.sendMessage(from,{
@@ -173,27 +254,30 @@ text:"Pode falar nengue"
 
 }
 
-// ===== BAN =====
+// PROMOVER
 
-if(cmd.startsWith("!ban") && mentioned.length && isGroup){
+if(cmd.startsWith("!promover") && mentioned.length && isGroup){
 
-let alvo = mentioned[0]
+if(!isAdmin) return
 
-let botNumber = sock.user.id.split(":")[0] + "@s.whatsapp.net"
-
-if(alvo === botNumber){
+await sock.groupParticipantsUpdate(from,[mentioned[0]],"promover")
 
 await sock.sendMessage(from,{
-text:"Eu não sou burro de me banir sozinho seu otário"
+text:"Parabéns, foi promovido a pobre premium👑"
 })
 
-return
 }
 
-await sock.groupParticipantsUpdate(from,[alvo],"remove")
+// REBAIXAR
+
+if(cmd.startsWith("!rebaixar") && mentioned.length && isGroup){
+
+if(!isAdmin) return
+
+await sock.groupParticipantsUpdate(from,[mentioned[0]],"rebaixar")
 
 await sock.sendMessage(from,{
-text:"Receba a leitada divina"
+text:"O otário virou membro comum KKKKKKKKKKKKKKKKKKK"
 })
 
 }

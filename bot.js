@@ -53,11 +53,12 @@ await new Promise((resolve,reject)=>{
 ffmpeg(input)
 .outputOptions([
 "-vcodec libwebp",
-"-vf scale=512:512:force_original_aspect_ratio=decrease:eval=frame,pad=512:512:-1:-1:color=0x00000000,fps=15",
+"-vf scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000,fps=15",
 "-loop 0",
 "-preset default",
 "-an",
-"-vsync 0"
+"-vsync 0",
+"-compression_level 6"
 ])
 .toFormat("webp")
 .save(output)
@@ -130,7 +131,7 @@ setTimeout(startBot,5000)
 
 sock.ev.on("messages.upsert", async ({messages})=>{
 
-const msg = messages[0]
+const msg = messages
 if(!msg.message) return
 if(msg.key.fromMe) return
 
@@ -155,7 +156,7 @@ msg.message?.videoMessage ||
 quoted?.imageMessage ||
 quoted?.videoMessage
 
-// MENU BONITO
+// MENU 
 if(cmd === "!menu"){
 
 await sock.sendMessage(from,{
@@ -181,7 +182,7 @@ text:`
 
 📌 *Como usar figurinha*
 
-Envie ou responda uma mídia
+Envie uma mídia e responda 
 com um comando de figurinha
 
 ╰━━━━━━━━━━━━━━━━╯
@@ -193,7 +194,7 @@ com um comando de figurinha
 // DONO
 if(cmd === "!dono"){
 
-const numero = dono.split("@")[0]
+const numero = dono.split("@")
 
 await sock.sendMessage(from,{
 text:`👑 Dono do bot: @${numero}`,
@@ -233,11 +234,11 @@ let sticker
 if(media.imageMessage){
 
 sticker = await sharp(buffer)
-.resize(512,512,{
-fit:"contain",
-background:{ r:0, g:0, b:0, alpha:0 }
+.resize(512, 512, {
+fit: "cover",
+position: "center"
 })
-.webp({ quality:80 })
+.webp({ quality: 75 })
 .toBuffer()
 
 }else{
@@ -258,14 +259,14 @@ const admin = metadata.participants.find(p => p.id === sender)?.admin
 
 if(!admin) return
 
-let alvo = mentioned[0]
+let alvo = mentioned
 
 if(!muted[from]) muted[from] = []
 
 muted[from].push(alvo)
 
 await sock.sendMessage(from,{
-text:"Minha gala seca silenciou sua boca piranha >:D"
+text:"Não grita 🤫"
 })
 
 }
@@ -278,7 +279,7 @@ const admin = metadata.participants.find(p => p.id === sender)?.admin
 
 if(!admin) return
 
-let alvo = mentioned[0]
+let alvo = mentioned
 
 if(muted[from]){
 muted[from] = muted[from].filter(u => u !== alvo)
@@ -298,12 +299,12 @@ const admin = metadata.participants.find(p => p.id === sender)?.admin
 
 if(!admin) return
 
-let alvo = mentioned[0]
+let alvo = mentioned
 
 if(alvo === dono){
 
 await sock.sendMessage(from,{
-text:"Você não pode banir o criador do bot 😎"
+text:"Você não pode banir o criador do bot seu otário"
 })
 
 return

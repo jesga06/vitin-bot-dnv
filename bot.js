@@ -120,50 +120,51 @@ async function startBot(){
       quoted?.videoMessage
 
     // =========================
-    // COMANDOS MUTE / UNMUTE
+    // COMANDOS MUTE / UNMUTE CORRIGIDO
     // =========================
     if(isGroup && (cmd === prefix+"mute" || cmd === prefix+"unmute") && mentioned.length){
-      const metadata = await sock.groupMetadata(from)
-      const admin = metadata.participants.find(p => p.id === sender)?.admin
-      if(!admin) return // apenas admins podem usar
+        const senderId = msg.key.participant || msg.key.remoteJid
+        const metadata = await sock.groupMetadata(from)
+        const admin = metadata.participants.find(p => p.id === senderId)?.admin
+        if(!admin) return await sock.sendMessage(from,{text:"Apenas admins podem usar este comando"})
 
-      const alvo = mentioned[0]
+        const alvo = mentioned[0]
 
-      if(cmd === prefix+"mute"){
-        if(!muted[from]) muted[from] = []
-        if(!muted[from].includes(alvo)){
-          muted[from].push(alvo)
+        if(cmd === prefix+"mute"){
+            if(!muted[from]) muted[from] = []
+            if(!muted[from].includes(alvo)){
+                muted[from].push(alvo)
+            }
+            await sock.sendMessage(from, { text: "🤫 Usuário mutado!" })
         }
-        await sock.sendMessage(from, { text: "Não grita 🤫" })
-      }
 
-      if(cmd === prefix+"unmute"){
-        if(muted[from]){
-          muted[from] = muted[from].filter(u => u !== alvo)
+        if(cmd === prefix+"unmute"){
+            if(muted[from]){
+                muted[from] = muted[from].filter(u => u !== alvo)
+            }
+            await sock.sendMessage(from, { text: "✅ Usuário desmutado!" })
         }
-        await sock.sendMessage(from, { text: "Fala baixo nengue" })
-      }
-      return
+        return
     }
 
     // =========================
-    // APAGAR MENSAGENS DE USUÁRIOS MUTADOS
+    // BLOQUEIA MENSAGENS DE USUÁRIOS MUTADOS
     // =========================
     if(isGroup && muted[from]?.includes(sender)){
-      try {
-        const metadata = await sock.groupMetadata(from)
-        const botNumber = sock.user.id.split(":")[0] + "@s.whatsapp.net"
-        const botAdmin = metadata.participants.find(p => p.id === botNumber)?.admin
+        try {
+            const metadata = await sock.groupMetadata(from)
+            const botNumber = sock.user.id.split(":")[0] + "@s.whatsapp.net"
+            const botAdmin = metadata.participants.find(p => p.id === botNumber)?.admin
 
-        if(botAdmin){
-          await sock.sendMessage(from, { delete: msg.key })
-        } else {
-          console.log("Não posso apagar mensagem, preciso ser admin")
+            if(botAdmin){
+                await sock.sendMessage(from, { delete: msg.key })
+            } else {
+                console.log("Não posso apagar mensagem, preciso ser admin")
+            }
+        } catch(err){
+            console.log("Erro ao apagar mensagem do mutado:", err)
         }
-      } catch(err){
-        console.log("Erro ao apagar mensagem do mutado:", err)
-      }
-      return
+        return
     }
 
     // =========================
@@ -179,7 +180,7 @@ async function startBot(){
     if(jarvisResponses[from] && msg.message.conversation){
       const reply = msg.message.conversation.trim()
       if(reply === "1"){
-        await sock.sendMessage(from, { text: "Claro senhor, estarei enviando no seu privado uma foto gerada da sua vó pelada" })
+        await sock.sendMessage(from, { text: "Claro senhor, estarei enviando no seu privado uma foto da sua vó pelada" })
       } else if(reply === "2"){
         await sock.sendMessage(from, { text: "Não precisa pedir 2 vezes" })
       } else if(reply === "3"){

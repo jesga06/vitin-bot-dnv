@@ -18,8 +18,8 @@ const prefix = "!"
 const dono = "557398579450@s.whatsapp.net"
 
 let qrImage = null
-let muted = {}
-let jarvisResponses = {} // para controlar respostas do Jarvis
+let jarvisContext = {}
+let mutedUsers = {} // guarda usuários mutados por grupo
 
 app.get("/", (req,res)=>{
   if(!qrImage){
@@ -32,29 +32,30 @@ app.get("/", (req,res)=>{
 })
 
 const PORT = process.env.PORT || 3000
-app.listen(PORT,()=>{
-  console.log("Servidor rodando na porta " + PORT)
-})
+app.listen(PORT,()=>console.log("Servidor rodando na porta " + PORT))
 
+// =========================
+// FUNÇÃO DE VIDEO PARA STICKER
+// =========================
 async function videoToSticker(buffer){
   const input = "./input.mp4"
   const output = "./output.webp"
-  fs.writeFileSync(input, buffer)
 
+  fs.writeFileSync(input, buffer)
   await new Promise((resolve,reject)=>{
     ffmpeg(input)
-    .outputOptions([
-      "-vcodec libwebp",
-      "-vf scale=512:512:flags=lanczos,fps=15",
-      "-loop 0",
-      "-preset default",
-      "-an",
-      "-vsync 0"
-    ])
-    .toFormat("webp")
-    .save(output)
-    .on("end", resolve)
-    .on("error", reject)
+      .outputOptions([
+        "-vcodec libwebp",
+        "-vf scale=512:512:flags=lanczos,fps=15",
+        "-loop 0",
+        "-preset default",
+        "-an",
+        "-vsync 0"
+      ])
+      .toFormat("webp")
+      .save(output)
+      .on("end", resolve)
+      .on("error", reject)
   })
 
   const sticker = fs.readFileSync(output)
@@ -63,6 +64,9 @@ async function videoToSticker(buffer){
   return sticker
 }
 
+// =========================
+// INÍCIO DO BOT
+// =========================
 async function startBot(){
   const { state, saveCreds } = await useMultiFileAuthState("./auth")
   const { version } = await fetchLatestBaileysVersion()
@@ -108,7 +112,11 @@ async function startBot(){
     const sender = msg.key.participant || msg.key.remoteJid
     const isGroup = from.endsWith("@g.us")
 
-    const text = msg.message.conversation || msg.message.extendedTextMessage?.text || ""
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      ""
+
     const cmd = text.toLowerCase()
     const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []
     let quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
@@ -120,73 +128,44 @@ async function startBot(){
       quoted?.videoMessage
 
     // =========================
-    // COMANDOS MUTE / UNMUTE CORRIGIDO
+    // BLOQUEIO DE USUÁRIOS MUTADOS
     // =========================
-    if(isGroup && (cmd === prefix+"mute" || cmd === prefix+"unmute") && mentioned.length){
-        const senderId = msg.key.participant || msg.key.remoteJid
-        const metadata = await sock.groupMetadata(from)
-        const admin = metadata.participants.find(p => p.id === senderId)?.admin
-        if(!admin) return await sock.sendMessage(from,{text:"Apenas admins podem usar este comando"})
-
-        const alvo = mentioned[0]
-
-        if(cmd === prefix+"mute"){
-            if(!muted[from]) muted[from] = []
-            if(!muted[from].includes(alvo)){
-                muted[from].push(alvo)
-            }
-            await sock.sendMessage(from, { text: "🤫 Usuário mutado!" })
-        }
-
-        if(cmd === prefix+"unmute"){
-            if(muted[from]){
-                muted[from] = muted[from].filter(u => u !== alvo)
-            }
-            await sock.sendMessage(from, { text: "✅ Usuário desmutado!" })
-        }
-        return
-    }
-
-    // =========================
-    // BLOQUEIA MENSAGENS DE USUÁRIOS MUTADOS
-    // =========================
-    if(isGroup && muted[from]?.includes(sender)){
-        try {
-            const metadata = await sock.groupMetadata(from)
-            const botNumber = sock.user.id.split(":")[0] + "@s.whatsapp.net"
-            const botAdmin = metadata.participants.find(p => p.id === botNumber)?.admin
-
-            if(botAdmin){
-                await sock.sendMessage(from, { delete: msg.key })
-            } else {
-                console.log("Não posso apagar mensagem, preciso ser admin")
-            }
-        } catch(err){
-            console.log("Erro ao apagar mensagem do mutado:", err)
-        }
-        return
+    if(isGroup && mutedUsers[from] && mutedUsers[from].includes(sender)){
+      try {
+        await sock.sendMessage(from,{text:"Você está mutado e não pode enviar mensagens"})
+        await sock.sendMessage(from,{
+          delete: { remoteJid: from, fromMe: false, id: msg.key.id }
+        })
+      } catch(e){
+        console.log("Erro ao deletar mensagem do mutado:", e)
+      }
+      return
     }
 
     // =========================
     // COMANDO JARVIS
     // =========================
     if(cmd === prefix+"jarvis"){
-      jarvisResponses[from] = true
-      await sock.sendMessage(from, { text: `O que deseja senhor?\n1- Amoleça meu pinto\n2- Mate o Kronos\n3- Deixa pra la` })
+      await sock.sendMessage(from,{
+        text:"O que deseja senhor?\n1- Amoleça meu pinto\n2- Mate o Kronos\n3- Deixa pra lá"
+      })
+      jarvisContext[from] = true
       return
     }
 
-    // RESPOSTA AO JARVIS
-    if(jarvisResponses[from] && msg.message.conversation){
-      const reply = msg.message.conversation.trim()
-      if(reply === "1"){
-        await sock.sendMessage(from, { text: "Claro senhor, estarei enviando no seu privado uma foto da sua vó pelada" })
-      } else if(reply === "2"){
-        await sock.sendMessage(from, { text: "Não precisa pedir 2 vezes" })
-      } else if(reply === "3"){
-        await sock.sendMessage(from, { text: "Vai tomar no cú então" })
+    // Responder opções do Jarvis
+    if(jarvisContext[from]){
+      if(text === "1"){
+        await sock.sendMessage(from,{text:"Claro senhor, estarei enviando no seu privado uma foto gerada da sua vó pelada"})
+      } else if(text === "2"){
+        await sock.sendMessage(from,{text:"Não precisa pedir 2 vezes"})
+      } else if(text === "3"){
+        await sock.sendMessage(from,{text:"Vai tomar no cú então"})
+      } else {
+        await sock.sendMessage(from,{text:"Opção inválida. Digite 1, 2 ou 3"})
+        return
       }
-      delete jarvisResponses[from]
+      delete jarvisContext[from]
       return
     }
 
@@ -209,9 +188,9 @@ async function startBot(){
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
 ╭━━━〔 👮 ADMIN 〕━━━╮
+│ ${prefix}ban @usuario
 │ ${prefix}mute @usuario
 │ ${prefix}unmute @usuario
-│ ${prefix}ban @usuario
 │ Apenas admins podem usar
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
@@ -257,7 +236,7 @@ async function startBot(){
           .resize(512,512,{ fit:"fill" })
           .webp({quality:90})
           .toBuffer()
-      }else{
+      } else {
         sticker = await videoToSticker(buffer)
       }
 
@@ -265,21 +244,45 @@ async function startBot(){
     }
 
     // =========================
-    // BAN
+    // MUTE / UNMUTE / BAN
     // =========================
-    if(cmd.startsWith(prefix+"ban") && mentioned.length && isGroup){
+    if(isGroup && mentioned.length){
       const metadata = await sock.groupMetadata(from)
       const admin = metadata.participants.find(p => p.id === sender)?.admin
       if(!admin) return
 
       const alvo = mentioned[0]
-      if(alvo === dono){
-        return sock.sendMessage(from,{text:"Não pode banir o dono seu otário"})
+
+      // MUTE
+      if(cmd.startsWith(prefix+"mute")){
+        if(alvo === dono) return sock.sendMessage(from,{text:"Não pode mutar o dono!"})
+        if(!mutedUsers[from]) mutedUsers[from] = []
+        if(!mutedUsers[from].includes(alvo)) mutedUsers[from].push(alvo)
+        await sock.sendMessage(from,{text:`Usuário mutado.`})
+        return
       }
 
-      await sock.groupParticipantsUpdate(from,[alvo],"remove")
-      await sock.sendMessage(from,{text:"Receba a leitada divina "})
+      // UNMUTE
+      if(cmd.startsWith(prefix+"unmute")){
+        if(mutedUsers[from]) {
+          mutedUsers[from] = mutedUsers[from].filter(u => u !== alvo)
+        }
+        await sock.sendMessage(from,{text:`Usuário desmutado.`})
+        return
+      }
+
+      // BAN
+      if(cmd.startsWith(prefix+"ban")){
+        if(alvo === dono){
+          return sock.sendMessage(from,{text:"Não pode banir o dono seu otário"})
+        }
+
+        await sock.groupParticipantsUpdate(from,[alvo],"remove")
+        await sock.sendMessage(from,{text:"Receba a leitada divina "})
+        return
+      }
     }
+
   })
 }
 

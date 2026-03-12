@@ -7,7 +7,6 @@ const pino = require("pino")
 const QRCode = require("qrcode")
 const sharp = require("sharp")
 const fs = require("fs")
-
 const ffmpeg = require("fluent-ffmpeg")
 const ffmpegPath = require("ffmpeg-static")
 ffmpeg.setFfmpegPath(ffmpegPath)
@@ -20,6 +19,7 @@ const dono = "557398579450@s.whatsapp.net"
 
 let qrImage = null
 let muted = {}
+let jarvisContext = {}
 
 app.get("/", (req,res)=>{
   if(!qrImage){
@@ -41,7 +41,6 @@ async function videoToSticker(buffer){
   const output = "./output.webp"
 
   fs.writeFileSync(input, buffer)
-
   await new Promise((resolve,reject)=>{
     ffmpeg(input)
     .outputOptions([
@@ -61,7 +60,6 @@ async function videoToSticker(buffer){
   const sticker = fs.readFileSync(output)
   fs.unlinkSync(input)
   fs.unlinkSync(output)
-
   return sticker
 }
 
@@ -126,7 +124,7 @@ async function startBot(){
       quoted?.videoMessage
 
     // =========================
-    // DELETAR MENSAGENS DOS MUTADOS
+    // DELETAR MENSAGENS DE USUÁRIOS MUTADOS
     // =========================
     if(isGroup && muted[from]?.includes(sender)){
       try {
@@ -136,17 +134,15 @@ async function startBot(){
 
         if(botAdmin){
           await sock.sendMessage(from, { delete: msg.key })
-        } else {
-          console.log("Não posso apagar mensagem, preciso ser admin")
         }
       } catch(err){
         console.log("Erro ao apagar mensagem do mutado:", err)
       }
-      return // ignora processamento da mensagem
+      return
     }
 
     // =========================
-    // COMANDOS MUTE / UNMUTE
+    // COMANDOS DE MUTE / UNMUTE
     // =========================
     if(isGroup && (cmd === prefix+"mute" || cmd === prefix+"unmute") && mentioned.length){
       const metadata = await sock.groupMetadata(from)
@@ -169,9 +165,36 @@ async function startBot(){
         }
         await sock.sendMessage(from,{text:"Fala baixo nengue"})
       }
+      return
     }
 
+    // =========================
+    // COMANDO JARVIS
+    // =========================
+    if(cmd === prefix+"jarvis"){
+      await sock.sendMessage(from,{
+        text:"O que deseja senhor?\n1- Amoleça meu pinto\n2- Mate o Kronos\n3- Deixa pra la"
+      })
+      jarvisContext[from] = true
+      return
+    }
+
+    // Responder opções do Jarvis
+    if(jarvisContext[from] && quoted?.conversation?.includes("O que deseja senhor?")){
+      if(text === "1"){
+        await sock.sendMessage(from,{text:"Claro senhor, estarei enviando no seu privado uma foto gerada da sua vó pelada"})
+      } else if(text === "2"){
+        await sock.sendMessage(from,{text:"Não precisa pedir 2 vezes"})
+      } else if(text === "3"){
+        await sock.sendMessage(from,{text:"Vai tomar no cú então"})
+      }
+      delete jarvisContext[from]
+      return
+    }
+
+    // =========================
     // MENU
+    // =========================
     if(cmd === prefix+"menu"){
       await sock.sendMessage(from,{
         text:`
@@ -201,7 +224,9 @@ async function startBot(){
       })
     }
 
+    // =========================
     // DONO
+    // =========================
     if(cmd === prefix+"dono"){
       const numero = dono.split("@")[0]
       await sock.sendMessage(from,{
@@ -210,7 +235,9 @@ async function startBot(){
       })
     }
 
+    // =========================
     // STICKER
+    // =========================
     if(["!s","!fig","!sticker","!f"].includes(cmd)){
       if(!media){
         return sock.sendMessage(from,{text:"Envie ou responda uma mídia"})
@@ -232,14 +259,16 @@ async function startBot(){
           .resize(512,512,{ fit:"fill" })
           .webp({quality:90})
           .toBuffer()
-      }else{
+      } else {
         sticker = await videoToSticker(buffer)
       }
 
       await sock.sendMessage(from,{ sticker })
     }
 
+    // =========================
     // BAN
+    // =========================
     if(cmd.startsWith(prefix+"ban") && mentioned.length && isGroup){
       const metadata = await sock.groupMetadata(from)
       const admin = metadata.participants.find(p => p.id === sender)?.admin
@@ -253,6 +282,7 @@ async function startBot(){
       await sock.groupParticipantsUpdate(from,[alvo],"remove")
       await sock.sendMessage(from,{text:"Receba a leitada divina "})
     }
+
   })
 }
 

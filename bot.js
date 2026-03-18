@@ -22,39 +22,6 @@ let jarvisContext = {}
 let mutedUsers = {}
 let mutedWarned = {}
 
-// =========================
-// DDD COMPLETO BRASIL
-// =========================
-const dddMap = {
-"11":"São Paulo","12":"São Paulo","13":"São Paulo","14":"São Paulo","15":"São Paulo","16":"São Paulo","17":"São Paulo","18":"São Paulo","19":"São Paulo",
-"21":"Rio de Janeiro","22":"Rio de Janeiro","24":"Rio de Janeiro",
-"27":"Espírito Santo","28":"Espírito Santo",
-"31":"Minas Gerais","32":"Minas Gerais","33":"Minas Gerais","34":"Minas Gerais","35":"Minas Gerais","37":"Minas Gerais","38":"Minas Gerais",
-"41":"Paraná","42":"Paraná","43":"Paraná","44":"Paraná","45":"Paraná","46":"Paraná",
-"47":"Santa Catarina","48":"Santa Catarina","49":"Santa Catarina",
-"51":"Rio Grande do Sul","53":"Rio Grande do Sul","54":"Rio Grande do Sul","55":"Rio Grande do Sul",
-"61":"Distrito Federal",
-"62":"Goiás","64":"Goiás",
-"63":"Tocantins",
-"65":"Mato Grosso","66":"Mato Grosso",
-"67":"Mato Grosso do Sul",
-"68":"Acre",
-"69":"Rondônia",
-"71":"Bahia","73":"Bahia","74":"Bahia","75":"Bahia","77":"Bahia",
-"79":"Sergipe",
-"81":"Pernambuco","87":"Pernambuco",
-"82":"Alagoas",
-"83":"Paraíba",
-"84":"Rio Grande do Norte",
-"85":"Ceará","88":"Ceará",
-"86":"Piauí","89":"Piauí",
-"91":"Pará","93":"Pará","94":"Pará",
-"92":"Amazonas","97":"Amazonas",
-"95":"Roraima",
-"96":"Amapá",
-"98":"Maranhão","99":"Maranhão"
-}
-
 app.get("/", (req,res)=>{
   if(!qrImage){
     return res.send("<h2>Bot conectado</h2>")
@@ -225,12 +192,7 @@ async function startBot(){
     // =========================
     if(cmd.startsWith(prefix+"bombardeio") && mentioned.length > 0 && isGroup){
       const alvo = mentioned[0]
-      const numero = alvo.split("@")[0]
 
-      const ddd = numero.substring(0,2)
-      const estado = dddMap[ddd] || "local desconhecido"
-
-      // gera IP fake
       const ip = `${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}`
 
       await sock.sendMessage(from,{
@@ -247,7 +209,7 @@ async function startBot(){
 
       setTimeout(async ()=>{
         await sock.sendMessage(from,{
-          text:`🎯 Alvo identificado!\n💣 O ataque em ${estado} irá acontecer em breve.`,
+          text:`💣 O ataque será realizado em breve.`,
           mentions:[alvo]
         })
       },3000)
@@ -286,13 +248,13 @@ async function startBot(){
     }
 
     // =========================
-    // TRETA
+    // TRETA (mantida exatamente igual)
     // =========================
     if(cmd === prefix+"treta" && isGroup){
       const metadata = await sock.groupMetadata(from)
       const participantes = metadata.participants.map(p => p.id)
 
-      if(participantes.length < 2) return // precisa de pelo menos 2
+      if(participantes.length < 2) return
 
       const p1 = participantes[Math.floor(Math.random()*participantes.length)]
       let p2 = participantes[Math.floor(Math.random()*participantes.length)]
@@ -317,7 +279,6 @@ async function startBot(){
 
       const motivo = motivos[Math.floor(Math.random()*motivos.length)]
 
-      // EVENTO ESPECIAL DO PINTO
       if(motivo === "brigaram pra ver quem tem o maior pinto"){
         const vencedor = Math.random() < 0.5 ? p1 : p2
         const perdedor = vencedor === p1 ? p2 : p1
@@ -325,8 +286,8 @@ async function startBot(){
         const nv = vencedor.split("@")[0]
         const np = perdedor.split("@")[0]
 
-        const tamanhoVencedor = (Math.random() * 20 + 5).toFixed(1) // 5 a 25
-        const tamanhoPerdedor = (Math.random() * 23 - 20).toFixed(1) // -20 a 3 💀
+        const tamanhoVencedor = (Math.random() * 20 + 5).toFixed(1)
+        const tamanhoPerdedor = (Math.random() * 23 - 20).toFixed(1)
 
         const finais = [
           `@${np} tem o menor micro pênis já registrado da história! (${tamanhoPerdedor}cm)`,

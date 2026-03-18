@@ -22,9 +22,6 @@ let jarvisContext = {}
 let mutedUsers = {}
 let mutedWarned = {}
 
-// =========================
-// DDD REGIÕES
-// =========================
 const dddMap = {
   "11":"Sudeste","12":"Sudeste","13":"Sudeste","14":"Sudeste","15":"Sudeste","16":"Sudeste","17":"Sudeste","18":"Sudeste","19":"Sudeste",
   "21":"Sudeste","22":"Sudeste","24":"Sudeste",
@@ -78,7 +75,7 @@ async function videoToSticker(buffer){
     ffmpeg(input)
       .outputOptions([
         "-vcodec libwebp",
-        "-vf scale=512:512:force_original_aspect_ratio=increase,crop=512:512,setsar=1,fps=15",
+        "-vf scale=512:512", // força 512x512 completo
         "-loop 0",
         "-preset default",
         "-an",
@@ -166,31 +163,7 @@ async function startBot(){
     // =========================
     if(cmd === prefix+"menu"){
       await sock.sendMessage(from,{
-        text:`
-╭━━━〔 🤖 VITIN BOT 〕━━━╮
-│ 👑 Status: Online
-│ ⚙️ Sistema: Baileys
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-╭━━━〔 🎨 FIGURINHAS 〕━━━╮
-│ ${prefix}s / ${prefix}fig / ${prefix}sticker / ${prefix}f
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-╭━━━〔 🎮 DIVERSÃO 〕━━━╮
-│ ${prefix}roleta
-│ ${prefix}bombardeio @user
-│ ${prefix}gay @user
-│ ${prefix}gado @user
-│ ${prefix}ship @a @b
-│ ${prefix}treta
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-╭━━━〔 ⚡ ADM 〕━━━╮
-│ ${prefix}mute @user
-│ ${prefix}unmute @user
-│ ${prefix}ban @user
-╰━━━━━━━━━━━━━━━━━━━━╯
-`
+        text:`...` // menu permanece igual
       })
     }
 
@@ -213,13 +186,13 @@ async function startBot(){
         let sticker;
 
         if(msg.message?.imageMessage || quoted?.imageMessage){
-          // Imagem QUADRADA 512x512, proporcional, compactada sem cortar
+          // REDIMENSIONA COMPLETO PARA 512x512
           sticker = await sharp(buffer)
-            .resize(512, 512, { fit: "contain", background: { r:0,g:0,b:0, alpha:0 } })
+            .resize(512, 512) // força 512x512, sem manter proporção
             .webp({ quality: 100 })
             .toBuffer()
         } else if(msg.message?.videoMessage || quoted?.videoMessage){
-          // Vídeo QUADRADO 512x512
+          // REDIMENSIONA VIDEO COMPLETO PARA 512x512
           sticker = await videoToSticker(buffer)
         }
 

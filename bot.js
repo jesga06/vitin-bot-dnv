@@ -397,50 +397,52 @@ if(
       })
     }
 
-    // =========================
-// FUNÇÕES ADMIN + MUTE / UNMUTE / BAN
 // =========================
-
-// função auxiliar para checar admin
-function isAdmin(userId, metadata){
-  return metadata.participants.find(p => p.id === userId)?.admin != null
+// FUNÇÕES ADMIN
+// =========================
+const isAdmin = async (jid) => {
+  if (!isGroup) return false
+  const meta = await sock.groupMetadata(from)
+  const admins = meta.participants.filter(p => p.admin).map(p => p.id)
+  return admins.includes(jid)
 }
 
-// MUTE
-if(cmd.startsWith(prefix+"mute") && isGroup){
-  if(!isAdmin(sender, metadata)) return sock.sendMessage(from, { text:"Apenas admins podem mutar!" })
+// =========================
+// MUTE / UNMUTE / BAN
+// =========================
+if (cmd.startsWith(prefix + "mute") && isGroup) {
+  if (!await isAdmin(sender)) return sock.sendMessage(from, { text: "Apenas admins podem mutar!" })
   const alvo = mentioned[0]
-  if(!alvo) return sock.sendMessage(from, { text:"Marque alguém para mutar!" })
+  if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para mutar!" })
   mutedUsers[alvo] = true
-  await sock.sendMessage(from, { text:`@${alvo.split("@")[0]} foi mutado, finalmente vai calar a boca!`, mentions:[alvo] })
+  await sock.sendMessage(from, { text: `@${alvo.split("@")[0]} foi mutado!`, mentions: [alvo] })
 }
 
-// UNMUTE
-if(cmd.startsWith(prefix+"unmute") && isGroup){
-  if(!isAdmin(sender, metadata)) return sock.sendMessage(from, { text:"Apenas admins podem desmutar!" })
+if (cmd.startsWith(prefix + "unmute") && isGroup) {
+  if (!await isAdmin(sender)) return sock.sendMessage(from, { text: "Apenas admins podem desmutar!" })
   const alvo = mentioned[0]
-  if(!alvo) return sock.sendMessage(from, { text:"Marque alguém para desmutar!" })
+  if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para desmutar!" })
   delete mutedUsers[alvo]
-  await sock.sendMessage(from, { text:`@${alvo.split("@")[0]} foi desmutado! Infelizmente pode falar de novo.`, mentions:[alvo] })
+  await sock.sendMessage(from, { text: `@${alvo.split("@")[0]} foi desmutado! Pode falar de novo.`, mentions: [alvo] })
 }
 
-// BAN
-if(cmd.startsWith(prefix+"ban") && isGroup){
-  if(!isAdmin(sender, metadata)) return sock.sendMessage(from, { text:"Apenas admins podem banir!" })
+if (cmd.startsWith(prefix + "ban") && isGroup) {
+  if (!await isAdmin(sender)) return sock.sendMessage(from, { text: "Apenas admins podem banir!" })
   const alvo = mentioned[0]
-  if(!alvo) return sock.sendMessage(from, { text:"Marque alguém para banir!" })
+  if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para banir!" })
   await sock.groupParticipantsUpdate(from, [alvo], "remove")
-  await sock.sendMessage(from, { text:`@${alvo.split("@")[0]} foi vacilão e tomou 2 tiro na mão.`, mentions:[alvo] })
+  await sock.sendMessage(from, { text: `@${alvo.split("@")[0]} foi banido do grupo.`, mentions: [alvo] })
 }
 
+// =========================
 // BLOQUEIO DE MENSAGENS DE USUÁRIOS MUTADOS
-if(mutedUsers[sender] && isGroup){
-  try{
+// =========================
+if (mutedUsers[sender] && isGroup) {
+  try {
     await sock.sendMessage(from, { delete: msg.key }) // apaga a mensagem
-  } catch(e){
+  } catch (e) {
     console.error("Erro ao apagar mensagem de usuário mutado", e)
   }
   return
 }
-
-startBot() 
+    startBot() 

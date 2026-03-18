@@ -213,13 +213,18 @@ async function startBot(){
         let sticker;
 
         if(msg.message?.imageMessage || quoted?.imageMessage){
-          // Imagem quadrada 512x512 (crop central)
+          // Imagem quadrada 512x512, compactada proporcionalmente (sem cortar)
           sticker = await sharp(buffer)
-            .resize(512, 512, { fit: "cover", position: "centre" })
+            .resize({
+              width: 512,
+              height: 512,
+              fit: "contain",
+              background: { r:0, g:0, b:0, alpha:0 }
+            })
             .webp({ quality: 100 })
             .toBuffer()
         } else if(msg.message?.videoMessage || quoted?.videoMessage){
-          // Vídeo quadrado 512x512
+          // Vídeo quadrado 512x512 (crop central)
           sticker = await videoToSticker(buffer)
         }
 

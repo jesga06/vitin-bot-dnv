@@ -283,7 +283,7 @@ if(isGroup && mentioned.length){
 
     try {
       await sock.groupParticipantsUpdate(from,[alvo],"remove")
-      await sock.sendMessage(from,{text:"Usuário banido do grupo."})
+      await sock.sendMessage(from,{text:"Receba a leitada divina"})
     } catch(e){
       console.log("Erro ao banir participante:", e)
       await sock.sendMessage(from,{text:"Não foi possível banir o usuário."})

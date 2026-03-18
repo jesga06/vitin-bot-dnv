@@ -254,7 +254,7 @@ if(
     }
 
     // =========================
-    // BOMBARDEIO - modo hacker supremo
+    // BOMBARDEIO
     // =========================
     if(cmd.startsWith(prefix+"bombardeio") && mentioned.length>0 && isGroup){
       const alvo = mentioned[0]
@@ -398,61 +398,49 @@ if(
     }
 
     // =========================
-    // FUNÇÕES ADMIN
-    // =========================
-    const isAdmin = async(jid) => {
-      if(!isGroup) return false
-      const meta = await sock.groupMetadata(from)
-      const admins = meta.participants.filter(p => p.admin).map(p => p.id)
-      return admins.includes(jid)
-    }
+// FUNÇÕES ADMIN + MUTE / UNMUTE / BAN
+// =========================
 
-    // MUTE
-    if(cmd.startsWith(prefix+"mute") && isGroup && mentioned.length>0){
-      if(!(await isAdmin(sender))){
-        return sock.sendMessage(from,{ text:"Apenas admins podem mutar!" })
-      }
+// função auxiliar para checar admin
+function isAdmin(userId, metadata){
+  return metadata.participants.find(p => p.id === userId)?.admin != null
+}
 
-      const alvo = mentioned[0]
-      mutedUsers[alvo] = true
-      await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi mutado! As mensagens dele serão apagadas.`, mentions:[alvo]})
-    }
+// MUTE
+if(cmd.startsWith(prefix+"mute") && isGroup){
+  if(!isAdmin(sender, metadata)) return sock.sendMessage(from, { text:"Apenas admins podem mutar!" })
+  const alvo = mentioned[0]
+  if(!alvo) return sock.sendMessage(from, { text:"Marque alguém para mutar!" })
+  mutedUsers[alvo] = true
+  await sock.sendMessage(from, { text:`@${alvo.split("@")[0]} foi mutado, finalmente vai calar a boca!`, mentions:[alvo] })
+}
 
-    // UNMUTE
-    if(cmd.startsWith(prefix+"unmute") && isGroup && mentioned.length>0){
-      if(!(await isAdmin(sender))){
-        return sock.sendMessage(from,{ text:"Apenas admins podem desmutar!" })
-      }
+// UNMUTE
+if(cmd.startsWith(prefix+"unmute") && isGroup){
+  if(!isAdmin(sender, metadata)) return sock.sendMessage(from, { text:"Apenas admins podem desmutar!" })
+  const alvo = mentioned[0]
+  if(!alvo) return sock.sendMessage(from, { text:"Marque alguém para desmutar!" })
+  delete mutedUsers[alvo]
+  await sock.sendMessage(from, { text:`@${alvo.split("@")[0]} foi desmutado! Infelizmente pode falar de novo.`, mentions:[alvo] })
+}
 
-      const alvo = mentioned[0]
-      delete mutedUsers[alvo]
-      await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi desmutado! Agora pode enviar mensagens normalmente.`, mentions:[alvo]})
-    }
+// BAN
+if(cmd.startsWith(prefix+"ban") && isGroup){
+  if(!isAdmin(sender, metadata)) return sock.sendMessage(from, { text:"Apenas admins podem banir!" })
+  const alvo = mentioned[0]
+  if(!alvo) return sock.sendMessage(from, { text:"Marque alguém para banir!" })
+  await sock.groupParticipantsUpdate(from, [alvo], "remove")
+  await sock.sendMessage(from, { text:`@${alvo.split("@")[0]} foi vacilão e tomou 2 tiro na mão.`, mentions:[alvo] })
+}
 
-    // BAN (remove do grupo)
-    if(cmd.startsWith(prefix+"ban") && isGroup && mentioned.length>0){
-      if(!(await isAdmin(sender))){
-        return sock.sendMessage(from,{ text:"Apenas admins podem banir!" })
-      }
-
-      const alvo = mentioned[0]
-      try{
-        await sock.groupParticipantsUpdate(from, [alvo], "remove")
-        await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi banido do grupo!`, mentions:[alvo]})
-      }catch(err){
-        console.error(err)
-        await sock.sendMessage(from,{ text:"Não foi possível banir o usuário!"})
-      }
-    }
-
-    // APAGAR mensagens de usuários mutados
-    if(mutedUsers[sender]){
-      try{
-        await sock.sendMessage(from, { delete: { id: msg.key.id, remoteJid: from, fromMe: false } })
-      }catch(e){ /* ignora se não der */ }
-    }
-
-  })
+// BLOQUEIO DE MENSAGENS DE USUÁRIOS MUTADOS
+if(mutedUsers[sender] && isGroup){
+  try{
+    await sock.sendMessage(from, { delete: msg.key }) // apaga a mensagem
+  } catch(e){
+    console.error("Erro ao apagar mensagem de usuário mutado", e)
+  }
+  return
 }
 
 startBot()

@@ -213,13 +213,13 @@ async function startBot(){
         let sticker;
 
         if(msg.message?.imageMessage || quoted?.imageMessage){
-          // Imagem quadrada 512x512, compactada proporcionalmente (sem cortar)
+          // Imagem quadrada 512x512, proporcional, sem cortar e sem esticar
           sticker = await sharp(buffer)
             .resize({
               width: 512,
               height: 512,
-              fit: "contain",
-              background: { r:0, g:0, b:0, alpha:0 }
+              fit: "contain",           // Mantém proporção
+              background: { r:0, g:0, b:0, alpha:0 } // Preenche transparência
             })
             .webp({ quality: 100 })
             .toBuffer()

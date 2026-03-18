@@ -188,32 +188,110 @@ async function startBot(){
     }
 
     // =========================
-    // BOMBARDEIO
-    // =========================
-    if(cmd.startsWith(prefix+"bombardeio") && mentioned.length > 0 && isGroup){
-      const alvo = mentioned[0]
+// BOMBARDEIO 
+// =========================
+if(cmd.startsWith(prefix+"bombardeio") && mentioned.length > 0 && isGroup){
+  const alvo = mentioned[0]
+  const numero = alvo.split("@")[0]
 
-      const ip = `${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}`
+  const ddd = numero.substring(0,2)
 
-      await sock.sendMessage(from,{
-        text:`📡 Localizando alvo...`,
-        mentions:[alvo]
-      })
+  const regioesDDD = {
+    "11":"Sudeste","12":"Sudeste","13":"Sudeste","14":"Sudeste","15":"Sudeste","16":"Sudeste","17":"Sudeste","18":"Sudeste","19":"Sudeste",
+    "21":"Sudeste","22":"Sudeste","24":"Sudeste",
+    "27":"Sudeste","28":"Sudeste",
+    "31":"Sudeste","32":"Sudeste","33":"Sudeste","34":"Sudeste","35":"Sudeste","37":"Sudeste","38":"Sudeste",
 
-      setTimeout(async ()=>{
-        await sock.sendMessage(from,{
-          text:`💻 IP rastreado: ${ip}`,
-          mentions:[alvo]
-        })
-      },1500)
+    "41":"Sul","42":"Sul","43":"Sul","44":"Sul","45":"Sul","46":"Sul",
+    "47":"Sul","48":"Sul","49":"Sul",
+    "51":"Sul","53":"Sul","54":"Sul","55":"Sul",
 
-      setTimeout(async ()=>{
-        await sock.sendMessage(from,{
-          text:`💣 O ataque será realizado em breve.`,
-          mentions:[alvo]
-        })
-      },3000)
-    }
+    "61":"Centro-Oeste",
+    "62":"Centro-Oeste","64":"Centro-Oeste",
+    "65":"Centro-Oeste","66":"Centro-Oeste",
+    "67":"Centro-Oeste",
+
+    "71":"Nordeste","73":"Nordeste","74":"Nordeste","75":"Nordeste","77":"Nordeste",
+    "79":"Nordeste",
+    "81":"Nordeste","87":"Nordeste",
+    "82":"Nordeste",
+    "83":"Nordeste",
+    "84":"Nordeste",
+    "85":"Nordeste","88":"Nordeste",
+    "86":"Nordeste","89":"Nordeste",
+
+    "91":"Norte","93":"Norte","94":"Norte",
+    "92":"Norte","97":"Norte",
+    "95":"Norte",
+    "96":"Norte",
+    "98":"Norte","99":"Norte",
+    "68":"Norte","69":"Norte"
+  }
+
+  const regiao = regioesDDD[ddd] || "desconhecida"
+
+  const ip = `${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}`
+
+  const provedores = ["Vivo Fibra","Claro NET","Oi Velox","TIM Ultra","Starlink"]
+  const dispositivos = ["Android 13","iPhone 11","Windows 10","Windows 11","Xiaomi MIUI"]
+
+  const provedor = provedores[Math.floor(Math.random()*provedores.length)]
+  const dispositivo = dispositivos[Math.floor(Math.random()*dispositivos.length)]
+
+  await sock.sendMessage(from,{
+    text:`📡 Iniciando rastreamento avançado...`,
+    mentions:[alvo]
+  })
+
+  setTimeout(async ()=>{
+    await sock.sendMessage(from,{
+      text:`🛰️ Buscando sinal do dispositivo de @${numero}...`,
+      mentions:[alvo]
+    })
+  },1500)
+
+  setTimeout(async ()=>{
+    await sock.sendMessage(from,{
+      text:`💻 IP capturado: ${ip}`,
+      mentions:[alvo]
+    })
+  },3000)
+
+  setTimeout(async ()=>{
+    await sock.sendMessage(from,{
+      text:`📡 Provedor identificado: ${provedor}`,
+      mentions:[alvo]
+    })
+  },4500)
+
+  setTimeout(async ()=>{
+    await sock.sendMessage(from,{
+      text:`📱 Dispositivo: ${dispositivo}`,
+      mentions:[alvo]
+    })
+  },6000)
+
+  setTimeout(async ()=>{
+    await sock.sendMessage(from,{
+      text:`📍 Local aproximado: Região ${regiao}`,
+      mentions:[alvo]
+    })
+  },7500)
+
+  setTimeout(async ()=>{
+    await sock.sendMessage(from,{
+      text:`⚠️ Vulnerabilidade encontrada... iniciando ataque...`,
+      mentions:[alvo]
+    })
+  },9000)
+
+  setTimeout(async ()=>{
+    await sock.sendMessage(from,{
+      text:`💣 O ataque será realizado em breve.`,
+      mentions:[alvo]
+    })
+  },10500)
+}
 
     // =========================
     // GAY / GADO / SHIP

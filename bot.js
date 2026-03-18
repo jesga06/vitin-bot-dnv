@@ -221,37 +221,37 @@ async function startBot(){
     }
 
     // =========================
-    // BOMBARDIO
+    // BOMBARDEIO
     // =========================
-    if(cmd.startsWith(prefix+"bombardeio") && mentioned[0] && isGroup){
-  const alvo = mentioned[0]
-  const numero = alvo.split("@")[0]
+    if(cmd.startsWith(prefix+"bombardeio") && mentioned && isGroup){
+      const alvo = mentioned
+      const numero = alvo.split("@")
 
-  const ddd = numero.substring(0,2)
-  const estado = dddMap[ddd] || "local desconhecido"
+      const ddd = numero.substring(0,2)
+      const estado = dddMap[ddd] || "local desconhecido"
 
-  // gera IP fake
-  const ip = `${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}`
+      // gera IP fake
+      const ip = `${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}`
 
-  await sock.sendMessage(from,{
-    text:`📡 Localizando alvo...`,
-    mentions:[alvo]
-  })
+      await sock.sendMessage(from,{
+        text:`📡 Localizando alvo...`,
+        mentions:[alvo]
+      })
 
-  setTimeout(async ()=>{
-    await sock.sendMessage(from,{
-      text:`💻 IP rastreado: ${ip}`,
-      mentions:[alvo]
-    })
-  },1500)
+      setTimeout(async ()=>{
+        await sock.sendMessage(from,{
+          text:`💻 IP rastreado: ${ip}`,
+          mentions:[alvo]
+        })
+      },1500)
 
-  setTimeout(async ()=>{
-    await sock.sendMessage(from,{
-      text:`🎯 Alvo identificado!\n💣 O ataque em ${estado} irá acontecer em breve.`,
-      mentions:[alvo]
-    })
-  },3000)
-}
+      setTimeout(async ()=>{
+        await sock.sendMessage(from,{
+          text:`🎯 Alvo identificado!\n💣 O ataque em ${estado} irá acontecer em breve.`,
+          mentions:[alvo]
+        })
+      },3000)
+    }
 
     // =========================
     // GAY / GADO / SHIP

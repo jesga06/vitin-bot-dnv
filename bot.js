@@ -45,7 +45,7 @@ async function videoToSticker(buffer){
     ffmpeg(input)
       .outputOptions([
         "-vcodec libwebp",
-        "-vf scale=512:512", // força quadrado 512x512, achata ou estica se necessário
+        "-vf scale=512:512", // força 512x512, pode deformar
         "-loop 0",
         "-preset default",
         "-an",
@@ -177,9 +177,9 @@ async function startBot(){
 
         let sticker;
         if(msg.message?.imageMessage || quoted?.imageMessage){
-          // FORÇA quadrado 512x512, achata se necessário
+          // FORÇA quadrado 512x512, deformando se necessário
           sticker = await sharp(buffer)
-            .resize(512, 512) // sem fit, sem pad
+            .resize(512, 512) // sem fit, sem pad, força largura e altura
             .webp({ quality: 100 })
             .toBuffer()
         } else if(msg.message?.videoMessage || quoted?.videoMessage){

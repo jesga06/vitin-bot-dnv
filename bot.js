@@ -77,7 +77,7 @@ async function videoToSticker(buffer){
     ffmpeg(input)
       .outputOptions([
         "-vcodec libwebp",
-        "-vf scale=512:512:flags=lanczos,fps=15",
+        "-vf scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:-1:-1:color=0x00000000,fps=15",
         "-loop 0",
         "-preset default",
         "-an",
@@ -194,65 +194,40 @@ async function startBot(){
     }
 
     // =========================
-// FIGURINHA
-// =========================
-if(cmd === prefix+"s" || cmd === prefix+"fig" || cmd === prefix+"sticker" || cmd === prefix+"f"){
-  // Verifica se tem mídia na mensagem ou na mensagem respondida
-  if(!media){
-    return sock.sendMessage(from,{ text:"Envie ou responda uma mídia!" })
-  }
+    // FIGURINHA
+    // =========================
+    if(cmd === prefix+"s" || cmd === prefix+"fig" || cmd === prefix+"sticker" || cmd === prefix+"f"){
+      if(!media){
+        return sock.sendMessage(from,{ text:"Envie ou responda uma mídia!" })
+      }
 
-  try{
-    // Pega o buffer da mídia (imagem ou vídeo)
-    let buffer;
-    if(msg.message?.imageMessage || msg.message?.videoMessage){
-      buffer = await downloadMediaMessage(msg, "buffer", {}, { logger })
-    } else if(quoted?.imageMessage || quoted?.videoMessage){
-      buffer = await downloadMediaMessage({ message: quoted }, "buffer", {}, { logger })
+      try{
+        let buffer;
+        if(msg.message?.imageMessage || msg.message?.videoMessage){
+          buffer = await downloadMediaMessage(msg, "buffer", {}, { logger })
+        } else if(quoted?.imageMessage || quoted?.videoMessage){
+          buffer = await downloadMediaMessage({ message: quoted }, "buffer", {}, { logger })
+        }
+
+        let sticker;
+
+        if(msg.message?.imageMessage || quoted?.imageMessage){
+          // Imagem quadrada 512x512
+          sticker = await sharp(buffer)
+            .resize({ width: 512, height: 512, fit: "contain", background: { r:0,g:0,b:0, alpha:0 } })
+            .webp()
+            .toBuffer()
+        } else if(msg.message?.videoMessage || quoted?.videoMessage){
+          sticker = await videoToSticker(buffer)
+        }
+
+        await sock.sendMessage(from,{ sticker })
+
+      }catch(err){
+        console.error(err)
+        await sock.sendMessage(from,{ text:"Erro ao criar figurinha!" })
+      }
     }
-
-    let sticker;
-
-    if(msg.message?.imageMessage || quoted?.imageMessage){
-      // Todas as imagens são redimensionadas para 512x512 com fundo transparente
-      sticker = await sharp(buffer)
-        .resize({ width: 512, height: 512, fit: "contain", background: { r:0,g:0,b:0, alpha:0 } })
-        .webp()
-        .toBuffer()
-    } else if(msg.message?.videoMessage || quoted?.videoMessage){
-      // Todos os vídeos são convertidos para webp 512x512 mantendo proporção
-      const input = "./input.mp4"
-      const output = "./output.webp"
-      fs.writeFileSync(input, buffer)
-
-      await new Promise((resolve,reject)=>{
-        ffmpeg(input)
-          .outputOptions([
-            "-vcodec libwebp",
-            "-vf scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:-1:-1:color=0x00000000,fps=15",
-            "-loop 0",
-            "-preset default",
-            "-an",
-            "-vsync 0"
-          ])
-          .toFormat("webp")
-          .save(output)
-          .on("end", resolve)
-          .on("error", reject)
-      })
-
-      sticker = fs.readFileSync(output)
-      fs.unlinkSync(input)
-      fs.unlinkSync(output)
-    }
-
-    await sock.sendMessage(from,{ sticker })
-
-  }catch(err){
-    console.error(err)
-    await sock.sendMessage(from,{ text:"Erro ao criar figurinha!" })
-  }
-}
 
     // =========================
     // ROLETA

@@ -181,9 +181,9 @@ async function startBot(){
 
 ╭━━━〔 🎮 DIVERSÃO 〕━━━╮
 │ ${prefix}roleta
-│ ${prefix}bombardeiro
+│ ${prefix}bombardeio @user
 │ ${prefix}gay @user
-│ ${prefix}corno @user
+│ ${prefix}gado @user
 │ ${prefix}ship @a @b
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
@@ -201,7 +201,7 @@ async function startBot(){
     }
 
     // =========================
-    // NOVOS COMANDOS
+    // COMANDOS
     // =========================
 
     if(cmd === prefix+"roleta" && isGroup){
@@ -222,19 +222,24 @@ async function startBot(){
       await sock.sendMessage(from,{ text:frase, mentions:[alvo] })
     }
 
-    if(cmd === prefix+"bombardeiro" && isGroup){
-      const metadata = await sock.groupMetadata(from)
-      const participantes = metadata.participants.map(p => p.id)
-      const alvo = participantes[Math.floor(Math.random()*participantes.length)]
-
+    if(cmd.startsWith(prefix+"bombardeio") && mentioned[0] && isGroup){
+      const alvo = mentioned[0]
       const numero = alvo.split("@")[0]
+
       const ddd = numero.substring(0,2)
       const estado = dddMap[ddd] || "local desconhecido"
 
       await sock.sendMessage(from,{
-        text:`💣 Positivo capitão...\n📍 ${estado}\n💥 Ataque em instantes`,
+        text:`📡 Localizando alvo...`,
         mentions:[alvo]
       })
+
+      setTimeout(async () => {
+        await sock.sendMessage(from,{
+          text:`🎯 Alvo identificado!\n💣 O ataque em ${estado} irá acontecer em breve.`,
+          mentions:[alvo]
+        })
+      }, 2000)
     }
 
     if(cmd.startsWith(prefix+"gay") && mentioned[0]){
@@ -248,13 +253,13 @@ async function startBot(){
       })
     }
 
-    if(cmd.startsWith(prefix+"corno") && mentioned[0]){
+    if(cmd.startsWith(prefix+"gado") && mentioned[0]){
       const alvo = mentioned[0]
       const numero = alvo.split("@")[0]
       const p = Math.floor(Math.random()*101)
 
       await sock.sendMessage(from,{
-        text:`@${numero} é ${p}% corno 🐂`,
+        text:`@${numero} é ${p}% gado 🐂`,
         mentions:[alvo]
       })
     }
@@ -293,7 +298,7 @@ async function startBot(){
       const motivos = [
         "brigaram por causa de comida",
         "discutiram por causa de mulher",
-        `treta começou pois @${n1} tentou ver a pasta trancada de @${n2}`,,
+        `treta começou pois @${n1} tentou ver a pasta trancada de @${n2}`,
         "um chamou o outro de feio kkkkkkkkkkkk",
         "disputa de ego gigantesca, sensação de aura absurda",
         "por causa de figurinha kkkkk",
@@ -342,10 +347,6 @@ async function startBot(){
         mentions:[p1,p2]
       })
     }
-
-    // =========================
-    // QUERO ME MATAR
-    // =========================
 
   })
 }

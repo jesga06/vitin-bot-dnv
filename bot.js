@@ -441,8 +441,6 @@ if(mutedUsers[sender] && isGroup){
     console.error("Erro ao apagar mensagem de usuário mutado", e)
   }
   return
-})
-
-} 
+}
 
 startBot() 

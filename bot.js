@@ -354,7 +354,7 @@ if(cmd === prefix+"treta" && isGroup){
   await sock.sendMessage(from,{
     text:`Ih, os corno começaram a tretar\n\n@${n1} VS @${n2}\n\nMotivo: ${motivo}\nResultado: ${resultado}`,
     mentions:[p1,p2]
-    })
+  })
 }
 
 startBot()

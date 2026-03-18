@@ -421,7 +421,7 @@ async function startBot(){
       return
     }
 
-  }) /
+  })
 } 
 
 startBot()

@@ -22,7 +22,31 @@ let jarvisContext = {}
 let mutedUsers = {}
 let mutedWarned = {}
 
-const dddMap = { /* seu DDDMap permanece igual */ }
+const dddMap = {
+  // Sudeste
+  "11": "Sudeste","12": "Sudeste","13": "Sudeste","14": "Sudeste","15": "Sudeste",
+  "16": "Sudeste","17": "Sudeste","18": "Sudeste","19": "Sudeste",
+  "21": "Sudeste","22": "Sudeste","24": "Sudeste",
+  "31": "Sudeste","32": "Sudeste","33": "Sudeste","34": "Sudeste","35": "Sudeste","37": "Sudeste","38": "Sudeste",
+
+  // Sul
+  "41": "Sul","42": "Sul","43": "Sul","44": "Sul","45": "Sul","46": "Sul",
+  "47": "Sul","48": "Sul","49": "Sul",
+  "51": "Sul","53": "Sul","54": "Sul","55": "Sul",
+
+  // Nordeste
+  "71": "Nordeste","73": "Nordeste","74": "Nordeste","75": "Nordeste","79": "Nordeste",
+  "81": "Nordeste","82": "Nordeste","83": "Nordeste","84": "Nordeste","85": "Nordeste",
+  "86": "Nordeste","87": "Nordeste","88": "Nordeste","89": "Nordeste",
+
+  // Norte
+  "91": "Norte","92": "Norte","93": "Norte","94": "Norte","95": "Norte","96": "Norte",
+  "97": "Norte","98": "Norte","99": "Norte",
+
+  // Centro-Oeste
+  "61": "Centro-Oeste","62": "Centro-Oeste","64": "Centro-Oeste","63": "Centro-Oeste",
+  "65": "Centro-Oeste","66": "Centro-Oeste","67": "Centro-Oeste",
+}
 
 app.get("/", (req,res)=>{
   if(!qrImage) return res.send("<h2>Bot conectado</h2>")
@@ -77,6 +101,8 @@ async function startBot(){
     printQRInTerminal:false,
     browser:["VitinBot","Chrome","1.0"]
   })
+
+  const botJid = sock.user.id + "@s.whatsapp.net"
 
   sock.ev.on("creds.update", saveCreds)
 
@@ -211,8 +237,8 @@ async function startBot(){
         `@${numero} gabaritou a tabela de DST! Parabéns pela conquista.`,
         `@${numero} foi encontrado na ilha do Epstein...`,
         `@${numero} foi censurado pelo Felca`,
-        `@${numero} está dando pro pai de todo mundo do grupo`
-        `@${numero} foi visto numa boate gay no centro de São Paulo`
+        `@${numero} está dando pro pai de todo mundo do grupo`,
+        `@${numero} foi visto numa boate gay no centro de São Paulo`,
         `@${numero} sei que te abandonaram na ilha do Epstein, mas não precisa se afundar em crack...`,
         `@${numero} foi avistado gravando um video para o onlyfans da Leandrinha...`,
         `@${numero} pare de me mandar foto da bunda no privado, ja disse que não vou avaliar!`,
@@ -249,7 +275,7 @@ async function startBot(){
       // Região fake a partir do DDD
       const numero = alvo.split("@")[0]
       const ddd = numero.substring(0,2)
-      const regiao = dddMap[ddd] || "desconhecida"
+      const regiao = dddMap[ddd] || "desconhecida" 
 
       // Crime aleatório
       const crimes = ["furto","roubo","estelionato","tráfico","lesão corporal","homicídio","contrabando","vandalismo","pirataria","crime cibernético","fraude","tráfico de animais","lavagem de dinheiro","crime ambiental","corrupção","sequestro","ameaça","falsificação","invasão de propriedade","crime eleitoral"]
@@ -368,12 +394,12 @@ async function startBot(){
     }
 
 // =========================
-// MUTE / UNMUTE / BAN
+    // MUTE / UNMUTE / BAN
 // =========================
 if(cmd.startsWith(prefix + "mute") && isGroup){
   const alvo = mentioned[0]
   if(!alvo) return sock.sendMessage(from,{ text:"Marque alguém para mutar!" })
-  if(alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from,{ text:"Não posso me mutar!" }) 
+  if(alvo === botJid) return sock.sendMessage(from,{ text:"Não posso me mutar!" }) 
   if(!await isAdmin(sender)) return sock.sendMessage(from,{ text:"Apenas admins podem mutar!" })
   mutedUsers[alvo] = true
   await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi mutado! Finalmente vai calar a boca.`, mentions:[alvo] })
@@ -382,7 +408,7 @@ if(cmd.startsWith(prefix + "mute") && isGroup){
 if(cmd.startsWith(prefix + "unmute") && isGroup){
   const alvo = mentioned[0]
   if(!alvo) return sock.sendMessage(from,{ text:"Marque alguém para desmutar!" })
-  if(alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from,{ text:"Não posso me desmutar!" }) 
+  if(alvo === botJid) return sock.sendMessage(from,{ text:"Não posso me desmutar!" }) 
   if(!await isAdmin(sender)) return sock.sendMessage(from,{ text:"Apenas admins podem desmutar!" })
   delete mutedUsers[alvo]
   await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi desmutado! Infelizmente pode falar de novo.`, mentions:[alvo] })
@@ -391,7 +417,7 @@ if(cmd.startsWith(prefix + "unmute") && isGroup){
 if(cmd.startsWith(prefix + "ban") && isGroup){
   const alvo = mentioned[0]
   if(!alvo) return sock.sendMessage(from,{ text:"Marque alguém para banir!" })
-  if(alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from,{ text:"Não posso me banir!" }) 
+  if(alvo === botJid) return sock.sendMessage(from,{ text:"Não posso me banir!" }) 
   if(!await isAdmin(sender)) return sock.sendMessage(from,{ text:"Apenas admins podem banir!" })
   await sock.groupParticipantsUpdate(from,[alvo],"remove")
   await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi banido do grupo.`, mentions:[alvo] })
@@ -400,7 +426,7 @@ if(cmd.startsWith(prefix + "ban") && isGroup){
 // =========================
 // BLOQUEIO DE MENSAGENS DE USUÁRIOS MUTADOS
 // =========================
-if(mutedUsers[sender] && isGroup && sender !== sock.user.id + "@s.whatsapp.net"){
+if(mutedUsers[sender] && isGroup && sender !== botJid){
   try{
     await sock.sendMessage(from,{ delete: msg.key })
   }catch(e){

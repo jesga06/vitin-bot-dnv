@@ -160,12 +160,12 @@ async function startBot(){
       quoted?.imageMessage ||
       quoted?.videoMessage
 
-    // =========================
-    // MENU
-    // =========================
-    if(cmd === prefix+"menu"){
-      await sock.sendMessage(from,{
-        text:`
+   // =========================
+// MENU
+// =========================
+if(cmd === prefix+"menu"){
+  await sock.sendMessage(from,{
+    text:`
 ╭━━━〔 🤖 VITIN BOT 〕━━━╮
 │ 👑 Status: Online
 │ ⚙️ Sistema: Baileys
@@ -183,9 +183,15 @@ async function startBot(){
 │ ${prefix}ship @a @b
 │ ${prefix}treta
 ╰━━━━━━━━━━━━━━━━━━━━╯
+
+╭━━━〔 ⚡ ADM 〕━━━╮
+│ ${prefix}mute @user
+│ ${prefix}unmute @user
+│ ${prefix}ban @user
+╰━━━━━━━━━━━━━━━━━━━━╯
 `
-      })
-    }
+  })
+}
 
     // =========================
     // FIGURINHA

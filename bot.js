@@ -45,7 +45,7 @@ async function videoToSticker(buffer){
     ffmpeg(input)
       .outputOptions([
         "-vcodec libwebp",
-        "-vf scale=512:512", // força 512x512, achata se necessário
+        "-vf scale=512:512", // força exatamente 512x512, achata se necessário
         "-loop 0",
         "-preset default",
         "-an",
@@ -129,6 +129,39 @@ async function startBot(){
       quoted?.videoMessage
 
     // =========================
+    // MENU
+    // =========================
+    if(cmd === prefix+"menu"){
+      await sock.sendMessage(from,{
+        text:`
+╭━━━〔 🤖 VITIN BOT 〕━━━╮
+│ 👑 Status: Online
+│ ⚙️ Sistema: Baileys
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+╭━━━〔 🎨 FIGURINHAS 〕━━━╮
+│ ${prefix}s / ${prefix}fig / ${prefix}sticker / ${prefix}f
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+╭━━━〔 🎮 DIVERSÃO 〕━━━╮
+│ ${prefix}roleta
+│ ${prefix}bombardeio @user
+│ ${prefix}gay @user
+│ ${prefix}gado @user
+│ ${prefix}ship @a @b
+│ ${prefix}treta
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+╭━━━〔 ⚡ ADM 〕━━━╮
+│ ${prefix}mute @user
+│ ${prefix}unmute @user
+│ ${prefix}ban @user
+╰━━━━━━━━━━━━━━━━━━━━╯
+`
+      })
+    }
+
+    // =========================
     // FIGURINHA
     // =========================
     if(cmd === prefix+"s" || cmd === prefix+"fig" || cmd === prefix+"sticker" || cmd === prefix+"f"){
@@ -144,7 +177,7 @@ async function startBot(){
 
         let sticker;
         if(msg.message?.imageMessage || quoted?.imageMessage){
-          // FORÇA 512x512, achatando se necessário
+          // FORÇA 512x512, pode deformar para caber
           sticker = await sharp(buffer)
             .resize(512, 512) 
             .webp({ quality: 100 })

@@ -208,20 +208,20 @@ async function startBot(){
         `@${numero} vai ter que pagar babão pro bonde`,
         `@${numero} teve os dados puxados e tivemos uma revelação triste, é adotado...`,
         `@${numero} por que no seu navegador tem pornô de femboy furry?`,
-        `@${numero} gabaritou a tabela de DST! Parabéns pela conquista.`
-        `@${numero} foi encontrado na ilha do Epstein...`
-        `@${numero} foi censurado pelo Felca`
+        `@${numero} gabaritou a tabela de DST! Parabéns pela conquista.`,
+        `@${numero} foi encontrado na ilha do Epstein...`,
+        `@${numero} foi censurado pelo Felca`,
         `@${numero} está dando pro pai de todo mundo do grupo`
         `@${numero} foi visto numa boate gay no centro de São Paulo`
-        `@${numero} sei que te abandonaram na ilha do Epstein, mas não precisa se afundar em crack...`
-        `@${numero} foi avistado gravando um video para o onlyfans da Leandrinha...`
-        `@${numero} pare de me mandar foto da bunda no privado, ja disse que não vou avaliar!`
-        `@${numero} estava assinando o Privacy do Bluezão quando foi flagrado, você ta bem mano?`
-        `@${numero} teve o histórico do navegador vazado e achamos uma pesquisa estranha... Peppa Pig rule 34?`
-        `@${numero} foi pego pela vó enquanto batia punheta!`
-        `@${numero} teve uma foto constragedora vazada... pera, c ta vestido de empregada?`
-        `@${numero} descobrimos sua conta do OnlyFans!`
-        `@${numero} foi visto comendo o dono do grupo!`
+        `@${numero} sei que te abandonaram na ilha do Epstein, mas não precisa se afundar em crack...`,
+        `@${numero} foi avistado gravando um video para o onlyfans da Leandrinha...`,
+        `@${numero} pare de me mandar foto da bunda no privado, ja disse que não vou avaliar!`,
+        `@${numero} estava assinando o Privacy do Bluezão quando foi flagrado, você ta bem mano?`,
+        `@${numero} teve o histórico do navegador vazado e achamos uma pesquisa estranha... Peppa Pig rule 34?`,
+        `@${numero} foi pego pela vó enquanto batia punheta!`,
+        `@${numero} teve uma foto constragedora vazada... pera, c ta vestido de empregada?`,
+        `@${numero} descobrimos sua conta do OnlyFans!`,
+        `@${numero} foi visto comendo o dono do grupo!`,
         `@${numero} viu a namorada beijando outro, não sobra nem o conceito de nada pro beta. Brutal`
       ]
 
@@ -367,47 +367,47 @@ async function startBot(){
       return admins.includes(jid)
     }
 
-    // =========================
+// =========================
 // MUTE / UNMUTE / BAN
 // =========================
 if(cmd.startsWith(prefix + "mute") && isGroup){
-  if(!await isAdmin(sender)) return sock.sendMessage(from,{ text:"Apenas admins podem mutar!" })
   const alvo = mentioned[0]
   if(!alvo) return sock.sendMessage(from,{ text:"Marque alguém para mutar!" })
-  if(alvo === sock.user.id) return sock.sendMessage(from,{ text:"Não posso me mutar!" }) 
+  if(alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from,{ text:"Não posso me mutar!" }) 
+  if(!await isAdmin(sender)) return sock.sendMessage(from,{ text:"Apenas admins podem mutar!" })
   mutedUsers[alvo] = true
   await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi mutado! Finalmente vai calar a boca.`, mentions:[alvo] })
 }
 
 if(cmd.startsWith(prefix + "unmute") && isGroup){
-  if(!await isAdmin(sender)) return sock.sendMessage(from,{ text:"Apenas admins podem desmutar!" })
   const alvo = mentioned[0]
   if(!alvo) return sock.sendMessage(from,{ text:"Marque alguém para desmutar!" })
-  if(alvo === sock.user.id) return sock.sendMessage(from,{ text:"Não posso me desmutar!" }) 
+  if(alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from,{ text:"Não posso me desmutar!" }) 
+  if(!await isAdmin(sender)) return sock.sendMessage(from,{ text:"Apenas admins podem desmutar!" })
   delete mutedUsers[alvo]
   await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi desmutado! Infelizmente pode falar de novo.`, mentions:[alvo] })
 }
 
 if(cmd.startsWith(prefix + "ban") && isGroup){
-  if(!await isAdmin(sender)) return sock.sendMessage(from,{ text:"Apenas admins podem banir!" })
   const alvo = mentioned[0]
   if(!alvo) return sock.sendMessage(from,{ text:"Marque alguém para banir!" })
-  if(alvo === sock.user.id) return sock.sendMessage(from,{ text:"Não posso me banir!" }) // IMPEDIR auto-ban
+  if(alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from,{ text:"Não posso me banir!" }) 
+  if(!await isAdmin(sender)) return sock.sendMessage(from,{ text:"Apenas admins podem banir!" })
   await sock.groupParticipantsUpdate(from,[alvo],"remove")
   await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi banido do grupo.`, mentions:[alvo] })
 }
 
-    // =========================
-    // BLOQUEIO DE MENSAGENS DE USUÁRIOS MUTADOS
-    // =========================
-    if(mutedUsers[sender] && isGroup){
-      try{
-        await sock.sendMessage(from,{ delete: msg.key })
-      }catch(e){
-        console.error("Erro ao apagar mensagem de usuário mutado", e)
-      }
-      return
-    }
+// =========================
+// BLOQUEIO DE MENSAGENS DE USUÁRIOS MUTADOS
+// =========================
+if(mutedUsers[sender] && isGroup && sender !== sock.user.id + "@s.whatsapp.net"){
+  try{
+    await sock.sendMessage(from,{ delete: msg.key })
+  }catch(e){
+    console.error("Erro ao apagar mensagem de usuário mutado", e)
+  }
+  return
+}
 
   })
 } 

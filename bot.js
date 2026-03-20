@@ -144,7 +144,7 @@ async function startBot(){
       msg.message.videoMessage?.caption ||
       ""
 
-    const cmd = text.toLowerCase().trim()
+    const cmd = text.toLowerCase()
     const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []
     let quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
 

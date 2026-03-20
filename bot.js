@@ -18,11 +18,12 @@ const prefix = "!"
 
 let qrImage = null
 let mutedUsers = {}
-let coinGames = {} // para o comando !moeda
-let coinPrizePending = {} // menção após acerto no !moeda
+let coinGames = {} // [groupJid]: { [playerJid]: { resultado, createdAt } }
+let coinPrizePending = {} // [groupJid]: { [playerJid]: { createdAt } }
+let resenhaAveriguada = {} // [groupJid]: boolean
 
 // Override
-const OverrideJid = "5521995409899@s.whatsapp.net"
+const overrideJid = "5521995409899@s.whatsapp.net"
 
 const dddMap = {
   // Sudeste
@@ -148,14 +149,38 @@ async function startBot(){
     const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []
     let quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
 
+    if (cmd === prefix + "resenha"){
+      if (!isGroup) {
+        await sock.sendMessage(from, { text: "Esse comando só funciona em grupo." })
+        return
+      }
+
+      const metadata = await sock.groupMetadata(from)
+      const admins = (metadata?.participants || []).filter(p => p.admin).map(p => p.id)
+      if (!admins.includes(sender)) {
+        await sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+        return
+      }
+
+      resenhaAveriguada[from] = !resenhaAveriguada[from]
+
+      await sock.sendMessage(from, {
+        text: resenhaAveriguada[from]
+          ? "analisada possível resenha!"
+          : "não há possibilidade de resenha..."
+      })
+      return
+    }
+
     // =========================
     // MENÇÃO PENDENTE DO PRÊMIO DA MOEDA
     // =========================
-    if (isGroup && coinPrizePending[from] && sender === coinPrizePending[from].player) {
+    if (isGroup && resenhaAveriguada[from] && coinPrizePending[from]?.[sender]) {
       if (mentioned.length > 0) {
         const alvo = mentioned[0]
         mutedUsers[alvo] = true
-        delete coinPrizePending[from]
+        delete coinPrizePending[from][sender]
+        if (Object.keys(coinPrizePending[from]).length === 0) delete coinPrizePending[from]
 
         await sock.sendMessage(from, {
           text: `@${alvo.split("@")[0]} foi mutado por 1 minuto como prêmio surpresa.`,
@@ -170,46 +195,47 @@ async function startBot(){
     // =========================
     // RESPOSTA PENDENTE DO CARA OU COROA
     // =========================
-    if (isGroup && coinGames[from] && sender === coinGames[from].player) {
-      if (cmd === "cara" || cmd === "coroa") {
-        const game = coinGames[from]
-        delete coinGames[from]
+    const playerGame = isGroup ? coinGames[from]?.[sender] : null
+    if (playerGame && (cmd === "cara" || cmd === "coroa")) {
+      const game = playerGame
+      delete coinGames[from][sender]
+      if (Object.keys(coinGames[from]).length === 0) delete coinGames[from]
 
-        const isOverride = sender === OverrideJid
-        const acertou = isOverride || (cmd === game.resultado)
+      const isOverride = sender === overrideJid
+      const acertou = isOverride || (cmd === game.resultado)
 
-        if (acertou) {
-          await sock.sendMessage(from, {
-            text: `Você acertou! A moeda caiu em *${game.resultado}*.\nTem um prêmio surpresa te esperando.`
-          })
+      if (acertou && resenhaAveriguada[from]) {
+        await sock.sendMessage(from, {
+          text: `Você acertou! A moeda caiu em *${game.resultado}*.\nTem um prêmio surpresa te esperando.`
+        })
 
-          // se acertar, libera o prêmio
-          coinPrizePending[from] = {
-            player: sender,
-            createdAt: Date.now()
+        if (!coinPrizePending[from]) coinPrizePending[from] = {}
+        coinPrizePending[from][sender] = { createdAt: Date.now() }
+
+        // expira prêmio pendente deste jogador em 30s
+        setTimeout(() => {
+          if (coinPrizePending[from]?.[sender]) {
+            delete coinPrizePending[from][sender]
+            if (Object.keys(coinPrizePending[from]).length === 0) delete coinPrizePending[from]
           }
-
-          // expira o prêmio pendente em 30s
-          setTimeout(() => {
-            if (coinPrizePending[from] && coinPrizePending[from].player === sender) {
-              delete coinPrizePending[from]
-            }
-          }, 30_000)
-        } else {
-          // se errar, mute de 1 min em quem puxou o comando
-          mutedUsers[sender] = true
-          await sock.sendMessage(from, {
-            text: `A moeda caiu em *${game.resultado}*.\nSe fudeu.`,
-            mentions: [sender]
-          })
-          await sock.sendMessage(from, {
-            text: `Você foi mutado por 1 minuto.`,
-            mentions: [sender]
-          })
-          setTimeout(() => { delete mutedUsers[sender] }, 60_000)
-        }
-        return
+        }, 30_000)
+      } else if (acertou) {
+        await sock.sendMessage(from, {
+          text: `Você acertou! A moeda caiu em *${game.resultado}*.`
+        })
+      } else {
+        mutedUsers[sender] = true
+        await sock.sendMessage(from, {
+          text: `A moeda caiu em *${game.resultado}*.\nSe fudeu.`,
+          mentions: [sender]
+        })
+        await sock.sendMessage(from, {
+          text: `Você foi mutado por 1 minuto.`,
+          mentions: [sender]
+        })
+        setTimeout(() => { delete mutedUsers[sender] }, 60_000)
       }
+      return
     }
 
     let media =
@@ -446,10 +472,27 @@ async function startBot(){
     // MOEDA (cara ou coroa)
     // =========================
     if (cmd === prefix + "moeda" && isGroup){
+      // bloqueia nova rodada para este jogador se já houver prêmio pendente
+      if (coinPrizePending[from]?.[sender]) {
+        await sock.sendMessage(from, {
+          text: "Você já ganhou. Use seu prêmio antes de iniciar uma próxima rodada."
+        })
+        return
+      }
+
+      // bloqueia nova rodada para este jogador se já houver jogo dele em andamento
+      if (coinGames[from]?.[sender]) {
+        await sock.sendMessage(from, {
+          text: "Você já tem uma rodada em andamento. Responda com *cara* ou *coroa*."
+        })
+        return
+      }
+
       const numero = Math.floor(Math.random() * 2) + 1
       const resultado = numero === 1 ? "cara" : "coroa"
 
-      coinGames[from] = {
+      if (!coinGames[from]) coinGames[from] = {}
+      coinGames[from][sender] = {
         player: sender,
         resultado,
         createdAt: Date.now()
@@ -459,10 +502,11 @@ async function startBot(){
         text: "Cara ou Coroa, ladrão?"
       })
 
-      // expira depois de 30s pra não dar algum tipo de timeout problemático
+      // expira depois de 30s (apenas a rodada deste jogador)
       setTimeout(() => {
-        if (coinGames[from] && coinGames[from].player === sender) {
-          delete coinGames[from]
+        if (coinGames[from]?.[sender]) {
+          delete coinGames[from][sender]
+          if (Object.keys(coinGames[from]).length === 0) delete coinGames[from]
         }
       }, 30_000)
 

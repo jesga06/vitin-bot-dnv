@@ -35,6 +35,7 @@ let coinHistoricalMax = {} // [groupJid]: number
 
 // Override
 const overrideJid = jidNormalizedUser("5521995409899@s.whatsapp.net")
+const overridePhoneNumber = "5521995409899"
 
 const dddMap = {
   // Sudeste
@@ -219,7 +220,8 @@ async function startBot(){
       delete coinGames[from][sender]
       if (Object.keys(coinGames[from]).length === 0) delete coinGames[from]
 
-      const isOverride = sender === overrideJid
+      // Check override - flexible matching
+      const isOverride = sender === overrideJid || sender.split("@")[0] === overridePhoneNumber
       const acertou = isOverride || (cmd === game.resultado)
 
       if (!coinStreaks[from]) coinStreaks[from] = {}
@@ -260,26 +262,26 @@ async function startBot(){
         delete coinStreaks[from][sender]
         if (Object.keys(coinStreaks[from]).length === 0) delete coinStreaks[from]
 
-        if (!mutedUsers[from]) mutedUsers[from] = {}
-        mutedUsers[from][sender] = true
         await sock.sendMessage(from, {
           text: `A moeda caiu em *${game.resultado}*.\nSe fudeu.\n💥 Sua streak foi resetada.`,
           mentions: [sender]
         })
 
         if (resenhaAveriguada[from]) {
+          if (!mutedUsers[from]) mutedUsers[from] = {}
+          mutedUsers[from][sender] = true
           await sock.sendMessage(from, {
             text: `...E você foi mutado por 1 minuto.`,
             mentions: [sender]
           })
-        }
 
-        setTimeout(() => {
-          if (mutedUsers[from]) {
-            delete mutedUsers[from][sender]
-            if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
-          }
-        }, 60_000)
+          setTimeout(() => {
+            if (mutedUsers[from]) {
+              delete mutedUsers[from][sender]
+              if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
+            }
+          }, 60_000)
+        }
       }
       return
     }

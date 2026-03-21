@@ -237,12 +237,22 @@ async function startBot(){
           text: `A moeda caiu em *${game.resultado}*.\nSe fudeu.`,
           mentions: [sender]
         })
-        if (resenhaAveriguada){
+
+        if (resenhaAveriguada[from]) {
+          if (!mutedUsers[from]) mutedUsers[from] = {}
+          mutedUsers[from][sender] = true
+
           await sock.sendMessage(from, {
             text: `Você foi mutado por 1 minuto.`,
             mentions: [sender]
-        })
-        setTimeout(() => { delete mutedUsers[sender] }, 60_000)
+          })
+
+          setTimeout(() => {
+            if (mutedUsers[from]) {
+              delete mutedUsers[from][sender]
+              if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
+            }
+          }, 60_000)
         }
       }
       return

@@ -190,7 +190,8 @@ async function startBot(){
     if (isGroup && resenhaAveriguada[from] && coinPrizePending[from]?.[sender]) {
       if (mentioned.length > 0) {
         const alvo = mentioned[0]
-        mutedUsers[alvo] = true
+        if (!mutedUsers[from]) mutedUsers[from] = {}
+        mutedUsers[from][alvo] = true
         delete coinPrizePending[from][sender]
         if (Object.keys(coinPrizePending[from]).length === 0) delete coinPrizePending[from]
 
@@ -199,7 +200,12 @@ async function startBot(){
           mentions: [alvo]
         })
 
-        setTimeout(() => { delete mutedUsers[alvo] }, 60_000)
+        setTimeout(() => {
+          if (mutedUsers[from]) {
+            delete mutedUsers[from][alvo]
+            if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
+          }
+        }, 60_000)
         return
       }
     }
@@ -254,28 +260,26 @@ async function startBot(){
         delete coinStreaks[from][sender]
         if (Object.keys(coinStreaks[from]).length === 0) delete coinStreaks[from]
 
-        mutedUsers[sender] = true
+        if (!mutedUsers[from]) mutedUsers[from] = {}
+        mutedUsers[from][sender] = true
         await sock.sendMessage(from, {
           text: `A moeda caiu em *${game.resultado}*.\nSe fudeu.\n💥 Sua streak foi resetada.`,
           mentions: [sender]
         })
 
         if (resenhaAveriguada[from]) {
-          if (!mutedUsers[from]) mutedUsers[from] = {}
-          mutedUsers[from][sender] = true
-
           await sock.sendMessage(from, {
             text: `...E você foi mutado por 1 minuto.`,
             mentions: [sender]
           })
-
-          setTimeout(() => {
-            if (mutedUsers[from]) {
-              delete mutedUsers[from][sender]
-              if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
-            }
-          }, 60_000)
         }
+
+        setTimeout(() => {
+          if (mutedUsers[from]) {
+            delete mutedUsers[from][sender]
+            if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
+          }
+        }, 60_000)
       }
       return
     }
@@ -575,7 +579,8 @@ async function startBot(){
       if(!alvo) return sock.sendMessage(from,{ text:"Marque alguém para mutar!" })
       if(alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from,{ text:"Não posso me mutar!" }) 
       if(!await isAdmin(sender)) return sock.sendMessage(from,{ text:"Apenas admins podem mutar!" })
-      mutedUsers[alvo] = true
+      if (!mutedUsers[from]) mutedUsers[from] = {}
+      mutedUsers[from][alvo] = true
       await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi mutado! Finalmente vai calar a boca.`, mentions:[alvo] })
     }
 
@@ -584,7 +589,10 @@ async function startBot(){
       if(!alvo) return sock.sendMessage(from,{ text:"Marque alguém para desmutar!" })
       if(alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from,{ text:"Não posso me desmutar!" }) 
       if(!await isAdmin(sender)) return sock.sendMessage(from,{ text:"Apenas admins podem desmutar!" })
-      delete mutedUsers[alvo]
+      if (mutedUsers[from]) {
+        delete mutedUsers[from][alvo]
+        if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
+      }
       await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi desmutado! Infelizmente pode falar de novo.`, mentions:[alvo] })
     }
 
@@ -600,22 +608,12 @@ async function startBot(){
     // =========================
     // BLOQUEIO DE MENSAGENS DE USUÁRIOS MUTADOS
     // =========================
-    if(mutedUsers[sender] && isGroup && sender !== sock.user.id){
+    if(mutedUsers[from]?.[sender] && isGroup && sender !== sock.user.id){
       try{
         await sock.sendMessage(from,{ delete: msg.key })
       }catch(e){
         console.error("Erro ao apagar mensagem de usuário mutado", e)
       }
-      return
-    }
-
-    if (cmd.startsWith(prefix + "streak") && isGroup) {
-      const alvo = mentioned[0] || sender
-      const valor = coinStreaks[from]?.[alvo] || 0
-      await sock.sendMessage(from, {
-        text: `Streak de @${alvo.split("@")[0]}: *${valor}*`,
-        mentions: [alvo]
-      })
       return
     }
 

@@ -169,6 +169,6 @@ Cobertura atual:
 
 ### Solução de problemas
 - Se o bot não responder:
-	- valide sessão em auth/
+	- valide sessão em data/auth/
 	- verifique erros no terminal
 	- valide integridade dos JSON em .data/

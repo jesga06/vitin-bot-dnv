@@ -14,6 +14,7 @@ const pino = require("pino")
 const QRCode = require("qrcode")
 const sharp = require("sharp")
 const fs = require("fs")
+const path = require("path")
 const ffmpeg = require("fluent-ffmpeg")
 const ffmpegPath = require("ffmpeg-static")
 ffmpeg.setFfmpegPath(ffmpegPath)
@@ -130,7 +131,8 @@ async function videoToSticker(buffer){
 // INICIAR BOT
 // =========================
 async function startBot(){
-  const { state, saveCreds } = await useMultiFileAuthState("./auth")
+  const authDir = path.join(__dirname, "data", "auth")
+  const { state, saveCreds } = await useMultiFileAuthState(authDir)
   const { version } = await fetchLatestBaileysVersion()
 
   const sock = makeWASocket({

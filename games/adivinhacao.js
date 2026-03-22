@@ -112,7 +112,7 @@ module.exports = {
 		let msg = `🎰 O número era: ${secret}\n\n`
 
 		Object.entries(state.guesses).forEach(([pid, guess]) => {
-			msg += `${pid.substring(0, 5)}: ${guess}\n`
+			msg += `@${pid.split("@")[0]}: ${guess}\n`
 		})
 
 		msg += `\n`
@@ -120,7 +120,7 @@ module.exports = {
 		if (results.type === "no_guesses") {
 			msg += `Ninguém adivinhou!`
 		} else {
-			msg += `✅ Mais perto(s): ${results.closestPlayers.map((p) => `${p.substring(0, 5)}...`).join(", ")}\n`
+			msg += `✅ Mais perto(s): ${results.closestPlayers.map((p) => `@${p.split("@")[0]}`).join(", ")}\n`
 
 			if (includePunishmentWarnings) {
 				if (!results.punishments || results.punishments.length === 0) {
@@ -128,13 +128,13 @@ module.exports = {
 				} else {
 					msg += `\nPunidos automáticos:\n`
 					results.punishments.forEach((entry) => {
-						msg += `- ${entry.playerId.substring(0, 5)}... (${entry.severity}x)\n`
+						msg += `- @${entry.playerId.split("@")[0]} (${entry.severity}x)\n`
 					})
 				}
 			}
 
 			if (results.chooser && includePunishmentWarnings) {
-				msg += `\n🎯 ${results.chooser.substring(0, 5)}... acertou exatamente e pode escolher 1 alvo para punição 2x.`
+				msg += `\n🎯 @${results.chooser.split("@")[0]} acertou exatamente e pode escolher 1 alvo para punição 2x.`
 			}
 		}
 

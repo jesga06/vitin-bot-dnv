@@ -75,7 +75,7 @@ module.exports = {
       return `Ninguém conseguiu desembaralhar: ${state.word}`
     }
     return includePunishmentNotice
-      ? `🏆 ${state.winner.substring(0, 5)}... acertou: ${state.word}!\nAgora escolha quem será punido!`
-      : `🏆 ${state.winner.substring(0, 5)}... acertou: ${state.word}!`
+      ? `🏆 @${state.winner.split("@")[0]} acertou: ${state.word}!\nAgora escolha quem será punido!`
+      : `🏆 @${state.winner.split("@")[0]} acertou: ${state.word}!`
   },
 }

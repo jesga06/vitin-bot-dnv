@@ -42,24 +42,25 @@ async function handleUtilityCommands(ctx) {
 │ ${prefix}gado @user
 │ ${prefix}ship @a @b
 │ ${prefix}treta
-│ ${prefix}moeda
-│--- ${prefix}moeda dobroounada
-│--- ${prefix}streak (para ver sua sequência)
-│--- ${prefix}streakranking (para ver o ranking do grupo)
-│ ${prefix}jogos
-│ ${prefix}economia
+│ ${prefix}jogos (submenu de jogos)
+│ ${prefix}economia (submenu de economia)
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
 ╭━━━〔 ⚡ ADM 〕━━━╮
 │ ${prefix}mute @user
 │ ${prefix}unmute @user
 │ ${prefix}ban @user
-│ ${prefix}punições @user
-│ ${prefix}puniçõesclr @user
-│ ${prefix}puniçõesadd @user
+│ ${prefix}punições / ${prefix}punicoes @user
+│ ${prefix}puniçõesclr / ${prefix}punicoesclr @user
+│ ${prefix}puniçõesadd / ${prefix}punicoesadd @user
+│ ${prefix}resenha (ativa/desativa punições em jogos)
+│ ${prefix}adminadd @user (promove admin)
+│ ${prefix}adminrm @user (remove admin)
+│ ${prefix}setcoins @user <quantidade>
 │ ${prefix}addcoins @user <quantidade>
 │ ${prefix}removecoins @user <quantidade>
 │ ${prefix}additem @user <item> <quantidade>
+│ ${prefix}additem @user passe <tipo> <severidade> <qtd>
 │ ${prefix}removeitem @user <item> <quantidade>
 ╰━━━━━━━━━━━━━━━━━━━━╯`,
     })

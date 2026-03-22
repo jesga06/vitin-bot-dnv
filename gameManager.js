@@ -15,7 +15,7 @@ const gameManager = {
   optInSessions: {},
 
   // Obtém ou cria lobby para um jogo
-  createOptInSession: (groupId, gameType, minPlayers, maxPlayers, timeoutMs = 30000) => {
+  createOptInSession: (groupId, gameType, minPlayers, maxPlayers, timeoutMs = 120000, options = {}) => {
     let gameId = generateLobbyId()
     if (!gameManager.optInSessions[groupId]) {
       gameManager.optInSessions[groupId] = {}
@@ -25,18 +25,38 @@ const gameManager = {
       gameId = generateLobbyId()
     }
     
+    const initialPlayers = Array.isArray(options?.initialPlayers)
+      ? options.initialPlayers.filter(Boolean)
+      : []
+    const dedupedInitialPlayers = [...new Set(initialPlayers)]
+    const cappedInitialPlayers = Number.isFinite(maxPlayers)
+      ? dedupedInitialPlayers.slice(0, Math.max(0, maxPlayers))
+      : dedupedInitialPlayers
+
     gameManager.optInSessions[groupId][gameId] = {
       gameType,
-      players: [],
+      players: cappedInitialPlayers,
       minPlayers,
       maxPlayers,
       createdAt: Date.now(),
       timeoutId: null,
+      warningTimeoutId: null,
     }
 
+    // Timeout principal: limpa o lobby após timeoutMs
     gameManager.optInSessions[groupId][gameId].timeoutId = setTimeout(() => {
       gameManager.clearOptInSession(groupId, gameId)
     }, timeoutMs)
+
+    // Timeout de aviso: notifica 20 segundos antes de expirar
+    const warningMs = Math.max(0, timeoutMs - 20000)
+    gameManager.optInSessions[groupId][gameId].warningTimeoutId = setTimeout(() => {
+      // Só avisa se o lobby ainda existe
+      const session = gameManager.optInSessions[groupId]?.[gameId]
+      if (session && typeof options?.onLobbyWarning === "function") {
+        options.onLobbyWarning(groupId, gameId, gameType, session.players)
+      }
+    }, warningMs)
 
     return gameId
   },
@@ -67,6 +87,7 @@ const gameManager = {
     if (gameManager.optInSessions[groupId]?.[normalizedGameId]) {
       const session = gameManager.optInSessions[groupId][normalizedGameId]
       if (session.timeoutId) clearTimeout(session.timeoutId)
+      if (session.warningTimeoutId) clearTimeout(session.warningTimeoutId)
       delete gameManager.optInSessions[groupId][normalizedGameId]
     }
   },

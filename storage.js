@@ -12,6 +12,7 @@ if (!fs.existsSync(DATA_DIR)) {
 // cache
 let stateCache = {
   mutedUsers: {},
+  adminPrivileges: {},
   coinGames: {},
   coinPunishmentPending: {},
   resenhaAveriguada: {},
@@ -76,6 +77,24 @@ const storage = {
     }
     stateCache.mutedUsers[groupIdOrData] = maybeData
     saveState()
+  },
+
+  // Admins delegados do bot por grupo
+  getAdminPrivileges: (groupId) => {
+    if (groupId === undefined) return stateCache.adminPrivileges
+    return stateCache.adminPrivileges[groupId] || {}
+  },
+  setAdminPrivileges: (groupIdOrData, maybeData) => {
+    if (maybeData === undefined) {
+      stateCache.adminPrivileges = groupIdOrData || {}
+      saveState()
+      return
+    }
+    stateCache.adminPrivileges[groupIdOrData] = maybeData
+    saveState()
+  },
+  isDelegatedAdmin: (groupId, userId) => {
+    return Boolean(stateCache.adminPrivileges[groupId]?.[userId])
   },
 
   // moeda

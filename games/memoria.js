@@ -83,8 +83,8 @@ module.exports = {
     }
 
     return includePunishmentNotice
-      ? (`🏆 ${state.winner.substring(0, 5)}... se lembrou corretamente!\n` +
+      ? (`🏆 @${state.winner.split("@")[0]} se lembrou corretamente!\n` +
         `Agora escolha quem punir!`)
-      : `🏆 ${state.winner.substring(0, 5)}... se lembrou corretamente!`
+      : `🏆 @${state.winner.split("@")[0]} se lembrou corretamente!`
   },
 }

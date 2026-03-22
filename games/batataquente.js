@@ -56,7 +56,7 @@ module.exports = {
 
     return (
       `🥔 Batata Quente! ⏱️ ${secs}s restantes\n` +
-      `Holder: ${state.currentHolder.substring(0, 5)}...\n` +
+      `Holder: @${state.currentHolder.split("@")[0]}\n` +
       `Passes: ${state.passes.length}\n\n` +
       `Use !passa @menção para passar!`
     )

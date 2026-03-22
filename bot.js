@@ -327,7 +327,7 @@ async function startBot(){
     const getGroupGameStates = () => storage.getGameStates(from)
 
     const PERIODIC_CONTROL_STATE_KEY = "periodicControl"
-    const PERIODIC_AUTO_COOLDOWN_MS = 10 * 60_000
+    const PERIODIC_AUTO_COOLDOWN_MS = 20 * 60_000
     const PERIODIC_GAMES = [
       { type: "embaralhado", key: "embaralhadoActive", label: "Embaralhado" },
       { type: "reação", key: "reaçãoActive", label: "Reação" },
@@ -525,7 +525,11 @@ async function startBot(){
       const items = profile?.items || {}
       const entries = Object.keys(items)
         .filter((key) => Number(items[key]) > 0)
-        .map((key) => `- ${key}: ${items[key]}`)
+        .map((key) => {
+          const def = economyService.getItemDefinition(key)
+          const name = def?.name || key
+          return `- ${name}: ${items[key]}`
+        })
       if (entries.length === 0) return "- vazio"
       return entries.join("\n")
     }
@@ -572,6 +576,7 @@ async function startBot(){
       const kronosRemainingDays = kronosExpiresAt > Date.now()
         ? Math.ceil((kronosExpiresAt - Date.now()) / (24 * 60 * 60 * 1000))
         : 0
+      const hasKronosVerdadeira = Boolean(profile?.buffs?.kronosVerdadeiraActive)
 
       return [
         `📊 Estatísticas de Economia`,
@@ -584,7 +589,8 @@ async function startBot(){
         `- Vezes que roubou com sucesso: *${getUserStat(profile, "stealSuccessCount")}* | Moedas ganhas: *${getUserStat(profile, "stealSuccessCoins")}*`,
         `- Itens comprados: *${getUserStat(profile, "itemsBought")}*`,
         `- Escudos usados: *${getUserStat(profile, "shieldsUsed")}*`,
-        `- Dias restantes com Coroa do Kronos: *${kronosRemainingDays}*`,
+        `- Coroa Kronos (Quebrada) dias restantes: *${kronosRemainingDays}*`,
+        `- Coroa Kronos Verdadeira: *${hasKronosVerdadeira ? "✅ ATIVA" : "❌ Inativa"}*`,
         `- Trabalhos realizados: *${getUserStat(profile, "works")}*`,
       ].join("\n")
     }
@@ -622,14 +628,18 @@ async function startBot(){
 
       storage.setCoinPunishmentPending(coinPunishmentPending)
 
+      await sock.sendMessage(from, {
+        text: winnerText,
+        mentions: [winnerId],
+      })
+
       const severityText = severityMultiplier > 1 ? ` *${severityMultiplier}x*` : ""
       await sock.sendMessage(from, {
         text:
-          `${winnerText}\n` +
           `Escolha quem será punido${severityText} em até 30s.\n` +
           `${getPunishmentMenuText()}\n` +
-          `Marque alguém para punir.`,
-        mentions: [winnerId],
+          `Formato: @mention <número da punição>`,
+        mentions: [winnerId, ...(allowedTargets || [])],
       })
 
       setTimeout(() => {
@@ -673,7 +683,8 @@ async function startBot(){
           const finalState = storage.getGameState(from, "embaralhadoActive")
           if (finalState && !finalState.winner) {
             await sock.sendMessage(from, {
-              text: embaralhado.formatResults(finalState)
+              text: embaralhado.formatResults(finalState),
+              mentions: finalState.winner ? [finalState.winner] : [],
             })
             storage.clearGameState(from, "embaralhadoActive")
           }
@@ -714,8 +725,10 @@ async function startBot(){
 
             const results = reação.getResults(finalState)
             const resenhaOn = isResenhaModeEnabled()
+            const reactionMentions = Array.from(new Set((results.reactions || []).map((r) => r.playerId)))
             await sock.sendMessage(from, {
               text: reação.formatResults(finalState, results, resenhaOn),
+              mentions: reactionMentions,
             })
 
             if (results.winner) {
@@ -750,12 +763,20 @@ async function startBot(){
         setTimeout(async () => {
           const finalState = storage.getGameState(from, "comandoActive")
           if (finalState) {
+            const participants = Array.from(new Set((finalState.participants || []).filter(Boolean)))
             const resenhaOn = isResenhaModeEnabled()
-            await sock.sendMessage(from, {
-              text: comando.formatResults(finalState, resenhaOn)
-            })
             const loser = comando.getLoser(finalState)
-            if (loser) {
+            await sock.sendMessage(from, {
+              text: comando.formatResults(finalState, resenhaOn),
+              mentions: loser ? [loser] : [],
+            })
+            if (participants.length <= 1) {
+              if (participants.length === 1) {
+                const soloPlayer = participants[0]
+                incrementUserStat(soloPlayer, "gameComandoWin", 1)
+                await rewardPlayer(soloPlayer, 20, 1, "Comando (solo)")
+              }
+            } else if (loser) {
               const rewardedPlayers = finalState.instruction?.cmd === "silence"
                 ? (finalState.participants || []).filter((playerId) => playerId && playerId !== loser)
                 : (finalState.compliers || [])
@@ -776,13 +797,20 @@ async function startBot(){
       if (gameType === "memória") {
         const state = memória.start(from, triggeredBy)
         storage.setGameState(from, "memóriaActive", state)
-        await sock.sendMessage(from, {
+        const sequenceMessage = await sock.sendMessage(from, {
           text: memória.formatSequence(state)
         })
 
         setTimeout(async () => {
           const finalState = storage.getGameState(from, "memóriaActive")
           if (finalState) {
+            if (sequenceMessage?.key) {
+              try {
+                await sock.sendMessage(from, { delete: sequenceMessage.key })
+              } catch (e) {
+                console.error("Erro ao apagar mensagem da sequência da memória", e)
+              }
+            }
             await sock.sendMessage(from, {
               text: memória.formatHidden(finalState)
             })
@@ -806,6 +834,42 @@ async function startBot(){
       }
 
       return { ok: false, reason: "unknown", message: "Tipo de jogo periódico inválido." }
+    }
+
+    // Função de aviso para lobbies que estão prestes a fechar
+    function createLobbyWarningCallback(groupId) {
+      return (grpId, gameId, gameType, players) => {
+        // Verifica se o lobby ainda existe (não foi iniciado)
+        const session = gameManager.getOptInSession(groupId, gameId)
+        if (!session) return
+
+        // Mapeia tipo de jogo para nome legível
+        const gameNames = {
+          adivinhacao: "Adivinhação",
+          batata: "Batata Quente",
+          dados: "Duelo de Dados",
+          rr: "Roleta Russa",
+          embaralhado: "Embaralhado",
+          memoria: "Memória",
+          reacao: "Reação",
+          comando: "Último a Obedecer",
+        }
+        const gameName = gameNames[gameType] || gameType
+
+        // Formata lista de jogadores
+        const playerList = players.map((p) => `@${p.split("@")[0]}`).join(", ")
+
+        // Envia aviso
+        sock.sendMessage(groupId, {
+          text:
+            `⚠️ *AVISO: Lobby fechando em 20 segundos!*\n\n` +
+            `🎮 Jogo: *${gameName}*\n` +
+            `🏷️ ID: *${gameId}*\n` +
+            `👥 Participantes: ${playerList}\n\n` +
+            `Se a partida não for iniciada, o lobby será fechado automaticamente.`,
+          mentions: players,
+        }).catch(() => {}) // Silencia erros de envio
+      }
     }
 
     function resolveActiveLobbyForPlayer(gameType, maybeLobbyToken, playerId) {
@@ -893,6 +957,8 @@ async function startBot(){
       applyRandomGamePunishment,
       createPendingTargetForWinner,
       jidNormalizedUser,
+      buildGameStatsText,
+      createLobbyWarningCallback: createLobbyWarningCallback(from),
     })
     if (handledGameCommand) return
 
@@ -957,7 +1023,6 @@ async function startBot(){
       economyService,
       parseQuantity,
       formatDuration,
-      buildGameStatsText,
       buildEconomyStatsText,
       buildInventoryText,
       incrementUserStat,

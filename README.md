@@ -74,19 +74,24 @@ npm test
 ### Jogos
 - !jogos
 - !começa <adivinhacao|batata|dados|rr|embaralhado|memoria|reacao|comando>
-- !entrar <LobbyID>
-- !começar <LobbyID>
+- !entrar <LobbyID> / !join <LobbyID>
+- !começar <LobbyID> / !comecar <LobbyID> / !start <LobbyID>
 - !resposta / !passa / !rolar / !atirar
 - !moeda / !moeda dobroounada
 - !streak / !streakranking
 
+Observações de lobby:
+- O criador entra automaticamente no lobby ao usar !começa <jogo>.
+- O buy-in (quando existir) é cobrado ao iniciar a partida de todos os jogadores no lobby, incluindo o criador.
+- O LobbyID pode ser informado em maiúsculas ou minúsculas para entrar/iniciar.
+
 ### Economia
-- !perfil / !perfil stats
+- !perfil / !perfil @user / !perfil stats
 - !economia
 - !coinsranking
 - !extrato
 - !loja
-- !comprar / !comprarpara
+- !comprar <item|indice> / !comprarpara
 - !vender
 - !doarcoins / !doaritem
 - !roubar
@@ -102,6 +107,9 @@ npm test
 - !punições
 - !puniçõesclr
 - !puniçõesadd
+- !adminadd @user
+- !adminrm @user
+- !setcoins @user <quantidade>
 - !addcoins / !removecoins / !additem / !removeitem
 
 ### Utilitários e diversão

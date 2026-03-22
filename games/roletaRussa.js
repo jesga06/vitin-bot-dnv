@@ -55,11 +55,13 @@ module.exports = {
 
   // Formata status
   formatStatus: (state) => {
+    const currentPlayer = state.players[state.currentPlayerIndex]
+    const currentTag = currentPlayer ? `@${currentPlayer.split("@")[0]}` : "desconhecido"
     return (
       `🔫 Roleta Russa!\n` +
       `Turno: ${state.currentPlayerIndex + 1}/${state.players.length}\n` +
       `Tiros: ${state.shotsFired}/6\n` +
-      `Jogador atual: ${state.players[state.currentPlayerIndex].substring(0, 5)}...\n\n` +
+      `Jogador atual: ${currentTag}\n\n` +
       `Use !atirar para puxar o gatilho!`
     )
   },

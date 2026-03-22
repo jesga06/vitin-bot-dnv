@@ -126,8 +126,8 @@ module.exports = {
 				return "Todos respeitaram o silêncio!"
 			}
 			return includePunishmentNotice
-				? `💬 ${loser.substring(0, 5)}... quebrou o silêncio e será punido!`
-				: `💬 ${loser.substring(0, 5)}... quebrou o silêncio!`
+				? `💬 @${loser.split("@")[0]} quebrou o silêncio e será punido!`
+				: `💬 @${loser.split("@")[0]} quebrou o silêncio!`
 		}
 
 		if (!loser) {
@@ -135,7 +135,7 @@ module.exports = {
 		}
 
 		return includePunishmentNotice
-			? `🐢 ${loser.substring(0, 5)}... foi o último no Comando e será punido!`
-			: `🐢 ${loser.substring(0, 5)}... foi o último no Comando!`
+			? `🐢 @${loser.split("@")[0]} foi o último no Comando e será punido!`
+			: `🐢 @${loser.split("@")[0]} foi o último no Comando!`
 	},
 }

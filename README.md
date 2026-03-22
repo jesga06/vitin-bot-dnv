@@ -14,6 +14,12 @@ npm install
 npm start
 ```
 
+Opcionalmente, você pode definir o diretório de autenticação do Baileys:
+
+```bash
+BOT_AUTH_DIR=/caminho/persistente/auth
+```
+
 ### Executar testes de fumaça
 ```bash
 npm test
@@ -69,19 +75,25 @@ npm test
 	- estatísticas
 	- transações
 
+#### Autenticação do WhatsApp
+- Diretório padrão: .data/auth
+- Responsável: bot.js (useMultiFileAuthState)
+- Sobrescrita opcional: variável de ambiente BOT_AUTH_DIR
+
 ## Comandos (visão geral)
 
 ### Jogos
 - !jogos
-- !começa <adivinhacao|batata|dados|rr|embaralhado|memoria|reacao|comando>
+- !começar <adivinhacao|batata|dados|rr> / !comecar / !start
 - !entrar <LobbyID> / !join <LobbyID>
 - !começar <LobbyID> / !comecar <LobbyID> / !start <LobbyID>
+- !começar <embaralhado|memória|reação|comando> / !comecar <embaralhado|memoria|reacao|comando>
 - !resposta / !passa / !rolar / !atirar
 - !moeda / !moeda dobroounada
 - !streak / !streakranking
 
 Observações de lobby:
-- O criador entra automaticamente no lobby ao usar !começa <jogo>.
+- O criador entra automaticamente no lobby ao usar !começar <jogo>.
 - O buy-in (quando existir) é cobrado ao iniciar a partida de todos os jogadores no lobby, incluindo o criador.
 - O LobbyID pode ser informado em maiúsculas ou minúsculas para entrar/iniciar.
 
@@ -98,7 +110,7 @@ Observações de lobby:
 - !daily
 - !cassino / !aposta
 - !trabalho
-- !silenciar
+- !usarpasse @user <tipo> <severidade>
 
 ### Moderação
 - !mute

@@ -1,3 +1,5 @@
+const telemetry = require("../telemetryService")
+
 async function handleModerationCommands(ctx) {
   const {
     sock,
@@ -22,53 +24,119 @@ async function handleModerationCommands(ctx) {
 
   if (!isGroup) return false
 
+  function trackModeration(command, status, meta = {}) {
+    telemetry.incrementCounter("router.moderation.command", 1, {
+      command,
+      status,
+    })
+    telemetry.appendEvent("router.moderation.command", {
+      command,
+      status,
+      groupId: from,
+      sender,
+      ...meta,
+    })
+  }
+
   const botJid = jidNormalizedUser(sock.user?.id || "")
 
   if (cmdName === prefix + "mute") {
     const alvo = mentioned[0]
-    if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para mutar!" })
-    if (jidNormalizedUser(alvo) === botJid) return sock.sendMessage(from, { text: "Não posso me mutar!" })
-    if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem mutar!" })
+    if (!alvo) {
+      trackModeration("mute", "rejected", { reason: "missing-target" })
+      await sock.sendMessage(from, { text: "Marque alguém para mutar!" })
+      return true
+    }
+    if (jidNormalizedUser(alvo) === botJid) {
+      trackModeration("mute", "rejected", { reason: "target-bot" })
+      await sock.sendMessage(from, { text: "Não posso me mutar!" })
+      return true
+    }
+    if (!senderIsAdmin) {
+      trackModeration("mute", "rejected", { reason: "not-admin" })
+      await sock.sendMessage(from, { text: "Apenas admins podem mutar!" })
+      return true
+    }
     const mutedUsers = storage.getMutedUsers()
     if (!mutedUsers[from]) mutedUsers[from] = {}
     mutedUsers[from][alvo] = true
     storage.setMutedUsers(mutedUsers)
+    trackModeration("mute", "success", { target: alvo })
     await sock.sendMessage(from, { text: `@${alvo.split("@")[0]} foi mutado! Finalmente vai calar a boca.`, mentions: [alvo] })
     return true
   }
 
   if (cmdName === prefix + "unmute") {
     const alvo = mentioned[0]
-    if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para desmutar!" })
-    if (jidNormalizedUser(alvo) === botJid) return sock.sendMessage(from, { text: "Não posso me desmutar!" })
-    if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem desmutar!" })
+    if (!alvo) {
+      trackModeration("unmute", "rejected", { reason: "missing-target" })
+      await sock.sendMessage(from, { text: "Marque alguém para desmutar!" })
+      return true
+    }
+    if (jidNormalizedUser(alvo) === botJid) {
+      trackModeration("unmute", "rejected", { reason: "target-bot" })
+      await sock.sendMessage(from, { text: "Não posso me desmutar!" })
+      return true
+    }
+    if (!senderIsAdmin) {
+      trackModeration("unmute", "rejected", { reason: "not-admin" })
+      await sock.sendMessage(from, { text: "Apenas admins podem desmutar!" })
+      return true
+    }
     const mutedUsers = storage.getMutedUsers()
     if (mutedUsers[from]) {
       delete mutedUsers[from][alvo]
       if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
     }
     storage.setMutedUsers(mutedUsers)
+    trackModeration("unmute", "success", { target: alvo })
     await sock.sendMessage(from, { text: `@${alvo.split("@")[0]} foi desmutado! Infelizmente pode falar de novo.`, mentions: [alvo] })
     return true
   }
 
   if (cmdName === prefix + "ban") {
     const alvo = mentioned[0]
-    if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para banir!" })
-    if (jidNormalizedUser(alvo) === botJid) return sock.sendMessage(from, { text: "Não posso me banir!" })
-    if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem banir!" })
+    if (!alvo) {
+      trackModeration("ban", "rejected", { reason: "missing-target" })
+      await sock.sendMessage(from, { text: "Marque alguém para banir!" })
+      return true
+    }
+    if (jidNormalizedUser(alvo) === botJid) {
+      trackModeration("ban", "rejected", { reason: "target-bot" })
+      await sock.sendMessage(from, { text: "Não posso me banir!" })
+      return true
+    }
+    if (!senderIsAdmin) {
+      trackModeration("ban", "rejected", { reason: "not-admin" })
+      await sock.sendMessage(from, { text: "Apenas admins podem banir!" })
+      return true
+    }
     await sock.groupParticipantsUpdate(from, [alvo], "remove")
+    trackModeration("ban", "success", { target: alvo })
     await sock.sendMessage(from, { text: `@${alvo.split("@")[0]} foi banido do grupo.`, mentions: [alvo] })
     return true
   }
 
   if (cmdName === prefix + "adminadd") {
-    if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+    if (!senderIsAdmin) {
+      trackModeration("adminadd", "rejected", { reason: "not-admin" })
+      await sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+      return true
+    }
     const alvo = mentioned[0]
-    if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para promover a admin do grupo." })
-    if (jidNormalizedUser(alvo) === botJid) return sock.sendMessage(from, { text: "O bot já possui privilégios administrativos." })
+    if (!alvo) {
+      trackModeration("adminadd", "rejected", { reason: "missing-target" })
+      await sock.sendMessage(from, { text: "Marque alguém para promover a admin do grupo." })
+      return true
+    }
+    if (jidNormalizedUser(alvo) === botJid) {
+      trackModeration("adminadd", "rejected", { reason: "target-bot" })
+      await sock.sendMessage(from, { text: "O bot já possui privilégios administrativos." })
+      return true
+    }
 
     await sock.groupParticipantsUpdate(from, [alvo], "promote")
+    trackModeration("adminadd", "success", { target: alvo })
 
     await sock.sendMessage(from, {
       text: `@${alvo.split("@")[0]} agora é admin do grupo.`,
@@ -78,11 +146,20 @@ async function handleModerationCommands(ctx) {
   }
 
   if (cmdName === prefix + "adminrm") {
-    if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+    if (!senderIsAdmin) {
+      trackModeration("adminrm", "rejected", { reason: "not-admin" })
+      await sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+      return true
+    }
     const alvo = mentioned[0]
-    if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para remover de admin do grupo." })
+    if (!alvo) {
+      trackModeration("adminrm", "rejected", { reason: "missing-target" })
+      await sock.sendMessage(from, { text: "Marque alguém para remover de admin do grupo." })
+      return true
+    }
 
     await sock.groupParticipantsUpdate(from, [alvo], "demote")
+    trackModeration("adminrm", "success", { target: alvo })
 
     await sock.sendMessage(from, {
       text: `@${alvo.split("@")[0]} não é mais admin do grupo.`,
@@ -92,7 +169,11 @@ async function handleModerationCommands(ctx) {
   }
 
   if (cmd === prefix + "nuke") {
-    if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+    if (!senderIsAdmin) {
+      trackModeration("nuke", "rejected", { reason: "not-admin" })
+      await sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+      return true
+    }
     try {
       await sock.sendMessage(from, { delete: msg.key })
     } catch (e) {
@@ -107,6 +188,7 @@ async function handleModerationCommands(ctx) {
     }
     const coinPunishmentPending = storage.getCoinPunishmentPending()
     if (coinPunishmentPending[from]?.[sender]) clearPendingPunishment(from, sender)
+    trackModeration("nuke", "success")
     await sock.sendMessage(from, {
       text: `@${sender.split("@")[0]} teve todas as punições removidas instantaneamente.`,
       mentions: [sender],
@@ -114,10 +196,18 @@ async function handleModerationCommands(ctx) {
     return true
   }
 
-  if (cmd === prefix + "punições" || cmd === prefix + "punicoes") {
-    if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+  if (cmdName === prefix + "punições" || cmdName === prefix + "punicoes") {
+    if (!senderIsAdmin) {
+      trackModeration("punicoes", "rejected", { reason: "not-admin" })
+      await sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+      return true
+    }
     const alvo = mentioned[0]
-    if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para listar as punições." })
+    if (!alvo) {
+      trackModeration("punicoes", "rejected", { reason: "missing-target" })
+      await sock.sendMessage(from, { text: "Marque alguém para listar as punições." })
+      return true
+    }
 
     const lines = []
     const mutedUsers = storage.getMutedUsers()
@@ -129,8 +219,16 @@ async function handleModerationCommands(ctx) {
       if (active.type === "max5chars") lines.push("- Máx. 5 caracteres")
       if (active.type === "rate20s") lines.push("- 1 mensagem/20s")
       if (active.type === "lettersBlock") lines.push(`- Bloqueio por letras (${(active.letters || []).join("/")})`)
-        if (active.type === "emojiOnly") lines.push("- Somente emojis e figurinhas")
+      if (active.type === "emojiOnly") lines.push("- Somente emojis e figurinhas")
       if (active.type === "mute5m") lines.push("- Mute total 5 minutos")
+      if (active.type === "noVowels") lines.push("- Sem vogais")
+      if (active.type === "urgentPrefix") lines.push("- Prefixo obrigatório 🚨URGENTE:")
+      if (active.type === "wordListRequired") lines.push(`- Palavras da lista (${(active.wordList || []).join(", ")})`)
+      if (active.type === "allCaps") lines.push("- Somente caixa alta")
+      if (active.type === "deleteAndRepost") lines.push("- Apagar e repostar")
+      if (active.type === "sexualReaction") lines.push("- Reação sugestiva")
+      if (active.type === "randomDeleteChance") lines.push(`- Chance de apagar (${Math.ceil((active.deleteChance || 0.2) * 100)}%)`)
+      if (active.type === "max3wordsStrict") lines.push("- Máx. 3 palavras")
     }
 
     const coinPunishmentPending = storage.getCoinPunishmentPending()
@@ -148,13 +246,22 @@ async function handleModerationCommands(ctx) {
         : `@${alvo.split("@")[0]} não possui punições ativas.`,
       mentions: [alvo],
     })
+    trackModeration("punicoes", "success", { target: alvo })
     return true
   }
 
   if (cmdName === prefix + "puniçõesclr" || cmdName === prefix + "punicoesclr") {
-    if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+    if (!senderIsAdmin) {
+      trackModeration("punicoesclr", "rejected", { reason: "not-admin" })
+      await sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+      return true
+    }
     const alvo = mentioned[0]
-    if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para limpar as punições." })
+    if (!alvo) {
+      trackModeration("punicoesclr", "rejected", { reason: "missing-target" })
+      await sock.sendMessage(from, { text: "Marque alguém para limpar as punições." })
+      return true
+    }
 
     clearPunishment(from, alvo)
     const mutedUsers = storage.getMutedUsers()
@@ -179,30 +286,64 @@ async function handleModerationCommands(ctx) {
       text: `Todas as punições de @${alvo.split("@")[0]} foram removidas.`,
       mentions: [alvo],
     })
+    trackModeration("punicoesclr", "success", { target: alvo })
     return true
   }
 
   if (cmdName === prefix + "puniçõesadd" || cmdName === prefix + "punicoesadd") {
-    if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+    if (!senderIsAdmin) {
+      trackModeration("punicoesadd", "rejected", { reason: "not-admin" })
+      await sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+      return true
+    }
     const alvo = mentioned[0]
-    if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para aplicar punição." })
+    if (!alvo) {
+      trackModeration("punicoesadd", "rejected", { reason: "missing-target" })
+      await sock.sendMessage(from, { text: "Marque alguém para aplicar punição." })
+      return true
+    }
+    if (jidNormalizedUser(alvo) === botJid) {
+      trackModeration("punicoesadd", "rejected", { reason: "target-bot" })
+      await sock.sendMessage(from, { text: "🤖 O bot não pode receber punições administrativas." })
+      return true
+    }
 
     const parts = text.trim().split(/\s+/)
-    const punishmentChoice = getPunishmentChoiceFromText(parts[2] || "")
-    const severityToken = parts[3]
+    let punishmentChoiceToken = ""
+    let severityToken = ""
+    const tokenAfterCommand = parts[1] || ""
+    const secondTokenAfterCommand = parts[2] || ""
+    const thirdTokenAfterCommand = parts[3] || ""
+
+    // Suporta com e sem menção textual no comando.
+    if (/^(?:1[0-3]|[1-9])$/.test(tokenAfterCommand)) {
+      punishmentChoiceToken = tokenAfterCommand
+      severityToken = secondTokenAfterCommand
+    } else if (/^(?:1[0-3]|[1-9])$/.test(secondTokenAfterCommand)) {
+      punishmentChoiceToken = secondTokenAfterCommand
+      severityToken = thirdTokenAfterCommand
+    } else {
+      punishmentChoiceToken = getPunishmentChoiceFromText(text) || ""
+      severityToken = secondTokenAfterCommand || thirdTokenAfterCommand || ""
+    }
+
+    const punishmentChoice = getPunishmentChoiceFromText(punishmentChoiceToken)
     const parsedSeverity = Number.parseInt(String(severityToken || "1"), 10)
     const severityMultiplier = Number.isFinite(parsedSeverity) && parsedSeverity > 0 ? parsedSeverity : 1
     if (!punishmentChoice) {
-      return sock.sendMessage(from, {
-        text: "Use: !puniçõesadd @user <1-5> [multiplicador]\n" + getPunishmentMenuText(),
+      trackModeration("punicoesadd", "rejected", { reason: "invalid-choice" })
+      await sock.sendMessage(from, {
+        text: "Use: !puniçõesadd @user <1-13> [multiplicador]\n" + getPunishmentMenuText(),
         mentions: [alvo],
       })
+      return true
     }
 
     await applyPunishment(sock, from, alvo, punishmentChoice, {
       origin: "admin",
       severityMultiplier,
     })
+    trackModeration("punicoesadd", "success", { target: alvo, punishmentChoice })
     return true
   }
 

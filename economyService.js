@@ -13,6 +13,14 @@ const PUNISHMENT_TYPE_NAMES = {
   3: "bloqueio 2 letras",
   4: "somente emojis/figurinhas",
   5: "mute total",
+  6: "sem vogais",
+  7: "prefixo urgente",
+  8: "palavras da lista",
+  9: "somente caixa alta",
+  10: "repost pelo bot",
+  11: "reação sugestiva",
+  12: "chance de apagar",
+  13: "máx. 3 palavras",
 }
 
 const PUNISHMENT_PASS_BASE_SELL = {
@@ -21,6 +29,14 @@ const PUNISHMENT_PASS_BASE_SELL = {
   3: 680,
   4: 820,
   5: 950,
+  6: 980,
+  7: 1020,
+  8: 1150,
+  9: 1250,
+  10: 1400,
+  11: 1520,
+  12: 1650,
+  13: 1750,
 }
 
 function normalizePassSeverity(value, fallback = 1) {
@@ -30,7 +46,7 @@ function normalizePassSeverity(value, fallback = 1) {
 
 function isValidPunishmentType(type) {
   const parsed = Math.floor(Number(type) || 0)
-  return parsed >= 1 && parsed <= 5
+  return parsed >= 1 && parsed <= 13
 }
 
 function buildPunishmentPassKey(type, severity = 1) {
@@ -41,7 +57,7 @@ function buildPunishmentPassKey(type, severity = 1) {
 
 function parsePunishmentPassKey(itemKey = "") {
   const raw = String(itemKey || "")
-  const match = raw.match(/^passPunicao([1-5])x(\d+)$/i)
+  const match = raw.match(/^passPunicao(1[0-3]|[1-9])x(\d+)$/i)
   if (!match) return null
   const type = Number.parseInt(match[1], 10)
   const severity = normalizePassSeverity(match[2], 1)
@@ -69,7 +85,7 @@ function getPunishmentPassDefinition(type, severity = 1) {
 }
 
 function pickRandomPunishmentType(excludedType = null) {
-  const options = [1, 2, 3, 4, 5].filter((type) => type !== excludedType)
+  const options = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].filter((type) => type !== excludedType)
   return options[Math.floor(Math.random() * options.length)]
 }
 
@@ -97,7 +113,7 @@ const ITEM_DEFINITIONS = {
     key: "kronosVerdadeira",
     aliases: ["coroakronosverdadeira"],
     name: "Coroa Kronos Verdadeira",
-    price: 45000,
+    price: 70000,
     sellRate: 0.8,
     stackable: true,
     permanent: true,
@@ -120,6 +136,8 @@ const DEFAULT_USER_STATS = {
   casinoPlays: 0,
   works: 0,
   steals: 0,
+  stealAttempts: 0,
+  stealFailedCount: 0,
   gameGuessExact: 0,
   gameGuessClosest: 0,
   gameGuessTie: 0,
@@ -133,18 +151,31 @@ const DEFAULT_USER_STATS = {
   gameDadosWin: 0,
   gameDadosLoss: 0,
   gameEmbaralhadoWin: 0,
+  gameEmbaralhadoLoss: 0,
   gameMemoriaWin: 0,
+  gameMemoriaLoss: 0,
   gameReacaoWin: 0,
+  gameReacaoLoss: 0,
   gameRrTrigger: 0,
   gameRrBetWin: 0,
   gameRrShotLoss: 0,
   gameRrWin: 0,
   gameComandoWin: 0,
   gameComandoLoss: 0,
+  lobbiesCreated: 0,
+  lobbiesJoined: 0,
+  lobbiesStarted: 0,
   moneyGameWon: 0,
   moneyGameLost: 0,
   moneyCasinoWon: 0,
   moneyCasinoLost: 0,
+  dailyClaimCount: 0,
+  lootboxesOpened: 0,
+  lootboxPositiveRolls: 0,
+  lootboxNegativeRolls: 0,
+  punishmentsReceivedTotal: 0,
+  punishmentsReceivedAdmin: 0,
+  punishmentsReceivedGame: 0,
   coinsLifetimeEarned: 0,
   stealVictimCount: 0,
   stealVictimCoinsLost: 0,
@@ -451,7 +482,7 @@ function normalizeItemKey(itemKey = "") {
     return buildPunishmentPassKey(5, 1)
   }
 
-  const passAlias = normalized.match(/^(?:passe|pass)(?:punicao)?([1-5])(?:x(\d+))?$/)
+  const passAlias = normalized.match(/^(?:passe|pass)(?:punicao)?(1[0-3]|[1-9])(?:x(\d+))?$/)
   if (passAlias) {
     const type = Number.parseInt(passAlias[1], 10)
     const severity = normalizePassSeverity(passAlias[2], 1)
@@ -739,6 +770,16 @@ function buyItem(buyerId, itemKey, quantity = 1, recipientId = buyerId) {
       meta: { buyer: normalizeUserId(buyerId), item: item.key, quantity: qty },
     })
   }
+  telemetry.incrementCounter("economy.item.buy", qty, {
+    item: item.key,
+  })
+  telemetry.appendEvent("economy.item.buy", {
+    buyerId: normalizeUserId(buyerId),
+    recipientId: normalizeUserId(recipientId),
+    item: item.key,
+    quantity: qty,
+    totalCost,
+  })
   return { ok: true, totalCost, itemKey: item.key, quantity: qty }
 }
 
@@ -758,6 +799,15 @@ function sellItem(userId, itemKey, quantity = 1) {
     details: `Venda de ${qty}x ${item.key}`,
     meta: { item: item.key, quantity: qty },
   })
+  telemetry.incrementCounter("economy.item.sell", qty, {
+    item: item.key,
+  })
+  telemetry.appendEvent("economy.item.sell", {
+    userId: normalizeUserId(userId),
+    item: item.key,
+    quantity: qty,
+    total,
+  })
   return { ok: true, total, quantity: qty, itemKey: item.key }
 }
 
@@ -773,6 +823,12 @@ function transferCoins(fromUserId, toUserId, amount) {
     type: "donate-in",
     details: `Recebido de ${normalizeUserId(fromUserId)}`,
     meta: { from: normalizeUserId(fromUserId) },
+  })
+  telemetry.incrementCounter("economy.coins.transfer", parsedAmount)
+  telemetry.appendEvent("economy.coins.transfer", {
+    fromUserId: normalizeUserId(fromUserId),
+    toUserId: normalizeUserId(toUserId),
+    amount: parsedAmount,
   })
   return { ok: true, amount: parsedAmount }
 }
@@ -799,6 +855,15 @@ function transferItem(fromUserId, toUserId, itemKey, quantity = 1) {
     details: `Recebeu ${qty}x ${item.key} de ${normalizeUserId(fromUserId)}`,
     meta: { from: normalizeUserId(fromUserId), item: item.key, quantity: qty },
   })
+  telemetry.incrementCounter("economy.item.transfer", qty, {
+    item: item.key,
+  })
+  telemetry.appendEvent("economy.item.transfer", {
+    fromUserId: normalizeUserId(fromUserId),
+    toUserId: normalizeUserId(toUserId),
+    item: item.key,
+    quantity: qty,
+  })
   return { ok: true, itemKey: item.key, quantity: qty }
 }
 
@@ -813,6 +878,7 @@ function attemptSteal(thiefId, victimId, requestedAmount = 0) {
   }
 
   registerStealAttempt(thiefId, victimId)
+  incrementStat(thiefId, "stealAttempts", 1)
 
   const victimCoins = getCoins(victimId)
   if (victimCoins <= 0) {
@@ -830,6 +896,7 @@ function attemptSteal(thiefId, victimId, requestedAmount = 0) {
       details: `Falhou ao roubar ${normalizeUserId(victimId)}`,
       meta: { victim: normalizeUserId(victimId) },
     })
+    incrementStat(thiefId, "stealFailedCount", 1)
     return {
       ok: true,
       success: false,
@@ -898,6 +965,7 @@ function claimDaily(userId, baseAmount = 100) {
     details: "Resgate diário",
     meta: { dayKey },
   })
+  incrementStat(userId, "dailyClaimCount", 1)
 
   return {
     ok: true,
@@ -978,8 +1046,8 @@ function getShopIndexText() {
     lines.push(`${idx + 1}. ${item.name} (${item.key}) - ${item.price} Epsteincoins`)
   })
   lines.push("")
-  lines.push("Compre com: !comprar <item> <quantidade>")
-  lines.push("Compre para outro: !comprarpara @usuario <item> <quantidade>")
+  lines.push("Compre com: !comprar <item> [quantidade]")
+  lines.push("Compre para outro: !comprarpara @usuario <item> [quantidade]")
   return lines.join("\n")
 }
 
@@ -1043,9 +1111,9 @@ const LOOTBOX_EFFECTS = [
   { id: "shield_3_loss", name: "Perder 3 escudos", weight: 2, description: "-3 escudos" },
   { id: "kronos_quebrada", name: "Ganhar Coroa Kronos (Quebrada)", weight: 1, description: "+1 Coroa Kronos (Quebrada)" },
   { id: "punishment_pass_1x", name: "Passe de Punição (1x)", weight: 2, description: "+1 Passe de Punição (1x)" },
-  { id: "punishment_1x", name: "Punição (1x)", weight: 4, description: "-1 de punição" },
+  { id: "punishment_1x", name: "Punição (1x)", weight: 4, description: "Punição aleatória (1x)" },
   { id: "punishment_pass_5x", name: "Passe de Punição (5x)", weight: 1, description: "+1 Passe de Punição (5x)" },
-  { id: "punishment_5x", name: "Punição (5x)", weight: 3, description: "-1 de punição (5x)" },
+  { id: "punishment_5x", name: "Punição (5x)", weight: 3, description: "Punição aleatória (5x)" },
 ]
 
 function selectRandomEffect() {
@@ -1073,33 +1141,36 @@ function openLootbox(userId, quantity = 1, groupMembers = []) {
   }
   
   removeItem(userId, "lootbox", qty)
+  incrementStat(userId, "lootboxesOpened", qty)
   
   const results = []
+  const ownerNormalized = normalizeUserId(userId)
+  const eligibleMembers = Array.from(new Set(groupMembers || []))
+    .filter((memberId) => {
+      const normalized = normalizeUserId(memberId)
+      if (!normalized || normalized === ownerNormalized) return false
+      const existing = economyCache.users[normalized]
+      return Boolean(existing && Number.isFinite(existing.coins) && existing.coins >= 100)
+    })
+
   for (let i = 0; i < qty; i++) {
     const effect = selectRandomEffect()
     
     // Decide if the effect goes to the user or another member
     let targetUser = userId
     const isNegativeEffect = effect.id.includes("loss") || effect.id.includes("punishment")
+    incrementStat(userId, isNegativeEffect ? "lootboxNegativeRolls" : "lootboxPositiveRolls", 1)
     
-    if (!isNegativeEffect && groupMembers.length > 0) {
+    if (!isNegativeEffect && eligibleMembers.length > 0) {
       // 25% chance para efeitos positivos irem para outro jogador
       if (Math.random() < 0.25) {
-        const eligibleMembers = groupMembers.filter((memberId) => {
-          return getCoins(memberId) >= 100 && normalizeUserId(memberId) !== normalizeUserId(userId)
-        })
-        
         if (eligibleMembers.length > 0) {
           targetUser = eligibleMembers[Math.floor(Math.random() * eligibleMembers.length)]
         }
       }
-    } else if (isNegativeEffect && groupMembers.length > 0) {
+    } else if (isNegativeEffect && eligibleMembers.length > 0) {
       // Efeitos negativos tem chance menor (20%) de ir para outro jogador
       if (Math.random() < 0.2) {
-        const eligibleMembers = groupMembers.filter((memberId) => {
-          return getCoins(memberId) >= 100 && normalizeUserId(memberId) !== normalizeUserId(userId)
-        })
-        
         if (eligibleMembers.length > 0) {
           targetUser = eligibleMembers[Math.floor(Math.random() * eligibleMembers.length)]
         }
@@ -1109,6 +1180,7 @@ function openLootbox(userId, quantity = 1, groupMembers = []) {
     let resultText = ""
     const targetIsOther = normalizeUserId(targetUser) !== normalizeUserId(userId)
     const targetPrefix = targetIsOther ? `@${targetUser.split("@")[0]}: ` : "Você: "
+    let punishment = null
     
     // Apply the effect
     switch (effect.id) {
@@ -1157,8 +1229,14 @@ function openLootbox(userId, quantity = 1, groupMembers = []) {
         }
         break
       case "punishment_1x":
-        // Aplicar punição (futuro: usar sistema de punishments)
-        resultText = `${targetPrefix}Sofreu punição (1x)`
+        {
+          const punishmentType = pickRandomPunishmentType()
+          punishment = {
+            type: punishmentType,
+            severity: 1,
+          }
+          resultText = `${targetPrefix}Punição sorteada ${punishmentType} (1x)`
+        }
         break
       case "punishment_pass_5x":
         {
@@ -1169,7 +1247,14 @@ function openLootbox(userId, quantity = 1, groupMembers = []) {
         }
         break
       case "punishment_5x":
-        resultText = `${targetPrefix}Sofreu punição (5x)`
+        {
+          const punishmentType = pickRandomPunishmentType()
+          punishment = {
+            type: punishmentType,
+            severity: 5,
+          }
+          resultText = `${targetPrefix}Punição sorteada ${punishmentType} (5x)`
+        }
         break
       case "daily_reset":
         {
@@ -1194,6 +1279,7 @@ function openLootbox(userId, quantity = 1, groupMembers = []) {
       result: resultText,
       targetUser,
       targetIsOther,
+      punishment,
     })
   }
   

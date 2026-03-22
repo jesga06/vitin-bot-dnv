@@ -27,10 +27,10 @@ const adivinhacao = require("./games/adivinhacao")
 const batataquente = require("./games/batataquente")
 const dueloDados = require("./games/dueloDados")
 const roletaRussa = require("./games/roletaRussa")
-const reação = require("./games/reação")
+const reação = require("./games/reacao")
 const embaralhado = require("./games/embaralhado")
 const comando = require("./games/comando")
-const memória = require("./games/memória")
+const memória = require("./games/memoria")
 const economyService = require("./economyService")
 const telemetry = require("./telemetryService")
 const { handleGameCommands, handleGameMessageFlow } = require("./routers/gamesRouter")
@@ -204,7 +204,9 @@ async function startBot(){
     let senderIsAdmin = false
     if (isGroup && isCommand) {
       const metadata = await sock.groupMetadata(from)
-      const admins = (metadata?.participants || []).filter(p => p.admin).map(p => p.id)
+      const admins = (metadata?.participants || [])
+        .filter((p) => p.admin)
+        .map((p) => jidNormalizedUser(p.id))
       senderIsAdmin = admins.includes(sender)
     }
 
@@ -235,9 +237,7 @@ async function startBot(){
         return
       }
 
-      const metadata = await sock.groupMetadata(from)
-      const admins = (metadata?.participants || []).filter(p => p.admin).map(p => p.id)
-      if (!admins.includes(sender)) {
+      if (!senderIsAdmin) {
         await sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
         return
       }
@@ -935,6 +935,7 @@ async function startBot(){
       logger,
       videoToSticker,
       dddMap,
+      jidNormalizedUser,
     })
     if (handledUtilityCommand) return
 
@@ -975,6 +976,7 @@ async function startBot(){
       isGroup,
       senderIsAdmin,
       mentioned,
+      jidNormalizedUser,
       storage,
       clearPunishment,
       clearPendingPunishment,

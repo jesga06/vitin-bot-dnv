@@ -11,6 +11,7 @@ async function handleModerationCommands(ctx) {
     isGroup,
     senderIsAdmin,
     mentioned,
+    jidNormalizedUser,
     storage,
     clearPunishment,
     clearPendingPunishment,
@@ -21,10 +22,12 @@ async function handleModerationCommands(ctx) {
 
   if (!isGroup) return false
 
+  const botJid = jidNormalizedUser(sock.user?.id || "")
+
   if (cmdName === prefix + "mute") {
     const alvo = mentioned[0]
     if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para mutar!" })
-    if (alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from, { text: "Não posso me mutar!" })
+    if (jidNormalizedUser(alvo) === botJid) return sock.sendMessage(from, { text: "Não posso me mutar!" })
     if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem mutar!" })
     const mutedUsers = storage.getMutedUsers()
     if (!mutedUsers[from]) mutedUsers[from] = {}
@@ -37,7 +40,7 @@ async function handleModerationCommands(ctx) {
   if (cmdName === prefix + "unmute") {
     const alvo = mentioned[0]
     if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para desmutar!" })
-    if (alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from, { text: "Não posso me desmutar!" })
+    if (jidNormalizedUser(alvo) === botJid) return sock.sendMessage(from, { text: "Não posso me desmutar!" })
     if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem desmutar!" })
     const mutedUsers = storage.getMutedUsers()
     if (mutedUsers[from]) {
@@ -52,7 +55,7 @@ async function handleModerationCommands(ctx) {
   if (cmdName === prefix + "ban") {
     const alvo = mentioned[0]
     if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para banir!" })
-    if (alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from, { text: "Não posso me banir!" })
+    if (jidNormalizedUser(alvo) === botJid) return sock.sendMessage(from, { text: "Não posso me banir!" })
     if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem banir!" })
     await sock.groupParticipantsUpdate(from, [alvo], "remove")
     await sock.sendMessage(from, { text: `@${alvo.split("@")[0]} foi banido do grupo.`, mentions: [alvo] })

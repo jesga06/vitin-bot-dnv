@@ -1,3 +1,5 @@
+const CURRENCY_LABEL = "Epsteincoins"
+
 async function handleEconomyCommands(ctx) {
   const {
     sock,
@@ -89,7 +91,7 @@ async function handleEconomyCommands(ctx) {
     await sock.sendMessage(from, {
       text:
         `💳 Carteira global de @${sender.split("@")[0]}\n` +
-        `Epsteincoins: *${profile.coins}*\n` +
+        `${CURRENCY_LABEL}: *${profile.coins}*\n` +
         `Escudos: *${profile.shields}*\n` +
         `Inventario:\n${buildInventoryText(profile)}${kronosInfo}`,
       mentions: [sender],
@@ -130,7 +132,7 @@ async function handleEconomyCommands(ctx) {
     const globalPos = economyService.getUserGlobalPosition(sender)
     await sock.sendMessage(from, {
       text:
-        `🏦 Ranking de moedas (grupo)\n` +
+        `🏦 Ranking de ${CURRENCY_LABEL} (grupo)\n` +
         `${lines.join("\n")}\n\n` +
         `Sua posição global: *${globalPos || "N/A"}*`,
       mentions: ranking.map((entry) => entry.userId),
@@ -152,7 +154,7 @@ async function handleEconomyCommands(ctx) {
     if (!bought.ok) {
       await sock.sendMessage(from, {
         text: bought.reason === "insufficient-funds"
-          ? `Saldo insuficiente para essa compra. Custo: ${bought.totalCost} Epsteincoins.`
+          ? `Saldo insuficiente para essa compra. Custo: ${bought.totalCost} ${CURRENCY_LABEL}.`
           : "Item inválido. Use !loja para ver o índice.",
       })
       return true
@@ -182,7 +184,7 @@ async function handleEconomyCommands(ctx) {
     if (!bought.ok) {
       await sock.sendMessage(from, {
         text: bought.reason === "insufficient-funds"
-          ? `Saldo insuficiente. Custo: ${bought.totalCost} Epsteincoins.`
+          ? `Saldo insuficiente. Custo: ${bought.totalCost} ${CURRENCY_LABEL}.`
           : "Item inválido. Use !loja.",
       })
       return true
@@ -209,7 +211,7 @@ async function handleEconomyCommands(ctx) {
       return true
     }
     await sock.sendMessage(from, {
-      text: `💱 Venda concluída: ${sold.quantity}x ${sold.itemKey} por *${sold.total}* Epsteincoins.`,
+      text: `💱 Venda concluída: ${sold.quantity}x ${sold.itemKey} por *${sold.total}* ${CURRENCY_LABEL}.`,
     })
     return true
   }
@@ -229,7 +231,7 @@ async function handleEconomyCommands(ctx) {
     }
 
     await sock.sendMessage(from, {
-      text: `🤝 @${sender.split("@")[0]} doou *${transferred.amount}* Epsteincoins para @${target.split("@")[0]}.`,
+      text: `🤝 @${sender.split("@")[0]} doou *${transferred.amount}* ${CURRENCY_LABEL} para @${target.split("@")[0]}.`,
       mentions: [sender, target],
     })
     return true
@@ -290,7 +292,7 @@ async function handleEconomyCommands(ctx) {
     if (!steal.success) {
       await sock.sendMessage(from, {
         text:
-          `🚨 Roubo falhou! @${sender.split("@")[0]} perdeu *${steal.lost}* Epsteincoins.\n` +
+          `🚨 Roubo falhou! @${sender.split("@")[0]} perdeu *${steal.lost}* ${CURRENCY_LABEL}.\n` +
           `Chance de sucesso nesta tentativa: ${(steal.successChance * 100).toFixed(0)}%`,
         mentions: [sender],
       })
@@ -299,8 +301,8 @@ async function handleEconomyCommands(ctx) {
 
     await sock.sendMessage(from, {
       text:
-        `🕵️ Roubo bem-sucedido! @${sender.split("@")[0]} roubou *${steal.stolenFromVictim}* de @${target.split("@")[0]} e recebeu *${steal.gained}* Epsteincoins.\n` +
-        `Faixa de roubo: 50 a 200 moedas.\n` +
+        `🕵️ Roubo bem-sucedido! @${sender.split("@")[0]} roubou *${steal.stolenFromVictim}* de @${target.split("@")[0]} e recebeu *${steal.gained}* ${CURRENCY_LABEL}.\n` +
+        `Faixa de roubo: 50 a 200 ${CURRENCY_LABEL}.\n` +
         `Chance de sucesso nesta tentativa: ${(steal.successChance * 100).toFixed(0)}%`,
       mentions: [sender, target],
     })
@@ -318,7 +320,7 @@ async function handleEconomyCommands(ctx) {
 
     await sock.sendMessage(from, {
       text:
-        `💰 Daily resgatado: *${daily.amount}* Epsteincoins.` +
+        `💰 Daily resgatado: *${daily.amount}* ${CURRENCY_LABEL}.` +
         (daily.kronosBonus ? " (bonus da Coroa Kronos aplicado)" : ""),
     })
     return true
@@ -383,8 +385,8 @@ async function handleEconomyCommands(ctx) {
       text:
         `🎰 ${result.join(" ")}\n` +
         (payout > 0
-          ? `Resultado: ganhou *${payout}* Epsteincoins.`
-          : `Resultado: perdeu *${value}* Epsteincoins.`),
+          ? `Resultado: ganhou *${payout}* ${CURRENCY_LABEL}.`
+          : `Resultado: perdeu *${value}* ${CURRENCY_LABEL}.`),
     })
     return true
   }
@@ -419,14 +421,14 @@ async function handleEconomyCommands(ctx) {
         message = "🚗 Você sofreu um acidente no delivery e ficou sem pagamento hoje."
       } else {
         gain = Math.floor(Math.random() * 71) + 30
-        message = `🍔 Delivery concluído! Você ganhou ${gain} Epsteincoins.`
+        message = `🍔 Delivery concluído! Você ganhou ${gain} ${CURRENCY_LABEL}.`
       }
     } else if (work === "capinar") {
       if (Math.random() < 0.2) {
         message = "🐍 Você foi picado e perdeu o dia de trabalho."
       } else {
         gain = 70
-        message = `🌱 Serviço concluído! Você ganhou ${gain} Epsteincoins.`
+        message = `🌱 Serviço concluído! Você ganhou ${gain} ${CURRENCY_LABEL}.`
       }
     } else if (work === "lavagem") {
       if (Math.random() < 0.8) {
@@ -435,10 +437,10 @@ async function handleEconomyCommands(ctx) {
           details: "Falha no trabalho lavagem",
           meta: { work },
         })
-        message = `💀 Lavagem fracassou! Você perdeu ${lost} Epsteincoins.`
+        message = `💀 Lavagem fracassou! Você perdeu ${lost} ${CURRENCY_LABEL}.`
       } else {
         gain = Math.floor(Math.random() * 201) + 200
-        message = `💰 Lavagem concluída! Você ganhou ${gain} Epsteincoins.`
+        message = `💰 Lavagem concluída! Você ganhou ${gain} ${CURRENCY_LABEL}.`
       }
     } else {
       await sock.sendMessage(from, { text: "Trabalho inválido. Use: ifood, capinar ou lavagem." })
@@ -522,7 +524,7 @@ async function handleEconomyCommands(ctx) {
         details: `Admin adicionou ${amount}`,
         meta: { admin: sender },
       })
-      await sock.sendMessage(from, { text: `✅ ${amount} moedas adicionadas para @${target.split("@")[0]}.`, mentions: [target] })
+      await sock.sendMessage(from, { text: `✅ ${amount} ${CURRENCY_LABEL} adicionadas para @${target.split("@")[0]}.`, mentions: [target] })
       return true
     }
 
@@ -534,7 +536,7 @@ async function handleEconomyCommands(ctx) {
         details: `Admin removeu ${amount}`,
         meta: { admin: sender },
       })
-      await sock.sendMessage(from, { text: `✅ ${removed} moedas removidas de @${target.split("@")[0]}.`, mentions: [target] })
+      await sock.sendMessage(from, { text: `✅ ${removed} ${CURRENCY_LABEL} removidas de @${target.split("@")[0]}.`, mentions: [target] })
       return true
     }
 

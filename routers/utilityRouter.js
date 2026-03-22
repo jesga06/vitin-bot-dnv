@@ -14,6 +14,7 @@ async function handleUtilityCommands(ctx) {
     logger,
     videoToSticker,
     dddMap,
+    jidNormalizedUser,
   } = ctx
 
   let media =
@@ -99,7 +100,18 @@ async function handleUtilityCommands(ctx) {
 
   if (cmd === prefix + "roleta" && isGroup) {
     const metadata = await sock.groupMetadata(from)
-    const participantes = (metadata?.participants || []).map((p) => p.id)
+    const botJid = jidNormalizedUser(sock.user?.id || "")
+    const participantes = (metadata?.participants || [])
+      .map((p) => jidNormalizedUser(p.id))
+      .filter((id) => id && id !== botJid)
+
+    if (!participantes.length) {
+      await sock.sendMessage(from, {
+        text: "Não foi possível realizar a roleta: nenhum participante encontrado.",
+      })
+      return true
+    }
+
     const alvo = participantes[Math.floor(Math.random() * participantes.length)]
     const numero = alvo.split("@")[0]
 
@@ -194,7 +206,16 @@ async function handleUtilityCommands(ctx) {
 
   if (cmd === prefix + "treta" && isGroup) {
     const metadata = await sock.groupMetadata(from)
-    const participantes = (metadata?.participants || []).map((p) => p.id)
+    const botJid = jidNormalizedUser(sock.user?.id || "")
+    const participantes = (metadata?.participants || [])
+      .map((p) => jidNormalizedUser(p.id))
+      .filter((id) => id && id !== botJid)
+    if (participantes.length < 2) {
+      await sock.sendMessage(from, {
+        text: "Não foi possível iniciar a treta: participantes insuficientes.",
+      })
+      return true
+    }
     const p1 = participantes[Math.floor(Math.random() * participantes.length)]
     let p2 = participantes[Math.floor(Math.random() * participantes.length)]
     while (p1 === p2) p2 = participantes[Math.floor(Math.random() * participantes.length)]

@@ -98,7 +98,7 @@ Observações de lobby:
 - !daily
 - !cassino / !aposta
 - !trabalho
-- !silenciar
+- !usarpasse @user <tipo> <severidade>
 
 ### Moderação
 - !mute

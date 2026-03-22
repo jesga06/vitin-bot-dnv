@@ -61,6 +61,52 @@ test("economy router handles !economia command", async () => {
   assert.match(sent[0].payload.text, /Comandos de economia/)
 })
 
+test("economy router handles !extrato for mentioned user", async () => {
+  const { sock, sent } = createSockCapture()
+  const target = "alvo@s.whatsapp.net"
+  let statementUser = null
+
+  const handled = await handleEconomyCommands({
+    sock,
+    from: "group@g.us",
+    sender: "autor@s.whatsapp.net",
+    cmd: "!extrato @alvo",
+    cmdName: "!extrato",
+    cmdArg1: "@alvo",
+    cmdArg2: "",
+    cmdParts: ["!extrato", "@alvo"],
+    mentioned: [target],
+    prefix: "!",
+    isGroup: true,
+    senderIsAdmin: false,
+    jidNormalizedUser: (id) => id,
+    storage: {
+      getMutedUsers: () => ({}),
+      setMutedUsers: () => {},
+    },
+    economyService: {
+      getProfile: () => ({ coins: 0, shields: 0, buffs: {}, inventory: {} }),
+      getStatement: (userId) => {
+        statementUser = userId
+        return [{ at: Date.now(), type: "test", deltaCoins: 10, balanceAfter: 20, details: "ok" }]
+      },
+      getGroupRanking: () => [],
+      getShopIndexText: () => "shop",
+    },
+    parseQuantity: () => 0,
+    formatDuration: () => "0m",
+    buildGameStatsText: () => "",
+    buildEconomyStatsText: () => "",
+    buildInventoryText: () => "",
+    incrementUserStat: () => {},
+  })
+
+  assert.equal(handled, true)
+  assert.equal(statementUser, target)
+  assert.equal(sent.length, 1)
+  assert.match(sent[0].payload.text, /Extrato de @alvo/)
+})
+
 test("games router handles !começar with missing lobby id", async () => {
   const { sock, sent } = createSockCapture()
 
@@ -248,6 +294,121 @@ test("games router handles !jogos submenu", async () => {
   assert.match(sent[0].payload.text, /SUBMENU: JOGOS/)
 })
 
+test("games router blocks command reaction start with fewer than 3 participants", async () => {
+  const sent = []
+  let started = false
+  const sock = {
+    user: { id: "bot@s.whatsapp.net" },
+    async sendMessage(to, payload) {
+      sent.push({ to, payload })
+    },
+    async groupMetadata() {
+      return {
+        participants: [
+          { id: "user1@s.whatsapp.net" },
+          { id: "user2@s.whatsapp.net" },
+          { id: "bot@s.whatsapp.net" },
+        ],
+      }
+    },
+  }
+
+  const handled = await handleGameCommands({
+    sock,
+    from: "group@g.us",
+    sender: "user@s.whatsapp.net",
+    cmd: "!começa reação",
+    cmdName: "!começa",
+    cmdArg1: "reação",
+    cmdArg2: "",
+    mentioned: [],
+    prefix: "!",
+    isGroup: true,
+    text: "!começa reação",
+    msg: { message: {} },
+    storage: {
+      getGameState: () => null,
+      setGameState: () => {},
+      clearGameState: () => {},
+    },
+    gameManager: {
+      createOptInSession: () => "ABCD",
+      getOptInSession: () => null,
+      addPlayerToOptIn: () => false,
+      clearOptInSession: () => {},
+      optInSessions: {},
+    },
+    economyService: {
+      getProfile: () => ({ stats: {} }),
+      debitCoinsFlexible: () => 0,
+    },
+    caraOuCoroa: {
+      toggleDobroOuNada: () => ({ enabled: false }),
+      formatDobroStatus: () => "",
+    },
+    adivinhacao: {
+      start: () => ({}),
+      recordGuess: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    batataquente: {
+      start: () => ({}),
+      formatStatus: () => "",
+      getLoser: () => "",
+      recordPass: () => ({ valid: false, error: "" }),
+    },
+    dueloDados: {
+      start: () => ({}),
+      recordRoll: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    roletaRussa: {
+      start: () => ({}),
+      getCurrentPlayer: () => "",
+      takeShotAt: () => ({ hit: false }),
+      formatStatus: () => "",
+    },
+    startPeriodicGame: async () => {
+      started = true
+      return { ok: true }
+    },
+    GAME_REWARDS: {
+      ADIVINHACAO_EXACT: 60,
+      ADIVINHACAO_CLOSEST: 30,
+      DADOS_WIN: 35,
+      BATATA_WIN: 20,
+      ROLETA_WIN: 45,
+      ROLETA_WIN_GUARANTEED: 30,
+    },
+    BASE_GAME_REWARD: 30,
+    normalizeUnifiedGameType: (v) => v,
+    normalizeLobbyId: () => "",
+    activeGameKey: () => "",
+    resolveActiveLobbyForPlayer: () => ({ ok: false, reason: "not-found" }),
+    getLobbyCreateBlockMessage: () => null,
+    getGameBuyIn: () => 0,
+    collectLobbyBuyIn: () => ({ ok: true, pool: 0 }),
+    distributeLobbyBuyInPool: async () => {},
+    parsePositiveInt: () => 1,
+    isResenhaModeEnabled: () => false,
+    rewardPlayer: async () => {},
+    rewardPlayers: async () => {},
+    incrementUserStat: () => {},
+    applyRandomGamePunishment: async () => {},
+    createPendingTargetForWinner: async () => {},
+    jidNormalizedUser: (id) => id,
+    createLobbyWarningCallback: () => {},
+    buildGameStatsText: () => "",
+  })
+
+  assert.equal(handled, true)
+  assert.equal(started, false)
+  assert.equal(sent.length, 1)
+  assert.match(sent[0].payload.text, /pelo menos 3 participantes/i)
+})
+
 test("economy router no longer handles !jogos", async () => {
   const { sock, sent } = createSockCapture()
 
@@ -371,4 +532,63 @@ test("utility router handles !menu command", async () => {
   assert.equal(handled, true)
   assert.equal(sent.length, 1)
   assert.match(sent[0].payload.text, /VITIN BOT/)
+})
+
+test("utility router handles hidden !jid only in DM", async () => {
+  const { sock, sent } = createSockCapture()
+  const sender = "5511999999999:5@s.whatsapp.net"
+
+  const handled = await handleUtilityCommands({
+    sock,
+    from: sender,
+    sender,
+    cmd: "!jid",
+    prefix: "!",
+    isGroup: false,
+    msg: { message: {} },
+    quoted: null,
+    mentioned: [],
+    sharp: () => ({}),
+    downloadMediaMessage: async () => null,
+    logger: {},
+    videoToSticker: async () => null,
+    dddMap: {},
+    jidNormalizedUser: (id) => String(id || "").split(":")[0],
+  })
+
+  assert.equal(handled, true)
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].to, sender)
+  assert.match(sent[0].payload.text, /5511999999999:5@s\.whatsapp\.net/)
+  assert.match(sent[0].payload.text, /5511999999999@s\.whatsapp\.net/)
+})
+
+test("utility router handles !punicoeslista command", async () => {
+  const { sock, sent } = createSockCapture()
+  const sender = "user@s.whatsapp.net"
+
+  const handled = await handleUtilityCommands({
+    sock,
+    from: "group@g.us",
+    sender,
+    cmd: "!punicoeslista",
+    prefix: "!",
+    isGroup: true,
+    msg: { message: {} },
+    quoted: null,
+    mentioned: [],
+    sharp: () => ({}),
+    downloadMediaMessage: async () => null,
+    logger: {},
+    videoToSticker: async () => null,
+    dddMap: {},
+    getPunishmentDetailsText: () => "PUNIÇÕES DETALHADAS",
+  })
+
+  assert.equal(handled, true)
+  assert.equal(sent.length, 2)
+  assert.equal(sent[0].to, sender)
+  assert.match(sent[0].payload.text, /PUNIÇÕES DETALHADAS/)
+  assert.equal(sent[1].to, "group@g.us")
+  assert.match(sent[1].payload.text, /enviei a lista de punições no privado/i)
 })

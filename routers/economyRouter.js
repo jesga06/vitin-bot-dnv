@@ -1,4 +1,5 @@
 const CURRENCY_LABEL = "Epsteincoins"
+const telemetry = require("../telemetryService")
 
 async function handleEconomyCommands(ctx) {
   const {
@@ -22,6 +23,7 @@ async function handleEconomyCommands(ctx) {
     buildEconomyStatsText,
     buildInventoryText,
     incrementUserStat,
+    applyPunishment,
   } = ctx
 
   if (cmdName === prefix + "perfil" && cmdArg1 === "stats") {
@@ -36,24 +38,24 @@ async function handleEconomyCommands(ctx) {
     await sock.sendMessage(from, {
       text:
 `╭━━━〔 💰 SUBMENU: ECONOMIA 〕━━━╮
-│ Comandos de economia
+│ Comandos de economia (* significa argumento opcional)
 │ ${prefix}perfil stats
-│ ${prefix}perfil @user
+│ ${prefix}perfil *@user
 │ ${prefix}coinsranking
-│ ${prefix}extrato
+│ ${prefix}extrato *@user
 │ ${prefix}loja
-│ ${prefix}comprar <item|indice> <quantidade>
-│ ${prefix}comprarpara @user <item> <quantidade>
-│ ${prefix}vender <item> <quantidade>
-│ ${prefix}doarcoins @user <quantidade>
-│ ${prefix}doaritem @user <item> <quantidade>
+│ ${prefix}comprar <item|indice> *<quantidade>
+│ ${prefix}comprarpara @user <item> *<quantidade>
+│ ${prefix}vender <item> *<quantidade>
+│ ${prefix}doarcoins @user *<quantidade>
+│ ${prefix}doaritem @user <item> *<quantidade>
 │ ${prefix}roubar @user
 │ ${prefix}daily
 │ ${prefix}cassino <valor> / ${prefix}aposta <valor>
 │ ${prefix}lootbox <quantidade>
-│ ${prefix}falsificar <tipo> <severidade?> <quantidade>
+│ ${prefix}falsificar <tipo> <severidade?> *<quantidade>
+│ ${prefix}usarpasse @user <tipo> <severidade>
 │ ${prefix}trabalho <ifood|capinar|lavagem>
-│ ${prefix}silenciar @user
 ╰━━━━━━━━━━━━━━━━━━━━╯`,
     })
     return true
@@ -79,8 +81,9 @@ async function handleEconomyCommands(ctx) {
     return true
   }
 
-  if (cmd === prefix + "extrato") {
-    const statement = economyService.getStatement(sender, 10)
+  if (cmdName === prefix + "extrato") {
+    const targetUser = mentioned[0] || sender
+    const statement = economyService.getStatement(targetUser, 10)
     if (!statement.length) {
       await sock.sendMessage(from, { text: "Sem movimentações no extrato ainda." })
       return true
@@ -94,7 +97,8 @@ async function handleEconomyCommands(ctx) {
     })
 
     await sock.sendMessage(from, {
-      text: `📒 Extrato (últimas 10)\n${lines.join("\n")}`,
+      text: `📒 Extrato de @${targetUser.split("@")[0]} (últimas 10)\n${lines.join("\n")}`,
+      mentions: [targetUser],
     })
     return true
   }
@@ -121,6 +125,7 @@ async function handleEconomyCommands(ctx) {
   }
 
   if (cmd === prefix + "loja") {
+    telemetry.incrementCounter("economy.shop.view", 1)
     await sock.sendMessage(from, {
       text: economyService.getShopIndexText(),
     })
@@ -163,7 +168,7 @@ async function handleEconomyCommands(ctx) {
     const quantity = parseQuantity(cmdParts[3], 1)
     if (!target || !item) {
       await sock.sendMessage(from, {
-        text: "Use: !comprarpara @user <item> <quantidade>",
+        text: "Use: !comprarpara @user <item> [quantidade]",
       })
       return true
     }
@@ -208,9 +213,9 @@ async function handleEconomyCommands(ctx) {
 
   if (cmdName === prefix + "doarcoins" && isGroup) {
     const target = mentioned[0]
-    const quantity = parseQuantity(cmdParts[2], 0)
+    const quantity = parseQuantity(cmdParts[2], 1)
     if (!target || quantity <= 0) {
-      await sock.sendMessage(from, { text: "Use: !doarcoins @user <quantidade>" })
+      await sock.sendMessage(from, { text: "Use: !doarcoins @user [quantidade]" })
       return true
     }
 
@@ -232,7 +237,7 @@ async function handleEconomyCommands(ctx) {
     const item = cmdParts[2] || ""
     const quantity = parseQuantity(cmdParts[3], 1)
     if (!target || !item) {
-      await sock.sendMessage(from, { text: "Use: !doaritem @user <item> <quantidade>" })
+      await sock.sendMessage(from, { text: "Use: !doaritem @user <item> [quantidade]" })
       return true
     }
 
@@ -371,6 +376,16 @@ async function handleEconomyCommands(ctx) {
     }
 
     economyService.incrementStat(sender, "casinoPlays", 1)
+    telemetry.incrementCounter("economy.casino.play", 1, {
+      result: payout > 0 ? "win" : "loss",
+    })
+    telemetry.appendEvent("economy.casino.play", {
+      userId: sender,
+      bet: value,
+      payout,
+      maxCount,
+      won: payout > 0,
+    })
 
     await sock.sendMessage(from, {
       text:
@@ -424,25 +439,25 @@ async function handleEconomyCommands(ctx) {
 
   if (cmdName === prefix + "falsificar") {
     const type = Number.parseInt(cmdArg1 || "", 10)
-    if (!Number.isFinite(type) || type < 1 || type > 5) {
+    if (!Number.isFinite(type) || type < 1 || type > 13) {
       await sock.sendMessage(from, {
-        text: "Use: !falsificar <tipo 1-5> <severidade?> <quantidade>",
+        text: "Use: !falsificar <tipo 1-13> [severidade] [quantidade]",
       })
       return true
     }
 
     let severity = 1
-    let quantity = 0
+    let quantity = 1
     if (cmdParts[3]) {
       severity = parseQuantity(cmdParts[2], 1)
-      quantity = parseQuantity(cmdParts[3], 0)
+      quantity = parseQuantity(cmdParts[3], 1)
     } else {
-      quantity = parseQuantity(cmdParts[2], 0)
+      quantity = parseQuantity(cmdParts[2], 1)
     }
 
     if (severity <= 0 || quantity <= 0) {
       await sock.sendMessage(from, {
-        text: "Use: !falsificar <tipo 1-5> <severidade?> <quantidade>",
+        text: "Use: !falsificar <tipo 1-13> [severidade] [quantidade]",
       })
       return true
     }
@@ -528,20 +543,25 @@ async function handleEconomyCommands(ctx) {
 
     let gain = 0
     let message = ""
+    let workStatus = "none"
 
     if (work === "ifood") {
       if (Math.random() < 0.1) {
         message = "🚗 Você sofreu um acidente no delivery e ficou sem pagamento hoje."
+        workStatus = "fail"
       } else {
         gain = Math.floor(Math.random() * 71) + 30
         message = `🍔 Delivery concluído! Você ganhou ${gain} ${CURRENCY_LABEL}.`
+        workStatus = "win"
       }
     } else if (work === "capinar") {
       if (Math.random() < 0.2) {
         message = "🐍 Você foi picado e perdeu o dia de trabalho."
+        workStatus = "fail"
       } else {
         gain = 70
         message = `🌱 Serviço concluído! Você ganhou ${gain} ${CURRENCY_LABEL}.`
+        workStatus = "win"
       }
     } else if (work === "lavagem") {
       if (Math.random() < 0.8) {
@@ -551,9 +571,11 @@ async function handleEconomyCommands(ctx) {
           meta: { work },
         })
         message = `💀 Lavagem fracassou! Você perdeu ${lost} ${CURRENCY_LABEL}.`
+        workStatus = "loss"
       } else {
         gain = Math.floor(Math.random() * 201) + 200
         message = `💰 Lavagem concluída! Você ganhou ${gain} ${CURRENCY_LABEL}.`
+        workStatus = "win"
       }
     } else {
       await sock.sendMessage(from, { text: "Trabalho inválido. Use: ifood, capinar ou lavagem." })
@@ -569,50 +591,56 @@ async function handleEconomyCommands(ctx) {
       })
     }
 
+    telemetry.incrementCounter("economy.work.attempt", 1, {
+      work,
+      status: workStatus,
+    })
+    telemetry.appendEvent("economy.work.attempt", {
+      userId: sender,
+      work,
+      status: workStatus,
+      gain,
+    })
+
     await sock.sendMessage(from, { text: message })
     return true
   }
 
-  if (cmdName === prefix + "silenciar" && isGroup) {
+  if (cmdName === prefix + "usarpasse" && isGroup) {
     const target = mentioned[0]
+    const passType = Number.parseInt(cmdParts[2] || "", 10)
+    const passSeverity = parseQuantity(cmdParts[3], 1)
+    const botId = jidNormalizedUser(sock.user?.id || "")
     if (!target) {
-      await sock.sendMessage(from, { text: "Use: !silenciar @user" })
+      await sock.sendMessage(from, { text: "Use: !usarpasse @user <tipo 1-13> <severidade>" })
+      return true
+    }
+    if (jidNormalizedUser(target) === botId) {
+      await sock.sendMessage(from, { text: "🤖 O bot não pode receber punições administrativas." })
+      return true
+    }
+    if (!Number.isFinite(passType) || passType < 1 || passType > 13 || passSeverity <= 0) {
+      await sock.sendMessage(from, { text: "Use: !usarpasse @user <tipo 1-13> <severidade>" })
       return true
     }
 
-    const hasMute = economyService.getItemQuantity(sender, "mute")
-    if (hasMute < 1) {
-      await sock.sendMessage(from, { text: "Você não possui passe de silêncio suficiente." })
-      return true
-    }
-    economyService.removeItem(sender, "mute", 1)
-
-    const blockedByShield = economyService.consumeShield(target)
-    if (blockedByShield) {
-      await sock.sendMessage(from, {
-        text: `🛡️ @${target.split("@")[0]} bloqueou a punição com seu escudo!`,
-        mentions: [target],
-      })
+    const passKey = economyService.createPunishmentPassKey(passType, passSeverity)
+    if (!passKey) {
+      await sock.sendMessage(from, { text: "Tipo ou severidade inválidos." })
       return true
     }
 
-    const mutedUsers = storage.getMutedUsers()
-    if (!mutedUsers[from]) mutedUsers[from] = {}
-    mutedUsers[from][target] = true
-    storage.setMutedUsers(mutedUsers)
+    const hasPass = economyService.getItemQuantity(sender, passKey)
+    if (hasPass < 1) {
+      await sock.sendMessage(from, { text: `Você não possui ${passKey} no inventário.` })
+      return true
+    }
+    economyService.removeItem(sender, passKey, 1)
 
-    setTimeout(() => {
-      const mutedUsersTimeout = storage.getMutedUsers()
-      if (mutedUsersTimeout[from]?.[target]) {
-        delete mutedUsersTimeout[from][target]
-        if (Object.keys(mutedUsersTimeout[from]).length === 0) delete mutedUsersTimeout[from]
-        storage.setMutedUsers(mutedUsersTimeout)
-      }
-    }, 10 * 60_000)
-
-    await sock.sendMessage(from, {
-      text: `🔇 @${target.split("@")[0]} foi silenciado por 10 minutos.`,
-      mentions: [target],
+    await applyPunishment(sock, from, target, String(passType), {
+      severityMultiplier: passSeverity,
+      origin: "game",
+      botUserId: sock.user?.id,
     })
     return true
   }
@@ -623,16 +651,15 @@ async function handleEconomyCommands(ctx) {
       return true
     }
 
-    const target = mentioned[0]
-    if (!target) {
-      await sock.sendMessage(from, { text: "Marque o usuário alvo." })
-      return true
-    }
+    const mentionedTarget = mentioned[0] || null
+    const target = mentionedTarget || sender
+    const argOffset = mentionedTarget ? 2 : 1
+    const targetMentions = mentionedTarget ? [target] : []
 
     if (cmdName === prefix + "setcoins") {
-      const amount = Number.parseInt(cmdParts[2], 10)
+      const amount = Number.parseInt(cmdParts[argOffset], 10)
       if (!Number.isFinite(amount) || amount < 0) {
-        return sock.sendMessage(from, { text: "Use: !setcoins @user <quantidade>" })
+        return sock.sendMessage(from, { text: "Use: !setcoins [@user] <quantidade>" })
       }
       const result = economyService.setCoins(target, amount, {
         type: "admin-setcoins",
@@ -641,52 +668,52 @@ async function handleEconomyCommands(ctx) {
       })
       await sock.sendMessage(from, {
         text: `✅ Saldo de @${target.split("@")[0]} ajustado para *${result.balance}* ${CURRENCY_LABEL}.`,
-        mentions: [target],
+        mentions: targetMentions,
       })
       return true
     }
 
     if (cmdName === prefix + "addcoins") {
-      const amount = parseQuantity(cmdParts[2], 0)
-      if (amount <= 0) return sock.sendMessage(from, { text: "Use: !addcoins @user <quantidade>" })
+      const amount = parseQuantity(cmdParts[argOffset], 1)
+      if (amount <= 0) return sock.sendMessage(from, { text: "Use: !addcoins [@user] [quantidade]" })
       economyService.creditCoins(target, amount, {
         type: "admin-credit",
         details: `Admin adicionou ${amount}`,
         meta: { admin: sender },
       })
-      await sock.sendMessage(from, { text: `✅ ${amount} ${CURRENCY_LABEL} adicionadas para @${target.split("@")[0]}.`, mentions: [target] })
+      await sock.sendMessage(from, { text: `✅ ${amount} ${CURRENCY_LABEL} adicionadas para @${target.split("@")[0]}.`, mentions: targetMentions })
       return true
     }
 
     if (cmdName === prefix + "removecoins") {
-      const amount = parseQuantity(cmdParts[2], 0)
-      if (amount <= 0) return sock.sendMessage(from, { text: "Use: !removecoins @user <quantidade>" })
+      const amount = parseQuantity(cmdParts[argOffset], 1)
+      if (amount <= 0) return sock.sendMessage(from, { text: "Use: !removecoins [@user] [quantidade]" })
       const removed = economyService.debitCoinsFlexible(target, amount, {
         type: "admin-debit",
         details: `Admin removeu ${amount}`,
         meta: { admin: sender },
       })
-      await sock.sendMessage(from, { text: `✅ ${removed} ${CURRENCY_LABEL} removidas de @${target.split("@")[0]}.`, mentions: [target] })
+      await sock.sendMessage(from, { text: `✅ ${removed} ${CURRENCY_LABEL} removidas de @${target.split("@")[0]}.`, mentions: targetMentions })
       return true
     }
 
     if (cmdName === prefix + "additem") {
-      const item = String(cmdParts[2] || "").trim()
-      if (!item) return sock.sendMessage(from, { text: "Use: !additem @user <item> <quantidade>" })
+      const item = String(cmdParts[argOffset] || "").trim()
+      if (!item) return sock.sendMessage(from, { text: "Use: !additem [@user] <item> [quantidade]" })
 
       let effectiveItem = item
-      let qty = parseQuantity(cmdParts[3], 1)
+      let qty = parseQuantity(cmdParts[argOffset + 1], 1)
 
       const normalized = item.toLowerCase()
       const isPassRequest = ["passe", "pass", "passepunicao", "passpunicao"].includes(normalized)
 
       if (isPassRequest) {
-        const passType = parseQuantity(cmdParts[3], 0)
-        const passSeverity = parseQuantity(cmdParts[4], 1)
-        qty = parseQuantity(cmdParts[5], 0)
-        if (passType < 1 || passType > 5 || passSeverity <= 0 || qty <= 0) {
+        const passType = parseQuantity(cmdParts[argOffset + 1], 0)
+        const passSeverity = parseQuantity(cmdParts[argOffset + 2], 1)
+        qty = parseQuantity(cmdParts[argOffset + 3], 1)
+        if (passType < 1 || passType > 13 || passSeverity <= 0 || qty <= 0) {
           return sock.sendMessage(from, {
-            text: "Use: !additem @user passe <tipo 1-5> <severidade> <quantidade>",
+            text: "Use: !additem [@user] passe <tipo 1-13> <severidade> [quantidade]",
           })
         }
         const passKey = economyService.createPunishmentPassKey(passType, passSeverity)
@@ -709,17 +736,17 @@ async function handleEconomyCommands(ctx) {
       })
       await sock.sendMessage(from, {
         text: `✅ Item adicionado para @${target.split("@")[0]}: *${qty}x ${itemName}*`,
-        mentions: [target],
+        mentions: targetMentions,
       })
       return true
     }
 
     if (cmdName === prefix + "removeitem") {
-      const item = cmdParts[2]
-      const qtyInput = cmdParts[3]
+      const item = cmdParts[argOffset]
+      const qtyInput = cmdParts[argOffset + 1]
       const qty = parseQuantity(qtyInput, 0)
       if (!item || !qtyInput || qty <= 0) {
-        return sock.sendMessage(from, { text: "Use: !removeitem @user <tipo> <quantidade>" })
+        return sock.sendMessage(from, { text: "Use: !removeitem [@user] <tipo> <quantidade>" })
       }
       economyService.removeItem(target, item, qty)
       economyService.pushTransaction(target, {
@@ -728,7 +755,7 @@ async function handleEconomyCommands(ctx) {
         details: `Admin removeu ${qty}x ${item}`,
         meta: { admin: sender, item, qty },
       })
-      await sock.sendMessage(from, { text: `✅ Item removido de @${target.split("@")[0]}.`, mentions: [target] })
+      await sock.sendMessage(from, { text: `✅ Item removido de @${target.split("@")[0]}.`, mentions: targetMentions })
       return true
     }
   }

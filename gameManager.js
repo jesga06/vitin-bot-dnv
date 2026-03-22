@@ -45,6 +45,10 @@ const gameManager = {
 
     // Timeout principal: limpa o lobby após timeoutMs
     gameManager.optInSessions[groupId][gameId].timeoutId = setTimeout(() => {
+      const session = gameManager.optInSessions[groupId]?.[gameId]
+      if (session && typeof options?.onLobbyTimeout === "function") {
+        options.onLobbyTimeout(groupId, gameId, gameType, session.players)
+      }
       gameManager.clearOptInSession(groupId, gameId)
     }, timeoutMs)
 

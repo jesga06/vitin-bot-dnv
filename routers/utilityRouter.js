@@ -1,3 +1,5 @@
+const telemetry = require("../telemetryService")
+
 async function handleUtilityCommands(ctx) {
   const {
     sock,
@@ -15,6 +17,7 @@ async function handleUtilityCommands(ctx) {
     videoToSticker,
     dddMap,
     jidNormalizedUser,
+    getPunishmentDetailsText,
   } = ctx
 
   let media =
@@ -23,7 +26,22 @@ async function handleUtilityCommands(ctx) {
     quoted?.imageMessage ||
     quoted?.videoMessage
 
+  function trackUtility(command, status, meta = {}) {
+    telemetry.incrementCounter("router.utility.command", 1, {
+      command,
+      status,
+    })
+    telemetry.appendEvent("router.utility.command", {
+      command,
+      status,
+      groupId: from,
+      sender,
+      ...meta,
+    })
+  }
+
   if (cmd === prefix + "menu") {
+    trackUtility("menu", "success")
     await sock.sendMessage(from, {
       text:
 `╭━━━〔 🤖 VITIN BOT 〕━━━╮
@@ -44,9 +62,11 @@ async function handleUtilityCommands(ctx) {
 │ ${prefix}treta
 │ ${prefix}jogos (submenu de jogos)
 │ ${prefix}economia (submenu de economia)
+│ ${prefix}punicoeslista
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
 ╭━━━〔 ⚡ ADM 〕━━━╮
+│ (* significa argumento opcional)
 │ ${prefix}mute @user
 │ ${prefix}unmute @user
 │ ${prefix}ban @user
@@ -56,19 +76,66 @@ async function handleUtilityCommands(ctx) {
 │ ${prefix}resenha (ativa/desativa punições em jogos)
 │ ${prefix}adminadd @user (promove admin)
 │ ${prefix}adminrm @user (remove admin)
-│ ${prefix}setcoins @user <quantidade>
-│ ${prefix}addcoins @user <quantidade>
-│ ${prefix}removecoins @user <quantidade>
-│ ${prefix}additem @user <item> <quantidade>
-│ ${prefix}additem @user passe <tipo> <severidade> <qtd>
-│ ${prefix}removeitem @user <item> <quantidade>
+│ ${prefix}setcoins *@user <quantidade>
+│ ${prefix}addcoins *@user *<quantidade>
+│ ${prefix}removecoins *@user *<quantidade>
+│ ${prefix}additem *@user <item> *<quantidade>
+│ ${prefix}additem *@user passe <tipo> <severidade> *<qtd>
+│ ${prefix}removeitem *@user <item> *<quantidade>
 ╰━━━━━━━━━━━━━━━━━━━━╯`,
     })
     return true
   }
 
+  if (cmd === prefix + "jid") {
+    if (isGroup) {
+      trackUtility("jid", "rejected", { reason: "group-only-dm-command" })
+      return false
+    }
+
+    const senderRaw = String(sender || "").trim()
+    const senderNormalized = jidNormalizedUser(senderRaw)
+    const senderWithoutDevice = senderRaw.split(":")[0]
+    const senderUserPart = senderWithoutDevice.split("@")[0]
+    const senderSWh = senderUserPart ? `${senderUserPart}@s.whatsapp.net` : ""
+    const senderLid = senderUserPart ? `${senderUserPart}@lid` : ""
+
+    const identifiers = [
+      senderRaw,
+      senderNormalized,
+      senderWithoutDevice,
+      senderSWh,
+      senderLid,
+      senderUserPart,
+    ].filter(Boolean)
+
+    const uniqueIdentifiers = Array.from(new Set(identifiers))
+    trackUtility("jid", "success")
+    await sock.sendMessage(from, {
+      text: uniqueIdentifiers.join("\n"),
+    })
+    return true
+  }
+
+  if (cmd === prefix + "punicoeslista" || cmd === prefix + "puniçõeslista") {
+    trackUtility("punicoeslista", "success")
+    const detailsText = typeof getPunishmentDetailsText === "function"
+      ? getPunishmentDetailsText()
+      : "Lista de punições indisponível no momento."
+
+    await sock.sendMessage(sender, { text: detailsText })
+    if (isGroup) {
+      await sock.sendMessage(from, {
+        text: `📩 @${sender.split("@")[0]}, te enviei a lista de punições no privado.`,
+        mentions: [sender],
+      })
+    }
+    return true
+  }
+
   if (cmd === prefix + "s" || cmd === prefix + "fig" || cmd === prefix + "sticker" || cmd === prefix + "f") {
     if (!media) {
+      trackUtility("sticker", "rejected", { reason: "missing-media" })
       await sock.sendMessage(from, { text: "Envie ou responda uma mídia!" })
       return true
     }
@@ -92,7 +159,9 @@ async function handleUtilityCommands(ctx) {
       }
 
       await sock.sendMessage(from, { sticker })
+      trackUtility("sticker", "success")
     } catch (err) {
+      trackUtility("sticker", "error")
       console.error(err)
       await sock.sendMessage(from, { text: "Erro ao criar figurinha!" })
     }
@@ -107,6 +176,7 @@ async function handleUtilityCommands(ctx) {
       .filter((id) => id && id !== botJid)
 
     if (!participantes.length) {
+      trackUtility("roleta", "rejected", { reason: "no-participants" })
       await sock.sendMessage(from, {
         text: "Não foi possível realizar a roleta: nenhum participante encontrado.",
       })
@@ -140,6 +210,7 @@ async function handleUtilityCommands(ctx) {
 
     const frase = frases[Math.floor(Math.random() * frases.length)]
     await sock.sendMessage(from, { text: frase, mentions: [alvo] })
+    trackUtility("roleta", "success")
     return true
   }
 
@@ -173,6 +244,7 @@ async function handleUtilityCommands(ctx) {
       })
     }, 3000)
 
+    trackUtility("bombardeio", "success", { target: alvo })
     return true
   }
 
@@ -181,6 +253,7 @@ async function handleUtilityCommands(ctx) {
     const numero = alvo.split("@")[0]
     const p = Math.floor(Math.random() * 101)
     await sock.sendMessage(from, { text: `@${numero} é ${p}% gay 🌈`, mentions: [alvo] })
+    trackUtility("gay", "success", { target: alvo })
     return true
   }
 
@@ -189,6 +262,7 @@ async function handleUtilityCommands(ctx) {
     const numero = alvo.split("@")[0]
     const p = Math.floor(Math.random() * 101)
     await sock.sendMessage(from, { text: `@${numero} é ${p}% gado 🐂`, mentions: [alvo] })
+    trackUtility("gado", "success", { target: alvo })
     return true
   }
 
@@ -202,6 +276,7 @@ async function handleUtilityCommands(ctx) {
       text: `💘 @${n1} + @${n2} = ${chance}%`,
       mentions: [p1, p2],
     })
+    trackUtility("ship", "success", { targetA: p1, targetB: p2 })
     return true
   }
 
@@ -212,6 +287,7 @@ async function handleUtilityCommands(ctx) {
       .map((p) => jidNormalizedUser(p.id))
       .filter((id) => id && id !== botJid)
     if (participantes.length < 2) {
+      trackUtility("treta", "rejected", { reason: "insufficient-participants" })
       await sock.sendMessage(from, {
         text: "Não foi possível iniciar a treta: participantes insuficientes.",
       })
@@ -252,6 +328,7 @@ async function handleUtilityCommands(ctx) {
         text: `Ih, os corno começaram a tretar\n\n@${n1} VS @${n2}\n\nMotivo: ${motivo}\nResultado: ${resultado}`,
         mentions: [p1, p2],
       })
+      trackUtility("treta", "success", { players: [p1, p2] })
       return true
     }
 
@@ -267,6 +344,7 @@ async function handleUtilityCommands(ctx) {
       text: `Ih, os corno começaram a tretar\n\n@${n1} VS @${n2}\n\nMotivo: ${motivo}\nResultado: ${resultado}`,
       mentions: [p1, p2],
     })
+    trackUtility("treta", "success", { players: [p1, p2] })
     return true
   }
 

@@ -33,7 +33,7 @@ test("dueloDados returns tie punishment when both rolls are equal", () => {
 
 test("roletaRussa guarantees a hit at sixth shot if not hit earlier", () => {
   const players = ["a@s.whatsapp.net", "b@s.whatsapp.net"]
-  const state = roletaRussa.start("g@g.us", players, { betMultiplier: 2 })
+  const state = roletaRussa.start("g@g.us", players, { betValue: 5 })
   state.cylinders = 5
 
   let hit = false
@@ -48,4 +48,50 @@ test("roletaRussa guarantees a hit at sixth shot if not hit earlier", () => {
 
   assert.equal(hit, true)
   assert.ok(outcome.loser)
+})
+
+test("roletaRussa solo auto-win triggers after surpassing bet", () => {
+  const player = "solo@s.whatsapp.net"
+  const state = roletaRussa.start("g@g.us", [player], { betValue: 0 })
+  state.cylinders = 5
+
+  const outcome = roletaRussa.takeShotAt(state)
+  assert.equal(outcome.autoWin, true)
+  assert.equal(outcome.hit, false)
+  assert.deepEqual(outcome.winners, [player])
+})
+
+test("roletaRussa multiplayer hit after surpassing bet becomes all-win", () => {
+  const players = ["a@s.whatsapp.net", "b@s.whatsapp.net"]
+  const state = roletaRussa.start("g@g.us", players, { betValue: 1 })
+  state.cylinders = 5
+
+  let outcome = null
+  for (let i = 0; i < 6; i++) {
+    outcome = roletaRussa.takeShotAt(state)
+    if (outcome.hit) break
+  }
+
+  assert.equal(outcome.hit, true)
+  assert.equal(outcome.allWin, true)
+  assert.deepEqual((outcome.winners || []).sort(), players.slice().sort())
+})
+
+test("roletaRussa chamber selection hits on expected shot index", () => {
+  const players = ["a@s.whatsapp.net", "b@s.whatsapp.net"]
+
+  for (let chamber = 0; chamber <= 5; chamber++) {
+    const state = roletaRussa.start("g@g.us", players, { betValue: 5 })
+    state.cylinders = chamber
+
+    let outcome = null
+    for (let i = 0; i < 6; i++) {
+      outcome = roletaRussa.takeShotAt(state)
+      if (outcome.hit) break
+    }
+
+    assert.equal(Boolean(outcome?.hit), true)
+    assert.equal(state.shotsFired, chamber + 1)
+    assert.equal(Boolean(outcome?.guaranteed), chamber === 5)
+  }
 })

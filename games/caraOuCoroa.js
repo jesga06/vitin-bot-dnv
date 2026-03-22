@@ -204,10 +204,10 @@ async function handleCoinGuess({
 
     let winText =
       `Você acertou! A moeda caiu em *${game.resultado}*.\n` +
-      `Streak: *${streak}*\n`
+      `Streak: *${streak}*`
 
     if (dobroOutcome.active) {
-      winText += `Dobro ou Nada: ${dobroOutcome.state.activeStreak}/2\n`
+      winText += `\nDobro ou Nada: ${dobroOutcome.state.activeStreak}/2\n`
       if (dobroOutcome.doubledJustActivated) {
         winText += "⚠️ DOBRO OU NADA ATIVADO! A próxima derrota terá punição com duração dobrada.\n"
         winText += "✅ Objetivo atingido! Recompensa paga nesta rodada.\n"

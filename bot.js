@@ -51,6 +51,7 @@ const {
   getRandomPunishmentChoice,
   getPunishmentNameById,
   getPunishmentMenuText,
+  getPunishmentDetailsText,
   clearPendingPunishment,
   clearPunishment,
   applyPunishment,
@@ -168,6 +169,7 @@ async function startBot(){
   })
 
   sock.ev.on("messages.upsert", async ({ messages })=>{
+    try {
     const msg = messages[0]
     if(!msg.message) return
     if(msg.key.fromMe) return
@@ -470,27 +472,44 @@ async function startBot(){
       return { ok: true, pool }
     }
 
-    async function distributeLobbyBuyInPool(playerIds, poolAmount, gameLabel = "jogo") {
+    async function distributeLobbyBuyInPool(playerIds, poolAmount, gameLabel = "jogo", options = {}) {
       if (!Array.isArray(playerIds) || playerIds.length === 0) return
       const safePool = Math.max(0, Math.floor(Number(poolAmount) || 0))
       if (safePool <= 0) return
 
-      const each = Math.floor(safePool / playerIds.length)
-      const remainder = safePool % playerIds.length
+      const uniquePlayers = [...new Set(playerIds.filter(Boolean))]
+      if (uniquePlayers.length === 0) return
+
+      const betMultiplierByPlayer = options?.betMultiplierByPlayer || {}
+      const playerMultipliers = uniquePlayers.map((playerId) => {
+        const raw = Number.parseInt(String(betMultiplierByPlayer[playerId] ?? 1), 10)
+        const multiplier = Number.isFinite(raw) && raw > 0 ? raw : 1
+        return { playerId, multiplier }
+      })
+
+      const highestMultiplier = playerMultipliers.reduce((max, entry) => Math.max(max, entry.multiplier), 1)
+      const selectedPlayers = playerMultipliers
+        .filter((entry) => entry.multiplier === highestMultiplier)
+        .map((entry) => entry.playerId)
+      if (selectedPlayers.length === 0) return
+
+      const weightedPool = safePool * highestMultiplier
+      const each = Math.floor(weightedPool / selectedPlayers.length)
+      const remainder = weightedPool % selectedPlayers.length
       if (each <= 0 && remainder <= 0) return
 
-      for (let i = 0; i < playerIds.length; i++) {
-        const playerId = playerIds[i]
+      for (let i = 0; i < selectedPlayers.length; i++) {
+        const playerId = selectedPlayers[i]
         const amount = each + (i < remainder ? 1 : 0)
         if (amount <= 0) continue
         economyService.creditCoins(playerId, amount, {
           type: "game-buyin-payout",
-          details: `Partilha de entrada (${gameLabel})`,
-          meta: { game: gameLabel.toLowerCase(), poolAmount: safePool },
+          details: `Partilha de entrada (${gameLabel}) com multiplicador ${highestMultiplier}x`,
+          meta: { game: gameLabel.toLowerCase(), poolAmount: safePool, weightedPool, multiplier: highestMultiplier },
         })
         incrementUserStat(playerId, "moneyGameWon", amount)
         await sock.sendMessage(from, {
-          text: `🏦 @${playerId.split("@")[0]} recebeu *${amount}* Epsteincoins da pool (${gameLabel}).`,
+          text: `🏦 @${playerId.split("@")[0]} recebeu *${amount}* Epsteincoins da pool (${gameLabel}, ${highestMultiplier}x).`,
           mentions: [playerId],
         })
       }
@@ -861,6 +880,14 @@ async function startBot(){
         // Formata lista de jogadores
         const playerList = players.map((p) => `@${p.split("@")[0]}`).join(", ")
 
+        telemetry.incrementCounter("game.lobby.warning", 1, { gameType })
+        telemetry.appendEvent("game.lobby.warning", {
+          groupId: grpId,
+          lobbyId: gameId,
+          gameType,
+          players,
+        })
+
         // Envia aviso
         sock.sendMessage(groupId, {
           text:
@@ -871,6 +898,25 @@ async function startBot(){
             `Se a partida não for iniciada, o lobby será fechado automaticamente.`,
           mentions: players,
         }).catch(() => {}) // Silencia erros de envio
+      }
+    }
+
+    function createLobbyTimeoutCallback(groupId) {
+      return (grpId, gameId, gameType, players) => {
+        telemetry.incrementCounter("game.lobby.timeout", 1, { gameType })
+        telemetry.appendEvent("game.lobby.timeout", {
+          groupId: grpId,
+          lobbyId: gameId,
+          gameType,
+          players,
+        })
+
+        sock.sendMessage(groupId, {
+          text:
+            `⌛ Lobby *${gameId}* foi fechado por inatividade.\n` +
+            `Use *!começar ${gameType}* para abrir um novo lobby.`,
+          mentions: players,
+        }).catch(() => {})
       }
     }
 
@@ -961,6 +1007,7 @@ async function startBot(){
       jidNormalizedUser,
       buildGameStatsText,
       createLobbyWarningCallback: createLobbyWarningCallback(from),
+      createLobbyTimeoutCallback: createLobbyTimeoutCallback(from),
     })
     if (handledGameCommand) return
 
@@ -1004,6 +1051,7 @@ async function startBot(){
       videoToSticker,
       dddMap,
       jidNormalizedUser,
+      getPunishmentDetailsText,
     })
     if (handledUtilityCommand) return
 
@@ -1028,6 +1076,7 @@ async function startBot(){
       buildEconomyStatsText,
       buildInventoryText,
       incrementUserStat,
+      applyPunishment,
     })
     if (handledEconomyCommand) return
 
@@ -1102,6 +1151,17 @@ async function startBot(){
       isGroup,
     })
     if (handledStreakValue) return
+
+    } catch (err) {
+      telemetry.incrementCounter("command.error", 1, {
+        scope: "messages.upsert",
+      })
+      telemetry.appendEvent("command.error", {
+        scope: "messages.upsert",
+        message: String(err?.message || err || "unknown"),
+      })
+      console.error("Erro no processamento de messages.upsert", err)
+    }
 
   })
 } 

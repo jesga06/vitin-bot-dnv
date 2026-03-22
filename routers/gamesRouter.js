@@ -71,18 +71,12 @@ function handleGamesCommand(msg, user, group, sendMessage) {
     const reply = `
 ╭━━━〔 🎮 SUBMENU: BRINCADEIRAS 〕━━━╮
 │ Jogos de lobby:
-│ - adivinhacao
-│ - batata
-│ - dados
 │ - roleta
-│ - moeda
-│ - streak / streakranking
-│
-│ Jogos rápidos:
-│ - embaralhado
-│ - memoria
-│ - reacao
-│ - piada
+│ - bombardeio @user
+│ - gay @user
+│ - gado @user
+│ - ship @a @b
+│ - treta
 ╰━━━━━━━━━━━━━━━━━━━━╯
     `;
     sendMessage(reply);

@@ -747,7 +747,7 @@ function getShopIndexText() {
   const lines = ["Loja (indice)"]
   const catalog = getItemCatalog()
   catalog.forEach((item, idx) => {
-    lines.push(`${idx + 1}. ${item.name} (${item.key}) - ${item.price} PPlaceholdercoins`)
+    lines.push(`${idx + 1}. ${item.name} (${item.key}) - ${item.price} Epsteincoins`)
   })
   lines.push("")
   lines.push("Compre com: !comprar <item> <quantidade>")

@@ -89,7 +89,7 @@ async function handleEconomyCommands(ctx) {
     await sock.sendMessage(from, {
       text:
         `💳 Carteira global de @${sender.split("@")[0]}\n` +
-        `PPlaceholdercoins: *${profile.coins}*\n` +
+        `Epsteincoins: *${profile.coins}*\n` +
         `Escudos: *${profile.shields}*\n` +
         `Inventario:\n${buildInventoryText(profile)}${kronosInfo}`,
       mentions: [sender],
@@ -152,7 +152,7 @@ async function handleEconomyCommands(ctx) {
     if (!bought.ok) {
       await sock.sendMessage(from, {
         text: bought.reason === "insufficient-funds"
-          ? `Saldo insuficiente para essa compra. Custo: ${bought.totalCost} PPlaceholdercoins.`
+          ? `Saldo insuficiente para essa compra. Custo: ${bought.totalCost} Epsteincoins.`
           : "Item inválido. Use !loja para ver o índice.",
       })
       return true
@@ -182,7 +182,7 @@ async function handleEconomyCommands(ctx) {
     if (!bought.ok) {
       await sock.sendMessage(from, {
         text: bought.reason === "insufficient-funds"
-          ? `Saldo insuficiente. Custo: ${bought.totalCost} PPlaceholdercoins.`
+          ? `Saldo insuficiente. Custo: ${bought.totalCost} Epsteincoins.`
           : "Item inválido. Use !loja.",
       })
       return true
@@ -209,7 +209,7 @@ async function handleEconomyCommands(ctx) {
       return true
     }
     await sock.sendMessage(from, {
-      text: `💱 Venda concluída: ${sold.quantity}x ${sold.itemKey} por *${sold.total}* PPlaceholdercoins.`,
+      text: `💱 Venda concluída: ${sold.quantity}x ${sold.itemKey} por *${sold.total}* Epsteincoins.`,
     })
     return true
   }
@@ -229,7 +229,7 @@ async function handleEconomyCommands(ctx) {
     }
 
     await sock.sendMessage(from, {
-      text: `🤝 @${sender.split("@")[0]} doou *${transferred.amount}* PPlaceholdercoins para @${target.split("@")[0]}.`,
+      text: `🤝 @${sender.split("@")[0]} doou *${transferred.amount}* Epsteincoins para @${target.split("@")[0]}.`,
       mentions: [sender, target],
     })
     return true
@@ -290,7 +290,7 @@ async function handleEconomyCommands(ctx) {
     if (!steal.success) {
       await sock.sendMessage(from, {
         text:
-          `🚨 Roubo falhou! @${sender.split("@")[0]} perdeu *${steal.lost}* PPlaceholdercoins.\n` +
+          `🚨 Roubo falhou! @${sender.split("@")[0]} perdeu *${steal.lost}* Epsteincoins.\n` +
           `Chance de sucesso nesta tentativa: ${(steal.successChance * 100).toFixed(0)}%`,
         mentions: [sender],
       })
@@ -299,7 +299,7 @@ async function handleEconomyCommands(ctx) {
 
     await sock.sendMessage(from, {
       text:
-        `🕵️ Roubo bem-sucedido! @${sender.split("@")[0]} roubou *${steal.stolenFromVictim}* de @${target.split("@")[0]} e recebeu *${steal.gained}* PPlaceholdercoins.\n` +
+        `🕵️ Roubo bem-sucedido! @${sender.split("@")[0]} roubou *${steal.stolenFromVictim}* de @${target.split("@")[0]} e recebeu *${steal.gained}* Epsteincoins.\n` +
         `Faixa de roubo: 50 a 200 moedas.\n` +
         `Chance de sucesso nesta tentativa: ${(steal.successChance * 100).toFixed(0)}%`,
       mentions: [sender, target],
@@ -318,7 +318,7 @@ async function handleEconomyCommands(ctx) {
 
     await sock.sendMessage(from, {
       text:
-        `💰 Daily resgatado: *${daily.amount}* PPlaceholdercoins.` +
+        `💰 Daily resgatado: *${daily.amount}* Epsteincoins.` +
         (daily.kronosBonus ? " (bonus da Coroa Kronos aplicado)" : ""),
     })
     return true
@@ -383,8 +383,8 @@ async function handleEconomyCommands(ctx) {
       text:
         `🎰 ${result.join(" ")}\n` +
         (payout > 0
-          ? `Resultado: ganhou *${payout}* PPlaceholdercoins.`
-          : `Resultado: perdeu *${value}* PPlaceholdercoins.`),
+          ? `Resultado: ganhou *${payout}* Epsteincoins.`
+          : `Resultado: perdeu *${value}* Epsteincoins.`),
     })
     return true
   }
@@ -419,14 +419,14 @@ async function handleEconomyCommands(ctx) {
         message = "🚗 Você sofreu um acidente no delivery e ficou sem pagamento hoje."
       } else {
         gain = Math.floor(Math.random() * 71) + 30
-        message = `🍔 Delivery concluído! Você ganhou ${gain} PPlaceholdercoins.`
+        message = `🍔 Delivery concluído! Você ganhou ${gain} Epsteincoins.`
       }
     } else if (work === "capinar") {
       if (Math.random() < 0.2) {
         message = "🐍 Você foi picado e perdeu o dia de trabalho."
       } else {
         gain = 70
-        message = `🌱 Serviço concluído! Você ganhou ${gain} PPlaceholdercoins.`
+        message = `🌱 Serviço concluído! Você ganhou ${gain} Epsteincoins.`
       }
     } else if (work === "lavagem") {
       if (Math.random() < 0.8) {
@@ -435,10 +435,10 @@ async function handleEconomyCommands(ctx) {
           details: "Falha no trabalho lavagem",
           meta: { work },
         })
-        message = `💀 Lavagem fracassou! Você perdeu ${lost} PPlaceholdercoins.`
+        message = `💀 Lavagem fracassou! Você perdeu ${lost} Epsteincoins.`
       } else {
         gain = Math.floor(Math.random() * 201) + 200
-        message = `💰 Lavagem concluída! Você ganhou ${gain} PPlaceholdercoins.`
+        message = `💰 Lavagem concluída! Você ganhou ${gain} Epsteincoins.`
       }
     } else {
       await sock.sendMessage(from, { text: "Trabalho inválido. Use: ifood, capinar ou lavagem." })

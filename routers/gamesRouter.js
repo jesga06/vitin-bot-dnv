@@ -73,7 +73,7 @@ async function handleGameCommands(ctx) {
         `Lobby ID: *${lobbyId}*\n\n` +
         `Para entrar: *!entrar ${lobbyId}*\n` +
         `Para iniciar: *!começar ${lobbyId}*\n\n` +
-        `Entrada por jogador: *${getGameBuyIn("adivinhacao")}* PPlaceholdercoins (cobrada ao iniciar).\n` +
+        `Entrada por jogador: *${getGameBuyIn("adivinhacao")}* Epsteincoins (cobrada ao iniciar).\n` +
         `1-4 jogadores, número secreto entre 1 e 100.\n` +
         `Depois de iniciar, responda com *!resposta <número>*.`,
     })
@@ -94,7 +94,7 @@ async function handleGameCommands(ctx) {
         `Lobby ID: *${lobbyId}*\n\n` +
         `Para entrar: *!entrar ${lobbyId}*\n` +
         `Para iniciar: *!começar ${lobbyId}*\n` +
-        `Entrada por jogador: *${getGameBuyIn("batata")}* PPlaceholdercoins (cobrada ao iniciar).\n` +
+        `Entrada por jogador: *${getGameBuyIn("batata")}* Epsteincoins (cobrada ao iniciar).\n` +
         `Mínimo de 2 jogadores, sem limite máximo.`,
     })
     return true
@@ -114,7 +114,7 @@ async function handleGameCommands(ctx) {
         `Lobby ID: *${lobbyId}*\n\n` +
         `Para entrar: *!entrar ${lobbyId}*\n` +
         `Para iniciar: *!começar ${lobbyId}*\n` +
-        `Entrada por jogador: *${getGameBuyIn("dados")}* PPlaceholdercoins (cobrada ao iniciar).`,
+        `Entrada por jogador: *${getGameBuyIn("dados")}* Epsteincoins (cobrada ao iniciar).`,
     })
     return true
   }
@@ -133,7 +133,7 @@ async function handleGameCommands(ctx) {
         `Lobby ID: *${lobbyId}*\n\n` +
         `Para entrar: *!entrar ${lobbyId}*\n` +
         `Para iniciar: *!começar ${lobbyId} [aposta]*\n` +
-        `Entrada por jogador: *${getGameBuyIn("rr")}* PPlaceholdercoins (cobrada ao iniciar).\n` +
+        `Entrada por jogador: *${getGameBuyIn("rr")}* Epsteincoins (cobrada ao iniciar).\n` +
         `Exemplo: *!começar ${lobbyId} 3*`,
     })
     return true
@@ -634,7 +634,7 @@ async function handleGameCommands(ctx) {
       if (rrTaken > 0) {
         incrementUserStat(result.loser, "moneyGameLost", rrTaken)
         await sock.sendMessage(from, {
-          text: `💸 @${result.loser.split("@")[0]} perdeu *${rrTaken}* PPlaceholdercoins na Roleta Russa.`,
+          text: `💸 @${result.loser.split("@")[0]} perdeu *${rrTaken}* Epsteincoins na Roleta Russa.`,
           mentions: [result.loser],
         })
       }

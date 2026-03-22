@@ -1,19 +1,19 @@
 // =========================
-// SISTEMA DE PPlaceholderCOINS E ITENS
+// SISTEMA DE Epsteincoins E ITENS
 // =========================
-let userPPlaceholderCoins = {}
+let userEpsteincoins = {}
 let userItems = {}
 let mutedUsers = {}
 let cooldowns = { daily: {}, rouboPPlaceholder: {}, rouboCoroa: {}, trabalho: {} }
 let userStats = {}
 
 // =========================
-// FUNÇÃO PPlaceholderCOINS
+// FUNÇÃO Epsteincoins
 // =========================
 function getCoins(group, user){
-  if (!userPPlaceholderCoins[group]) userPPlaceholderCoins[group] = {}
-  if (!userPPlaceholderCoins[group][user]) userPPlaceholderCoins[group][user] = 500
-  return userPPlaceholderCoins[group][user]
+  if (!userEpsteincoins[group]) userEpsteincoins[group] = {}
+  if (!userEpsteincoins[group][user]) userEpsteincoins[group][user] = 500
+  return userEpsteincoins[group][user]
 }
 
 // =========================
@@ -75,9 +75,9 @@ if (cmd === prefix + "loja" && isGroup){
     text:`
 🛒 LOJA
 
-🛡️ Escudo — 900 PPlaceholderCoins
-🔇 Silêncio — 600 PPlaceholderCoins
-👑 Coroa Kronos — 15000 PPlaceholderCoins
+🛡️ Escudo — 900 Epsteincoins
+🔇 Silêncio — 600 Epsteincoins
+👑 Coroa Kronos — 15000 Epsteincoins
 
 ✨ Benefícios da Coroa Kronos:
 - Dura 10 dias
@@ -92,7 +92,7 @@ if (cmd === prefix + "loja" && isGroup){
 !trabalho lavagem
 
 🛠️ Comandos ADM:
-!bencao quantidade @user — doar PPlaceholderCoins
+!bencao quantidade @user — doar Epsteincoins
 !bencaoitem @user item — doar item
 !doaritem @user item — doar item pagando do próprio saldo
 `
@@ -114,7 +114,7 @@ if (cmd.startsWith(prefix + "comprar") && isGroup){
 
   if(item === "escudo"){
     if(userItems[from][sender].escudo) return sock.sendMessage(from,{ text:"🛡️ O seu escudo ainda esta ativo!" })
-    userPPlaceholderCoins[from][sender] -= valores[item]
+    userEpsteincoins[from][sender] -= valores[item]
     userItems[from][sender].escudo = true
     return sock.sendMessage(from,{ text:"🛡️ Escudo ativado!" })
   }
@@ -122,14 +122,14 @@ if (cmd.startsWith(prefix + "comprar") && isGroup){
   if(item === "silencio"){
     const atual = userItems[from][sender].silencio || 0
     if(atual >= 3) return sock.sendMessage(from,{ text:"🔇 Você já tem 3 silêncio!" })
-    userPPlaceholderCoins[from][sender] -= valores[item]
+    userEpsteincoins[from][sender] -= valores[item]
     userItems[from][sender].silencio = atual + 1
     return sock.sendMessage(from,{ text:`🔇 Silêncio comprado! (${atual + 1}/3)` })
   }
 
   if(item === "kronos"){
     if(userItems[from][sender].kronos) return sock.sendMessage(from,{ text:"👑 Você já possui a Coroa Kronos!" })
-    userPPlaceholderCoins[from][sender] -= valores[item]
+    userEpsteincoins[from][sender] -= valores[item]
     userItems[from][sender].kronos = true
     userItems[from][sender].kronosProtecoes = 10
     userItems[from][sender].kronosData = Date.now()
@@ -159,9 +159,9 @@ if(cmd === prefix + "daily" && isGroup){
   if(cooldowns.daily[sender]) return sock.sendMessage(from,{ text:"⏰ Você já coletou o daily hoje!" })
   let coins = 500
   coins = aplicarDailyKronosBonus(sender, coins)
-  userPPlaceholderCoins[from][sender] += coins
+  userEpsteincoins[from][sender] += coins
   cooldowns.daily[sender] = Date.now()
-  sock.sendMessage(from,{ text:`💰 Você recebeu ${coins} PPlaceholderCoins no daily!` })
+  sock.sendMessage(from,{ text:`💰 Você recebeu ${coins} Epsteincoins no daily!` })
 }
 
 // =========================
@@ -199,16 +199,16 @@ if (cmd.startsWith(prefix + "aposta") && isGroup){
   let msg = ""
   if(max === 5){
     const ganho = valor*3
-    userPPlaceholderCoins[from][sender] += ganho
+    userEpsteincoins[from][sender] += ganho
     msg = `JACKPOT +${ganho}`
   } else if(max === 4){
     const ganho = valor*2
-    userPPlaceholderCoins[from][sender] += ganho
+    userEpsteincoins[from][sender] += ganho
     msg = `Ganhou +${ganho}`
   } else if(max === 3){
     msg = "Empate"
   } else {
-    userPPlaceholderCoins[from][sender] -= valor
+    userEpsteincoins[from][sender] -= valor
     msg = `Perdeu ${valor}`
   }
 
@@ -249,10 +249,10 @@ if(cmd.startsWith(prefix + "trabalho") && isGroup){
       if(Math.random() < 0.1){
         falha = true
         ganhos = Math.floor(Math.random()*71)+30
-        mensagem = `🚗 Você foi atropelado no delivery! Perdeu a chance de ganhar ${ganhos} PPlaceholderCoins.`
+        mensagem = `🚗 Você foi atropelado no delivery! Perdeu a chance de ganhar ${ganhos} Epsteincoins.`
       } else {
         ganhos = Math.floor(Math.random()*71)+30
-        mensagem = `🍔 Delivery concluído! Você ganhou ${ganhos} PPlaceholderCoins.`
+        mensagem = `🍔 Delivery concluído! Você ganhou ${ganhos} Epsteincoins.`
       }
       break
 
@@ -264,7 +264,7 @@ if(cmd.startsWith(prefix + "trabalho") && isGroup){
         mensagem = `🐍 Você foi picado por uma ${acidente} e perdeu o serviço!`
       } else {
         ganhos = 70
-        mensagem = `🌱 Lote capinado! Você ganhou ${ganhos} PPlaceholderCoins.`
+        mensagem = `🌱 Lote capinado! Você ganhou ${ganhos} Epsteincoins.`
       }
       break
 
@@ -272,11 +272,11 @@ if(cmd.startsWith(prefix + "trabalho") && isGroup){
       if(Math.random() < 0.8){
         falha = true
         const perda = Math.floor(getCoins(from,sender)*0.4)
-        userPPlaceholderCoins[from][sender] -= perda
-        mensagem = `💀 Lavagem de dinheiro deu errado! Você perdeu 40% (${perda} PPlaceholderCoins).`
+        userEpsteincoins[from][sender] -= perda
+        mensagem = `💀 Lavagem de dinheiro deu errado! Você perdeu 40% (${perda} Epsteincoins).`
       } else {
         ganhos = Math.floor(Math.random()*201)+200
-        mensagem = `💰 Lavagem de dinheiro concluída! Você ganhou ${ganhos} PPlaceholderCoins.`
+        mensagem = `💰 Lavagem de dinheiro concluída! Você ganhou ${ganhos} Epsteincoins.`
       }
       break
 
@@ -286,7 +286,7 @@ if(cmd.startsWith(prefix + "trabalho") && isGroup){
 
   if(!falha && ganhos > 0){
     ganhos = aplicarKronosBonus(from,sender,ganhos)
-    userPPlaceholderCoins[from][sender] += ganhos
+    userEpsteincoins[from][sender] += ganhos
   }
 
   userStats[from][sender].trabalhos = (userStats[from][sender].trabalhos || 0) + 1
@@ -312,10 +312,10 @@ if(cmd === prefix + "perfil" && isGroup){
   const perfilMsg = `
 📊 Perfil de @${sender.split("@")[0]}
 
-💰 PPlaceholderCoins: ${coins}
+💰 Epsteincoins: ${coins}
 🎒 Inventário: ${inventario.length > 0 ? inventario.join(", ") : "Vazio"}
 🎰 Apostador: ${stats.apostas} vezes
-🕵️ Roubos de PPlaceholderCoins: ${stats.roubosCoins} vezes
+🕵️ Roubos de Epsteincoins: ${stats.roubosCoins} vezes
 👑 Roubos de Coroa Kronos: ${stats.roubosCoroa} vezes
 💼 Trabalhos realizados: ${stats.trabalhos} vezes
   `
@@ -337,10 +337,10 @@ if(cmd.startsWith(prefix + "doaritem") && isGroup){
   const valores = { escudo: 900, silencio: 600, kronos: 15000 }
 
   if(!valores[item]) return sock.sendMessage(from,{ text:"Item inválido! Use escudo, silencio ou kronos." })
-  if(getCoins(from,sender) < valores[item]) return sock.sendMessage(from,{ text:"💀 Você não tem PPlaceholderCoins suficientes para doar este item!" })
+  if(getCoins(from,sender) < valores[item]) return sock.sendMessage(from,{ text:"💀 Você não tem Epsteincoins suficientes para doar este item!" })
   if(userItems[from][alvo][item]) return sock.sendMessage(from,{ text:`🛡️ @${alvo.split("@")[0]} já possui este item!`, mentions:[alvo] })
 
-  userPPlaceholderCoins[from][sender] -= valores[item]
+  userEpsteincoins[from][sender] -= valores[item]
 
   if(item === "silencio"){
     userItems[from][alvo].silencio = (userItems[from][alvo].silencio || 0) + 1

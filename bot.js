@@ -17,7 +17,20 @@ const fs = require("fs")
 const ffmpeg = require("fluent-ffmpeg")
 const ffmpegPath = require("ffmpeg-static")
 ffmpeg.setFfmpegPath(ffmpegPath)
-const crypto = require("crypto")
+
+// IMPORTS: Storage and Game Manager
+const storage = require("./storage")
+const punishmentService = require("./punishmentService")
+const caraOuCoroa = require("./games/caraOuCoroa")
+const gameManager = require("./gameManager")
+const adivinhaNumero = require("./games/adivinhaNumero")
+const batataquente = require("./games/batataquente")
+const dueloDados = require("./games/dueloDados")
+const roletaRussa = require("./games/roletaRussa")
+const reação = require("./games/reação")
+const embaralhado = require("./games/embaralhado")
+const ultimoAObedecer = require("./games/ultimoAObedecer")
+const memória = require("./games/memória")
 
 const app = express()
 const logger = pino({ level: "silent" })
@@ -25,235 +38,18 @@ const logger = pino({ level: "silent" })
 const prefix = "!"
 
 let qrImage = null
-let mutedUsers = {}
-let coinGames = {} // [groupJid]: { [playerJid]: { resultado, createdAt } }
-let coinPunishmentPending = {} // [groupJid]: { [playerJid]: { mode, target, createdAt } }
-let resenhaAveriguada = {} // [groupJid]: boolean
-let coinStreaks = {} // [groupJid]: { [playerJid]: number }
-let coinStreakMax = {} // [groupJid]: { [playerJid]: number }
-let coinHistoricalMax = {} // [groupJid]: number
-let activePunishments = {} // [groupJid]: { [userJid]: punishmentState }
-const LETTER_ALPHABET = "abcdefghijklmnopqrstuvwxyz"
 
-// =========================
-// HELPERS DE PUNIÇÃO
-// =========================
-function getPunishmentChoiceFromText(text = "") {
-  const cleaned = text.toLowerCase().trim()
-  if (cleaned === "1") return "1"
-  if (cleaned === "2") return "2"
-  if (cleaned === "3") return "3"
-  if (cleaned === "4") return "4"
-  if (cleaned === "5") return "5"
-  return null
-}
-
-function getRandomPunishmentChoice() {
-  const choices = ["1", "2", "3", "4", "5"]
-  return choices[crypto.randomInt(0, choices.length)]
-}
-
-function getPunishmentNameById(punishmentId) {
-  if (punishmentId === "1") return "máx. 5 caracteres (5 min)"
-  if (punishmentId === "2") return "1 mensagem/20s (10 min)"
-  if (punishmentId === "3") return "bloqueio por 2 letras (indefinido)"
-  if (punishmentId === "4") return "somente emojis (5 min)"
-  if (punishmentId === "5") return "mute total (5 min)"
-  return "desconhecida"
-}
-
-function getRandomDifferentLetters() {
-  const firstIndex = crypto.randomInt(0, LETTER_ALPHABET.length)
-  let secondIndex = crypto.randomInt(0, LETTER_ALPHABET.length)
-  while (secondIndex === firstIndex) secondIndex = crypto.randomInt(0, LETTER_ALPHABET.length)
-  return [LETTER_ALPHABET[firstIndex], LETTER_ALPHABET[secondIndex]]
-}
-
-function stripWhitespaceExceptSpace(text = "") {
-  // Mantém espaço comum (" ") contando no limite, ignora outros whitespaces.
-  return text.replace(/[\t\n\r\f\v\u00A0\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]/g, "")
-}
-
-function isEmojiOnlyMessage(text = "") {
-  const compact = text.replace(/\s+/g, "")
-  if (!compact) return false
-  const emojiCluster = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?)*)+$/u
-  return emojiCluster.test(compact)
-}
-
-function isUnlockLettersMessage(text = "", letters = []) {
-  const normalized = text.toLowerCase().replace(/\s+/g, "")
-  if (!normalized) return false
-  const [a, b] = letters
-  for (const ch of normalized) {
-    if (ch !== a && ch !== b) return false
-  }
-  return true
-}
-
-function containsPunishmentLetters(text = "", letters = []) {
-  const normalized = text.toLowerCase()
-  return letters.some((letter) => normalized.includes(letter))
-}
-
-function getPunishmentMenuText() {
-  return [
-    "Escolha a punição digitando *1*, *2*, *3*, *4* ou *5*:",
-    "1. Mensagens com no máximo 5 caracteres por 5 minutos.",
-    "2. Máximo de 1 mensagem a cada 20 segundos por 10 minutos.",
-    "3. Bloqueio por duas letras aleatórias (indefinido até cumprir condição de saída).",
-    "4. Só pode enviar emojis por 5 minutos.",
-    "5. Mute total por 5 minutos (tudo que enviar será apagado)."
-  ].join("\n")
-}
-
-function ensureGroupMap(store, groupId) {
-  if (!store[groupId]) store[groupId] = {}
-}
-
-function clearPendingPunishment(groupId, playerId) {
-  if (!coinPunishmentPending[groupId]?.[playerId]) return
-  delete coinPunishmentPending[groupId][playerId]
-  if (Object.keys(coinPunishmentPending[groupId]).length === 0) delete coinPunishmentPending[groupId]
-}
-
-function clearPunishment(groupId, userId) {
-  if (!activePunishments[groupId]?.[userId]) return
-  const timerId = activePunishments[groupId][userId]?.timerId
-  if (timerId) clearTimeout(timerId)
-  delete activePunishments[groupId][userId]
-  if (Object.keys(activePunishments[groupId]).length === 0) delete activePunishments[groupId]
-}
-
-async function applyPunishment(sock, groupId, userId, punishmentId) {
-  ensureGroupMap(activePunishments, groupId)
-  clearPunishment(groupId, userId)
-
-  const mentionTag = `@${userId.split("@")[0]}`
-  const now = Date.now()
-  let punishmentState = null
-  let warningText = ""
-
-  if (punishmentId === "1") {
-    punishmentState = {
-      type: "max5chars",
-      endsAt: now + 5 * 60_000
-    }
-    warningText = `${mentionTag}, punição ativada: suas mensagens só podem ter até *5 caracteres* por *5 minutos* (espaço conta). Mensagens fora disso serão apagadas.`
-  }
-
-  if (punishmentId === "2") {
-    punishmentState = {
-      type: "rate20s",
-      endsAt: now + 10 * 60_000,
-      lastAllowedAt: 0
-    }
-    warningText = `${mentionTag}, punição ativada: você só pode enviar *1 mensagem a cada 20 segundos* por *10 minutos*. Mensagens acima da taxa serão apagadas.`
-  }
-
-  if (punishmentId === "3") {
-    const letters = getRandomDifferentLetters()
-    punishmentState = {
-      type: "lettersBlock",
-      letters
-    }
-    warningText = `${mentionTag}, punição ativada: qualquer mensagem sua contendo ao menos 1 de 2 letras selecionadas aleatóriamente será apagada. Isso é *indefinido* e só acaba quando você enviar uma mensagem contendo apenas uma ou ambas essas letras.\nBoa sorte tentando descobrir quais letras elas são.`
-  }
-
-  if (punishmentId === "4") {
-    punishmentState = {
-      type: "emojiOnly",
-      endsAt: now + 5 * 60_000
-    }
-    warningText = `${mentionTag}, punição ativada: por *5 minutos* você só pode enviar mensagens formadas apenas por emojis. Qualquer mensagem contendo texto não emoji será apagada.`
-  }
-
-  if (punishmentId === "5") {
-    punishmentState = {
-      type: "mute5m",
-      endsAt: now + 5 * 60_000
-    }
-    warningText = `${mentionTag}, punição ativada: *mute total por 5 minutos*. Qualquer mensagem sua será apagada.`
-  }
-
-  if (!punishmentState) return
-
-  activePunishments[groupId][userId] = punishmentState
-
-  if (punishmentState?.endsAt) {
-    const msRemaining = Math.max(0, punishmentState.endsAt - now)
-    const timerId = setTimeout(() => {
-      clearPunishment(groupId, userId)
-    }, msRemaining)
-    activePunishments[groupId][userId].timerId = timerId
-  }
-
-  await sock.sendMessage(groupId, {
-    text: warningText,
-    mentions: [userId]
-  })
-}
-
-// =========================
-// FISCALIZAÇÃO DE PUNIÇÕES
-// =========================
-async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGroup, skipForCommand = false) {
-  if (!isGroup) return false
-  if (skipForCommand) return false
-  const punishment = activePunishments[from]?.[sender]
-  if (!punishment) return false
-
-  const now = Date.now()
-  if (punishment.endsAt && now >= punishment.endsAt) {
-    clearPunishment(from, sender)
-    return false
-  }
-
-  let shouldDelete = false
-
-  if (punishment.type === "max5chars") {
-    const measured = stripWhitespaceExceptSpace(text)
-    shouldDelete = measured.length > 5
-  }
-
-  if (punishment.type === "rate20s") {
-    if (punishment.lastAllowedAt && now - punishment.lastAllowedAt < 20_000) {
-      shouldDelete = true
-    } else {
-      punishment.lastAllowedAt = now
-    }
-  }
-
-  if (punishment.type === "lettersBlock") {
-    const letters = punishment.letters || []
-    if (isUnlockLettersMessage(text, letters)) {
-      clearPunishment(from, sender)
-      await sock.sendMessage(from, {
-        text: `@${sender.split("@")[0]}, você cumpriu a condição e foi liberado da punição das letras (${letters[0]} / ${letters[1]}).`,
-        mentions: [sender]
-      })
-      return false
-    }
-    shouldDelete = containsPunishmentLetters(text, letters)
-  }
-
-  if (punishment.type === "emojiOnly") {
-    shouldDelete = !isEmojiOnlyMessage(text)
-  }
-
-  if (punishment.type === "mute5m") {
-    shouldDelete = true
-  }
-
-  if (!shouldDelete) return false
-
-  try {
-    await sock.sendMessage(from, { delete: msg.key })
-  } catch (e) {
-    console.error("Erro ao apagar mensagem por punição", e)
-  }
-  return true
-}
+const {
+  getPunishmentChoiceFromText,
+  getRandomPunishmentChoice,
+  getPunishmentNameById,
+  getPunishmentMenuText,
+  clearPendingPunishment,
+  clearPunishment,
+  applyPunishment,
+  handlePunishmentEnforcement,
+  handlePendingPunishmentChoice,
+} = punishmentService
 
 // Override
 const overrideJid = jidNormalizedUser("5521995409899@s.whatsapp.net")
@@ -382,6 +178,10 @@ async function startBot(){
 
     const cmd = text.toLowerCase().trim()
     const isCommand = cmd.startsWith(prefix)
+    const cmdParts = cmd.split(/\s+/)
+    const cmdName = cmdParts[0] || ""
+    const cmdArg1 = cmdParts[1] || ""
+    const cmdArg2 = cmdParts[2] || ""
     const mentioned = (msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []).map(jidNormalizedUser)
     let quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
 
@@ -398,37 +198,17 @@ async function startBot(){
     // =========================
     // ESCOLHA PENDENTE DE PUNIÇÃO
     // =========================
-    if (isGroup) {
-      const pending = coinPunishmentPending[from]?.[sender]
-      if (pending && !(senderIsAdmin && isCommand)) {
-        const punishmentChoice = getPunishmentChoiceFromText(text)
-        let target = pending.target
-
-        if (pending.mode === "target" && mentioned.length > 0) {
-          target = mentioned[0]
-          coinPunishmentPending[from][sender].target = target
-        }
-
-        if (pending.mode === "target" && !target) {
-          await sock.sendMessage(from, {
-            text: "Marque primeiro quem vai receber a punição.\n" + getPunishmentMenuText()
-          })
-          return
-        }
-
-        if (!punishmentChoice) {
-          await sock.sendMessage(from, {
-            text: "Escolha inválida.\n" + getPunishmentMenuText()
-          })
-          return
-        }
-
-        const punishedUser = pending.mode === "self" ? sender : target
-        await applyPunishment(sock, from, punishedUser, punishmentChoice)
-        clearPendingPunishment(from, sender)
-        return
-      }
-    }
+    const handledPendingPunishment = await handlePendingPunishmentChoice({
+      sock,
+      from,
+      sender,
+      text,
+      mentioned,
+      isGroup,
+      senderIsAdmin,
+      isCommand,
+    })
+    if (handledPendingPunishment) return
 
     // =========================
     // APLICAÇÃO DE PUNIÇÃO ATIVA
@@ -449,12 +229,14 @@ async function startBot(){
         return
       }
 
+      const resenhaAveriguada = storage.getResenhaAveriguada()
       resenhaAveriguada[from] = !resenhaAveriguada[from]
+      storage.setResenhaAveriguada(resenhaAveriguada)
 
       await sock.sendMessage(from, {
         text: resenhaAveriguada[from]
-          ? "analisada possível resenha!"
-          : "não há possibilidade de resenha..."
+          ? "Modo resenha ATIVADO: punições dos jogos estão habilitadas."
+          : "Modo resenha DESATIVADO: punições dos jogos estão bloqueadas."
       })
       return
     }
@@ -462,72 +244,995 @@ async function startBot(){
     // =========================
     // RESPOSTA PENDENTE DO CARA OU COROA
     // =========================
-    const playerGame = isGroup ? coinGames[from]?.[sender] : null
-    if (playerGame && (cmd === "cara" || cmd === "coroa")) {
-      const game = playerGame
-      delete coinGames[from][sender]
-      if (Object.keys(coinGames[from]).length === 0) delete coinGames[from]
+    const handledCoinGuess = await caraOuCoroa.handleCoinGuess({
+      sock,
+      from,
+      sender,
+      cmd,
+      isGroup,
+      overrideJid,
+      overridePhoneNumber,
+      getPunishmentMenuText,
+      getRandomPunishmentChoice,
+      getPunishmentNameById,
+      applyPunishment,
+      clearPendingPunishment,
+    })
+    if (handledCoinGuess) return
 
-      // Check override - flexible matching
-      const isOverride = sender === overrideJid || sender.split("@")[0] === overridePhoneNumber
-      const acertou = isOverride || (cmd === game.resultado)
+    // =========================
+    // NEW MULTIPLAYER GAMES
+    // =========================
 
-      if (!coinStreaks[from]) coinStreaks[from] = {}
+    const normalizeLobbyId = gameManager.normalizeLobbyId
+    const activeGameKey = (gameType, lobbyId) => `${gameType}Active:${lobbyId}`
+    const activePrefix = (gameType) => `${gameType}Active:`
+    const getGroupGameStates = () => storage.getGameStates(from)
 
-      if (acertou && resenhaAveriguada[from]) {
-        coinStreaks[from][sender] = (coinStreaks[from][sender] || 0) + 1
-        const streak = coinStreaks[from][sender]
+    const PERIODIC_CONTROL_STATE_KEY = "periodicControl"
+    const PERIODIC_AUTO_COOLDOWN_MS = 10 * 60_000
+    const PERIODIC_GAMES = [
+      { type: "embaralhado", key: "embaralhadoActive", label: "Embaralhado" },
+      { type: "reação", key: "reaçãoActive", label: "Reação" },
+      { type: "ultimoAObedecer", key: "ultimoAObedecerActive", label: "Último a Obedecer" },
+      { type: "memória", key: "memóriaActive", label: "Memória" },
+    ]
 
-        if (!coinStreakMax[from]) coinStreakMax[from] = {}
-        coinStreakMax[from][sender] = Math.max(coinStreakMax[from][sender] || 0, streak)
-        coinHistoricalMax[from] = Math.max(coinHistoricalMax[from] || 0, streak)
+    function getActivePeriodicGame() {
+      for (const game of PERIODIC_GAMES) {
+        const state = storage.getGameState(from, game.key)
+        if (state) return game
+      }
+      return null
+    }
 
-        await sock.sendMessage(from, {
-          text: `Você acertou! A moeda caiu em *${game.resultado}*.\nStreak: *${streak}*\nEscolha um alvo e a punição dele em até 30 segundos.\n${getPunishmentMenuText()}\nMarque alguém para punir.`
-        })
+    function getPeriodicControlState() {
+      return storage.getGameState(from, PERIODIC_CONTROL_STATE_KEY) || { lastAutoStartedAt: 0 }
+    }
 
-        ensureGroupMap(coinPunishmentPending, from)
-        coinPunishmentPending[from][sender] = {
-          mode: "target",
-          target: null,
-          createdAt: Date.now()
+    function setPeriodicControlState(nextState) {
+      storage.setGameState(from, PERIODIC_CONTROL_STATE_KEY, nextState)
+    }
+
+    function getRemainingPeriodicAutoCooldownMs() {
+      const control = getPeriodicControlState()
+      const elapsed = Date.now() - (control.lastAutoStartedAt || 0)
+      return Math.max(0, PERIODIC_AUTO_COOLDOWN_MS - elapsed)
+    }
+
+    function hasOpenLobbyOfType(gameType) {
+      const sessions = gameManager.optInSessions[from] || {}
+      return Object.values(sessions).some((session) => session.gameType === gameType)
+    }
+
+    function hasActiveLobbyGameOfType(gameType) {
+      const states = getGroupGameStates()
+      return Object.keys(states).some((key) => key.startsWith(activePrefix(gameType)) && Boolean(states[key]))
+    }
+
+    function getLobbyCreateBlockMessage(gameType, gameLabel) {
+      if (hasActiveLobbyGameOfType(gameType)) {
+        return `Já existe um ${gameLabel} em andamento.`
+      }
+      if (hasOpenLobbyOfType(gameType)) {
+        return `Já existe um lobby aberto para ${gameLabel}. Use *!lobbies* para entrar.`
+      }
+      return null
+    }
+
+    function isResenhaModeEnabled() {
+      return storage.isResenhaEnabled(from)
+    }
+
+    async function applyRandomGamePunishment(targetId, options = {}) {
+      if (!isResenhaModeEnabled()) return false
+      const punishment = getRandomPunishmentChoice()
+      await applyPunishment(sock, from, targetId, punishment, options)
+      return true
+    }
+
+    async function createPendingTargetForWinner(winnerId, winnerText, severityMultiplier = 1, allowedTargets = null) {
+      if (!isResenhaModeEnabled()) {
+        await sock.sendMessage(from, { text: winnerText, mentions: [winnerId] })
+        return false
+      }
+
+      const coinPunishmentPending = storage.getCoinPunishmentPending()
+      if (!coinPunishmentPending[from]) coinPunishmentPending[from] = {}
+
+      coinPunishmentPending[from][winnerId] = {
+        mode: "target",
+        target: null,
+        createdAt: Date.now(),
+        severityMultiplier,
+      }
+
+      if (Array.isArray(allowedTargets) && allowedTargets.length > 0) {
+        coinPunishmentPending[from][winnerId].allowedTargets = allowedTargets
+      }
+
+      storage.setCoinPunishmentPending(coinPunishmentPending)
+
+      const severityText = severityMultiplier > 1 ? ` *${severityMultiplier}x*` : ""
+      await sock.sendMessage(from, {
+        text:
+          `${winnerText}\n` +
+          `Escolha quem será punido${severityText} em até 30s.\n` +
+          `${getPunishmentMenuText()}\n` +
+          `Marque alguém para punir.`,
+        mentions: [winnerId],
+      })
+
+      setTimeout(() => {
+        const coinPunishmentPendingTimeout = storage.getCoinPunishmentPending()
+        if (coinPunishmentPendingTimeout[from]?.[winnerId]) {
+          clearPendingPunishment(from, winnerId)
+        }
+      }, 30_000)
+
+      return true
+    }
+
+    async function startPeriodicGame(gameType, options = {}) {
+      const { triggeredBy = null, automatic = false, reactionParticipants = null } = options
+
+      const activePeriodic = getActivePeriodicGame()
+      if (activePeriodic) {
+        return { ok: false, reason: "active", message: `Já existe um jogo periódico ativo: ${activePeriodic.label}.` }
+      }
+
+      if (automatic) {
+        const remainingMs = getRemainingPeriodicAutoCooldownMs()
+        if (remainingMs > 0) {
+          return { ok: false, reason: "cooldown", message: `Aguardando cooldown do gatilho periódico (${Math.ceil(remainingMs / 60_000)} min).` }
         }
 
-        setTimeout(() => {
-          if (coinPunishmentPending[from]?.[sender]) {
-            clearPendingPunishment(from, sender)
+        setPeriodicControlState({
+          ...getPeriodicControlState(),
+          lastAutoStartedAt: Date.now(),
+        })
+      }
+
+      if (gameType === "embaralhado") {
+        const state = embaralhado.start(from, triggeredBy)
+        storage.setGameState(from, "embaralhadoActive", state)
+        await sock.sendMessage(from, {
+          text: embaralhado.formatGame(state)
+        })
+
+        setTimeout(async () => {
+          const finalState = storage.getGameState(from, "embaralhadoActive")
+          if (finalState && !finalState.winner) {
+            await sock.sendMessage(from, {
+              text: embaralhado.formatResults(finalState)
+            })
+            storage.clearGameState(from, "embaralhadoActive")
           }
         }, 30_000)
-      } else if (acertou) {
-        coinStreaks[from][sender] = (coinStreaks[from][sender] || 0) + 1
-        const streak = coinStreaks[from][sender]
 
-        if (!coinStreakMax[from]) coinStreakMax[from] = {}
-        coinStreakMax[from][sender] = Math.max(coinStreakMax[from][sender] || 0, streak)
-        coinHistoricalMax[from] = Math.max(coinHistoricalMax[from] || 0, streak)
+        return { ok: true }
+      }
+
+      if (gameType === "reação") {
+        const participants = Array.isArray(reactionParticipants) ? reactionParticipants : []
+        const restrictToPlayers = participants.length > 0
+        const state = reação.start(from, participants, { restrictToPlayers })
+        storage.setGameState(from, "reaçãoActive", state)
+
+        const participantText = restrictToPlayers
+          ? `\nParticipantes: ${participants.length} (somente lista definida).`
+          : "\nSem lista fixa: qualquer pessoa pode participar."
 
         await sock.sendMessage(from, {
-          text: `Você acertou! A moeda caiu em *${game.resultado}*.\n🔥 Streak: *${streak}*`
-        })
-      } else {
-        delete coinStreaks[from][sender]
-        if (Object.keys(coinStreaks[from]).length === 0) delete coinStreaks[from]
-
-        await sock.sendMessage(from, {
-          text: `A moeda caiu em *${game.resultado}*.\nSe fudeu.\n💥 Sua streak foi resetada.`,
-          mentions: [sender]
+          text: `⚡ Teste de Reação iniciado! Aguarde o *início*...${participantText}`,
         })
 
-        if (resenhaAveriguada[from]) {
-          const randomPunishment = getRandomPunishmentChoice()
+        const goDelayMs = 3000 + Math.floor(Math.random() * 4000)
+        setTimeout(async () => {
+          const currentState = storage.getGameState(from, "reaçãoActive")
+          if (!currentState || currentState.started || currentState.winner) return
+
+          reação.markStarted(currentState)
+          storage.setGameState(from, "reaçãoActive", currentState)
+
           await sock.sendMessage(from, {
-            text: `Punição sorteada: *${getPunishmentNameById(randomPunishment)}*`,
-            mentions: [sender]
+            text: "🟢 VAI! Mande uma mensagem AGORA. O primeiro vence!",
           })
-          await applyPunishment(sock, from, sender, randomPunishment)
+
+          setTimeout(async () => {
+            const finalState = storage.getGameState(from, "reaçãoActive")
+            if (!finalState || finalState.winner) return
+
+            const results = reação.getResults(finalState)
+            const resenhaOn = isResenhaModeEnabled()
+            await sock.sendMessage(from, {
+              text: reação.formatResults(finalState, results, resenhaOn),
+            })
+
+            if (results.winner) {
+              const allowedTargets = finalState.restrictToPlayers
+                ? (finalState.players || []).filter((p) => p !== results.winner)
+                : null
+              await createPendingTargetForWinner(
+                results.winner,
+                `⚡ @${results.winner.split("@")[0]}, você venceu o Teste de Reação!`,
+                1,
+                allowedTargets
+              )
+            }
+
+            storage.clearGameState(from, "reaçãoActive")
+          }, 20_000)
+        }, goDelayMs)
+
+        return { ok: true }
+      }
+
+      if (gameType === "ultimoAObedecer") {
+        const state = ultimoAObedecer.start(from, triggeredBy)
+        storage.setGameState(from, "ultimoAObedecerActive", state)
+        const resenhaOn = isResenhaModeEnabled()
+        await sock.sendMessage(from, {
+          text: ultimoAObedecer.formatInstruction(state, resenhaOn)
+        })
+
+        setTimeout(async () => {
+          const finalState = storage.getGameState(from, "ultimoAObedecerActive")
+          if (finalState) {
+            const resenhaOn = isResenhaModeEnabled()
+            await sock.sendMessage(from, {
+              text: ultimoAObedecer.formatResults(finalState, resenhaOn)
+            })
+            const loser = ultimoAObedecer.getLoser(finalState)
+            if (loser) {
+              await applyRandomGamePunishment(loser)
+            }
+            storage.clearGameState(from, "ultimoAObedecerActive")
+          }
+        }, 20_000)
+
+        return { ok: true }
+      }
+
+      if (gameType === "memória") {
+        const state = memória.start(from, triggeredBy)
+        storage.setGameState(from, "memóriaActive", state)
+        await sock.sendMessage(from, {
+          text: memória.formatSequence(state)
+        })
+
+        setTimeout(async () => {
+          const finalState = storage.getGameState(from, "memóriaActive")
+          if (finalState) {
+            await sock.sendMessage(from, {
+              text: memória.formatHidden(finalState)
+            })
+          }
+        }, 5000)
+
+        setTimeout(async () => {
+          const finalState = storage.getGameState(from, "memóriaActive")
+          if (finalState && !finalState.winner) {
+            await sock.sendMessage(from, {
+              text:
+                `⏰ Tempo do Jogo da Memória encerrado (60s).\n` +
+                `Ninguém acertou a sequência a tempo.\n` +
+                `Sequência correta: ${finalState.sequence}`,
+            })
+            storage.clearGameState(from, "memóriaActive")
+          }
+        }, 60_000)
+
+        return { ok: true }
+      }
+
+      return { ok: false, reason: "unknown", message: "Tipo de jogo periódico inválido." }
+    }
+
+    function resolveActiveLobbyForPlayer(gameType, maybeLobbyToken, playerId) {
+      const groupStates = getGroupGameStates()
+      const explicitLobbyId = normalizeLobbyId(maybeLobbyToken || "")
+      if (explicitLobbyId) {
+        const explicitKey = activeGameKey(gameType, explicitLobbyId)
+        const explicitState = storage.getGameState(from, explicitKey)
+        if (explicitState) {
+          const inExplicitLobby = Array.isArray(explicitState.players) && explicitState.players.includes(playerId)
+          return {
+            ok: inExplicitLobby,
+            foundExplicit: true,
+            reason: inExplicitLobby ? null : "not-in-lobby",
+            lobbyId: explicitLobbyId,
+            stateKey: explicitKey,
+            state: explicitState,
+          }
         }
       }
+
+      const matches = Object.keys(groupStates)
+        .filter((key) => key.startsWith(activePrefix(gameType)))
+        .map((key) => ({ key, state: groupStates[key], lobbyId: key.substring(activePrefix(gameType).length) }))
+        .filter((entry) => Array.isArray(entry.state?.players) && entry.state.players.includes(playerId))
+
+      if (matches.length === 1) {
+        return {
+          ok: true,
+          foundExplicit: false,
+          reason: null,
+          lobbyId: matches[0].lobbyId,
+          stateKey: matches[0].key,
+          state: matches[0].state,
+        }
+      }
+
+      return {
+        ok: false,
+        foundExplicit: false,
+        reason: matches.length === 0 ? "not-found" : "ambiguous",
+        lobbyId: null,
+        stateKey: null,
+        state: null,
+      }
+    }
+
+    // DOBRO OU NADA - Double or nothing (tracked wins, doubled punishment)
+    if (cmd === prefix + "moeda dobro" && isGroup) {
+      const state = caraOuCoroa.startDobroOuNada(from, sender)
+      await sock.sendMessage(from, {
+        text: `🎲 Dobro ou Nada iniciado!\n\n${caraOuCoroa.formatDobroStatus(from, state)}`
+      })
       return
+    }
+
+    // ADIVINHA NUMERO - 1-4 players guess numbers
+    if (cmd === prefix + "adivinhanumero" && isGroup) {
+      const blockedReason = getLobbyCreateBlockMessage("adivinhaNumero", "Adivinha Número")
+      if (blockedReason) {
+        return sock.sendMessage(from, { text: blockedReason })
+      }
+
+      const lobbyId = gameManager.createOptInSession(from, "adivinhaNumero", 1, 4, 30000)
+      await sock.sendMessage(from, {
+        text:
+          `🎰 Jogo de Adivinhar Números criado!\n` +
+          `Lobby ID: *${lobbyId}*\n\n` +
+          `Para entrar: *!optar ${lobbyId}*\n` +
+          `Para iniciar: *!começar ${lobbyId}*\n\n` +
+          `1-4 jogadores, número secreto entre 1 e 100.\n` +
+          `Depois de iniciar, responda com *!resposta <número>*.`
+      })
+      return
+    }
+
+    // BATATA QUENTE - Hot Potato 2-3 players, pass for 15s
+    if (cmd === prefix + "batata" && isGroup) {
+      const blockedReason = getLobbyCreateBlockMessage("batata", "Batata Quente")
+      if (blockedReason) {
+        return sock.sendMessage(from, { text: blockedReason })
+      }
+
+      const lobbyId = gameManager.createOptInSession(from, "batata", 2, null, 30000)
+      await sock.sendMessage(from, {
+        text:
+          `🥔 Batata Quente criada!\n` +
+          `Lobby ID: *${lobbyId}*\n\n` +
+          `Para entrar: *!optar ${lobbyId}*\n` +
+          `Para iniciar: *!começarbatata ${lobbyId}*\n` +
+          `Mínimo de 2 jogadores, sem limite máximo.`
+      })
+      return
+    }
+
+    // DUELO DE DADOS - Dice Duel 2 players, d20 rolls
+    if (cmd === prefix + "dados" && isGroup) {
+      const blockedReason = getLobbyCreateBlockMessage("dados", "Duelo de Dados")
+      if (blockedReason) {
+        return sock.sendMessage(from, { text: blockedReason })
+      }
+
+      const lobbyId = gameManager.createOptInSession(from, "dados", 2, 2, 30000)
+      await sock.sendMessage(from, {
+        text:
+          `🎲 Duelo de Dados criado!\n` +
+          `Lobby ID: *${lobbyId}*\n\n` +
+          `Para entrar: *!optar ${lobbyId}*\n` +
+          `Para iniciar: *!começardados ${lobbyId}*`
+      })
+      return
+    }
+
+    // ROLETA RUSSA - Russian Roulette 1-4 players
+    if (cmd === prefix + "rr" && isGroup) {
+      const blockedReason = getLobbyCreateBlockMessage("rr", "Roleta Russa")
+      if (blockedReason) {
+        return sock.sendMessage(from, { text: blockedReason })
+      }
+
+      const lobbyId = gameManager.createOptInSession(from, "rr", 1, 4, 30000)
+      await sock.sendMessage(from, {
+        text:
+          `🔫 Roleta Russa criada!\n` +
+          `Lobby ID: *${lobbyId}*\n\n` +
+          `Para entrar: *!optar ${lobbyId}*\n` +
+          `Para iniciar: *!começarr ${lobbyId}*`
+      })
+      return
+    }
+
+    if (cmdName === prefix + "optar" && isGroup) {
+      const lobbyId = normalizeLobbyId(cmdArg1)
+      if (!lobbyId) {
+        return sock.sendMessage(from, { text: "Use: !optar <LobbyID>" })
+      }
+
+      const session = gameManager.getOptInSession(from, lobbyId)
+      if (!session) {
+        return sock.sendMessage(from, { text: `Lobby *${lobbyId}* não encontrado ou expirado.` })
+      }
+
+      if (gameManager.addPlayerToOptIn(from, lobbyId, sender)) {
+        const maxPlayersLabel = Number.isFinite(session.maxPlayers) ? String(session.maxPlayers) : "∞"
+        await sock.sendMessage(from, {
+          text: `✅ @${sender.split("@")[0]} entrou no lobby *${lobbyId}*!\nJogadores: ${session.players.length}/${maxPlayersLabel}`,
+          mentions: [sender]
+        })
+      } else {
+        await sock.sendMessage(from, {
+          text: "Lobby cheio ou você já entrou nele."
+        })
+      }
+      return
+    }
+
+    if (cmd === prefix + "lobbies" && isGroup) {
+      const groupSessions = gameManager.optInSessions[from] || {}
+      const ids = Object.keys(groupSessions)
+      if (ids.length === 0) {
+        return sock.sendMessage(from, { text: "Nenhum lobby aberto no momento." })
+      }
+
+      const lines = ids.map((id) => {
+        const s = groupSessions[id]
+        const maxPlayersLabel = Number.isFinite(s.maxPlayers) ? String(s.maxPlayers) : "∞"
+        return `- ${id} | ${s.gameType} | ${s.players.length}/${maxPlayersLabel}`
+      })
+
+      await sock.sendMessage(from, {
+        text:
+          "Lobbies abertos:\n" +
+          lines.join("\n") +
+          "\n\nEntre com: !optar <LobbyID>",
+      })
+      return
+    }
+
+    if (cmdName === prefix + "começar" && isGroup) {
+      const lobbyId = normalizeLobbyId(cmdArg1)
+      if (!lobbyId) return sock.sendMessage(from, { text: "Use: !começar <LobbyID>" })
+
+      const session = gameManager.getOptInSession(from, lobbyId)
+      if (!session || session.gameType !== "adivinhaNumero") {
+        return sock.sendMessage(from, { text: `Lobby *${lobbyId}* de Adivinha Numero não encontrado.` })
+      }
+      if (session.players.length < 1) {
+        return sock.sendMessage(from, { text: "Precisamos de pelo menos 1 jogador!" })
+      }
+
+      const stateKey = activeGameKey("adivinhaNumero", lobbyId)
+      if (storage.getGameState(from, stateKey)) {
+        return sock.sendMessage(from, { text: `O lobby *${lobbyId}* já está em andamento.` })
+      }
+
+      const state = adivinhaNumero.start(from, session.players)
+      storage.setGameState(from, stateKey, state)
+      gameManager.clearOptInSession(from, lobbyId)
+
+      const mentions = [...session.players]
+      await sock.sendMessage(from, {
+        text:
+          `🎰 Adivinha Numero iniciado no lobby *${lobbyId}*!\n` +
+          `${mentions.map((p) => `@${p.split("@")[0]}`).join(" ")}\n\n` +
+          `Resposta: *!resposta <número>* (auto)\n` +
+          `Ou: *!resposta ${lobbyId} <número>*\n` +
+          `Faixa: 1-100`,
+        mentions,
+      })
+      return
+    }
+
+    // Handle number guess answers
+    if (cmdName === prefix + "resposta" && isGroup) {
+      const resolved = resolveActiveLobbyForPlayer("adivinhaNumero", cmdArg1, sender)
+      if (!resolved.ok && resolved.reason === "not-in-lobby") {
+        return sock.sendMessage(from, { text: `Você não está no lobby *${resolved.lobbyId}*.` })
+      }
+      if (!resolved.ok && resolved.reason === "not-found") {
+        return sock.sendMessage(from, { text: "Você não está em nenhum Adivinha Numero ativo. Use !resposta <número> quando estiver em jogo." })
+      }
+      if (!resolved.ok && resolved.reason === "ambiguous") {
+        return sock.sendMessage(from, { text: "Você está em mais de um Adivinha Numero. Use: !resposta <LobbyID> <número>" })
+      }
+
+      const guessToken = resolved.foundExplicit ? cmdArg2 : cmdArg1
+      const { lobbyId, stateKey, state } = resolved
+      const result = adivinhaNumero.recordGuess(state, sender, guessToken)
+      if (!result.valid) {
+        return sock.sendMessage(from, { text: result.error })
+      }
+
+      storage.setGameState(from, stateKey, state)
+
+      if (Object.keys(state.guesses).length === state.players.length) {
+        const results = adivinhaNumero.getResults(state)
+        const resenhaOn = isResenhaModeEnabled()
+        const displayResults = resenhaOn
+          ? results
+          : {
+              ...results,
+              punishments: [],
+              chooser: null,
+              winner: null,
+            }
+        await sock.sendMessage(from, {
+          text: `Lobby *${lobbyId}*\n\n${adivinhaNumero.formatResults(state, displayResults, resenhaOn)}`
+        })
+
+        if (Array.isArray(results.punishments) && results.punishments.length > 0) {
+          if (resenhaOn) {
+            for (const entry of results.punishments) {
+              await applyRandomGamePunishment(entry.playerId, {
+                severityMultiplier: entry.severity || 1,
+              })
+            }
+          }
+        }
+
+        if (results.chooser) {
+          await createPendingTargetForWinner(
+            results.chooser,
+            `🎯 @${results.chooser.split("@")[0]}, você acertou exatamente!`,
+            results.choiceSeverity || 2,
+            state.players.filter((p) => p !== results.chooser)
+          )
+        }
+
+        storage.clearGameState(from, stateKey)
+      }
+      return
+    }
+
+    if (cmdName === prefix + "começarbatata" && isGroup) {
+      const lobbyId = normalizeLobbyId(cmdArg1)
+      if (!lobbyId) return sock.sendMessage(from, { text: "Use: !começarbatata <LobbyID>" })
+
+      const session = gameManager.getOptInSession(from, lobbyId)
+      if (!session || session.gameType !== "batata") {
+        return sock.sendMessage(from, { text: `Lobby *${lobbyId}* de Batata Quente não encontrado.` })
+      }
+
+      if (session.players.length < 2) {
+        return sock.sendMessage(from, { text: "Precisamos de pelo menos 2 jogadores!" })
+      }
+
+      const stateKey = activeGameKey("batata", lobbyId)
+      if (storage.getGameState(from, stateKey)) {
+        return sock.sendMessage(from, { text: `O lobby *${lobbyId}* já está em andamento.` })
+      }
+
+      const state = batataquente.start(from, session.players)
+      storage.setGameState(from, stateKey, state)
+      gameManager.clearOptInSession(from, lobbyId)
+
+      await sock.sendMessage(from, {
+        text:
+          `🥔 Batata Quente iniciada no lobby *${lobbyId}*!\n` +
+          `${session.players.map((p) => `@${p.split("@")[0]}`).join(" ")}\n\n` +
+          `${batataquente.formatStatus(state)}\n` +
+          `Comando de passe: *!passa @usuario* (auto)\n` +
+          `Ou: *!passa ${lobbyId} @usuario*`,
+        mentions: session.players,
+      })
+
+      const countdownSeconds = [15, 10, 5, 4, 3, 2, 1]
+      for (const secs of countdownSeconds) {
+        const delayMs = Math.max(0, state.durationMs - secs * 1000)
+        setTimeout(async () => {
+          const currentState = storage.getGameState(from, stateKey)
+          if (!currentState) return
+          const holder = currentState.currentHolder
+          await sock.sendMessage(from, {
+            text: `⏱️ *${secs}s* restantes no lobby *${lobbyId}*\nBatata com @${holder.split("@")[0]}`,
+            mentions: [holder],
+          })
+        }, delayMs)
+      }
+
+      setTimeout(async () => {
+        const finalState = storage.getGameState(from, stateKey)
+        if (finalState) {
+          const loser = batataquente.getLoser(finalState)
+          const resenhaOn = isResenhaModeEnabled()
+          await sock.sendMessage(from, {
+            text: resenhaOn
+              ? `⏰ Tempo acabou no lobby *${lobbyId}*!\n🔴 @${loser.split("@")[0]} foi punido!`
+              : `⏰ Tempo acabou no lobby *${lobbyId}*!\n🔴 @${loser.split("@")[0]} perdeu a rodada!`,
+            mentions: [loser],
+          })
+
+          await applyRandomGamePunishment(loser)
+          storage.clearGameState(from, stateKey)
+        }
+      }, 15000)
+
+      return
+    }
+
+    // Handle batata passa (pass)
+    if (cmdName === prefix + "passa" && isGroup) {
+      const resolved = resolveActiveLobbyForPlayer("batata", cmdArg1, sender)
+      if (!resolved.ok && resolved.reason === "not-in-lobby") {
+        return sock.sendMessage(from, { text: `Você não está no lobby *${resolved.lobbyId}*.` })
+      }
+      if (!resolved.ok && resolved.reason === "not-found") {
+        return sock.sendMessage(from, { text: "Você não está em nenhuma Batata Quente ativa. Use !passa @usuario quando estiver em jogo." })
+      }
+      if (!resolved.ok && resolved.reason === "ambiguous") {
+        return sock.sendMessage(from, { text: "Você está em mais de uma Batata Quente. Use: !passa <LobbyID> @usuario" })
+      }
+
+      const { lobbyId, stateKey, state } = resolved
+
+      const target = mentioned[0]
+      if (!target) return sock.sendMessage(from, { text: "Marque alguém para passar a batata!" })
+
+      const result = batataquente.recordPass(state, sender, target)
+      if (!result.valid) {
+        return sock.sendMessage(from, { text: result.error })
+      }
+
+      storage.setGameState(from, stateKey, state)
+      await sock.sendMessage(from, {
+        text: `✅ Lobby *${lobbyId}*: @${sender.split("@")[0]} passou a batata para @${target.split("@")[0]}!`,
+        mentions: [sender, target]
+      })
+      return
+    }
+
+    if (cmdName === prefix + "começardados" && isGroup) {
+      const lobbyId = normalizeLobbyId(cmdArg1)
+      if (!lobbyId) return sock.sendMessage(from, { text: "Use: !começardados <LobbyID>" })
+
+      const session = gameManager.getOptInSession(from, lobbyId)
+      if (!session || session.gameType !== "dados") {
+        return sock.sendMessage(from, { text: `Lobby *${lobbyId}* de Duelo de Dados não encontrado.` })
+      }
+
+      if (session.players.length !== 2) {
+        return sock.sendMessage(from, { text: "Precisamos de exatamente 2 jogadores!" })
+      }
+
+      const stateKey = activeGameKey("dados", lobbyId)
+      if (storage.getGameState(from, stateKey)) {
+        return sock.sendMessage(from, { text: `O lobby *${lobbyId}* já está em andamento.` })
+      }
+
+      const state = dueloDados.start(from, session.players)
+      storage.setGameState(from, stateKey, state)
+      gameManager.clearOptInSession(from, lobbyId)
+
+      await sock.sendMessage(from, {
+        text:
+          `🎲 Duelo de Dados iniciado no lobby *${lobbyId}*!\n` +
+          `${session.players.map((p) => `@${p.split("@")[0]}`).join(" vs ")}\n\n` +
+          `Cada jogador usa: *!rolar* (auto)\n` +
+          `Ou: *!rolar ${lobbyId}*`,
+        mentions: session.players,
+      })
+      return
+    }
+
+    // Handle dice rolls
+    if (cmdName === prefix + "rolar" && isGroup) {
+      const resolved = resolveActiveLobbyForPlayer("dados", cmdArg1, sender)
+      if (!resolved.ok && resolved.reason === "not-in-lobby") {
+        return sock.sendMessage(from, { text: `Você não está no lobby *${resolved.lobbyId}*.` })
+      }
+      if (!resolved.ok && resolved.reason === "not-found") {
+        return sock.sendMessage(from, { text: "Você não está em nenhum Duelo de Dados ativo." })
+      }
+      if (!resolved.ok && resolved.reason === "ambiguous") {
+        return sock.sendMessage(from, { text: "Você está em mais de um Duelo de Dados. Use: !rolar <LobbyID>" })
+      }
+
+      const { lobbyId, stateKey, state } = resolved
+
+      const result = dueloDados.recordRoll(state, sender)
+      if (!result.valid) {
+        return sock.sendMessage(from, { text: result.error })
+      }
+
+      storage.setGameState(from, stateKey, state)
+      await sock.sendMessage(from, {
+        text: `🎲 Lobby *${lobbyId}*: @${sender.split("@")[0]} rolou ${result.roll}!`,
+        mentions: [sender]
+      })
+
+      if (Object.keys(state.rolls).length === 2) {
+        const results = dueloDados.getResults(state)
+        const resenhaOn = isResenhaModeEnabled()
+        await sock.sendMessage(from, {
+          text: `Lobby *${lobbyId}*\n\n${dueloDados.formatResults(state, results, resenhaOn)}`
+        })
+
+        if (results.punish && results.punish.length > 0) {
+          if (resenhaOn) {
+            for (const playerId of results.punish) {
+              await applyRandomGamePunishment(playerId, {
+                severityMultiplier: results.severity || 1,
+              })
+            }
+          }
+        } else if (results.loser) {
+          if (resenhaOn) {
+            await applyRandomGamePunishment(results.loser, {
+              severityMultiplier: results.severity || 1,
+            })
+          }
+        }
+
+        storage.clearGameState(from, stateKey)
+      }
+      return
+    }
+
+    if (cmdName === prefix + "começarr" && isGroup) {
+      const lobbyId = normalizeLobbyId(cmdArg1)
+      if (!lobbyId) return sock.sendMessage(from, { text: "Use: !começarr <LobbyID>" })
+
+      const session = gameManager.getOptInSession(from, lobbyId)
+      if (!session || session.gameType !== "rr") {
+        return sock.sendMessage(from, { text: `Lobby *${lobbyId}* de Roleta Russa não encontrado.` })
+      }
+
+      if (session.players.length === 0) {
+        return sock.sendMessage(from, { text: "Precisamos de pelo menos 1 jogador!" })
+      }
+
+      const stateKey = activeGameKey("rr", lobbyId)
+      if (storage.getGameState(from, stateKey)) {
+        return sock.sendMessage(from, { text: `O lobby *${lobbyId}* já está em andamento.` })
+      }
+
+      const state = roletaRussa.start(from, session.players)
+      storage.setGameState(from, stateKey, state)
+      gameManager.clearOptInSession(from, lobbyId)
+
+      await sock.sendMessage(from, {
+        text:
+          `🔫 Roleta Russa iniciada no lobby *${lobbyId}*!\n` +
+          `${session.players.map((p) => `@${p.split("@")[0]}`).join(" ")}\n\n` +
+          `${roletaRussa.formatStatus(state)}\n` +
+          `Atire com: *!atirar* (auto)\n` +
+          `Ou: *!atirar ${lobbyId}*`,
+        mentions: session.players,
+      })
+      return
+    }
+
+    // Handle russian roulette shot
+    if (cmdName === prefix + "atirar" && isGroup) {
+      const resolved = resolveActiveLobbyForPlayer("rr", cmdArg1, sender)
+      if (!resolved.ok && resolved.reason === "not-in-lobby") {
+        return sock.sendMessage(from, { text: `Você não está no lobby *${resolved.lobbyId}*.` })
+      }
+      if (!resolved.ok && resolved.reason === "not-found") {
+        return sock.sendMessage(from, { text: "Você não está em nenhuma Roleta Russa ativa." })
+      }
+      if (!resolved.ok && resolved.reason === "ambiguous") {
+        return sock.sendMessage(from, { text: "Você está em mais de uma Roleta Russa. Use: !atirar <LobbyID>" })
+      }
+
+      const { lobbyId, stateKey, state } = resolved
+
+      const currentPlayer = roletaRussa.getCurrentPlayer(state)
+      if (sender !== currentPlayer) {
+        return sock.sendMessage(from, {
+          text: `Não é sua vez no lobby *${lobbyId}*! É de @${currentPlayer.split("@")[0]}`,
+          mentions: [currentPlayer]
+        })
+      }
+
+      const result = roletaRussa.takeShotAt(state)
+      storage.setGameState(from, stateKey, state)
+
+      if (result.hit) {
+        const resenhaOn = isResenhaModeEnabled()
+        await sock.sendMessage(from, {
+          text: resenhaOn
+            ? `💥 ${result.guaranteed ? "Garantido!!!" : "ACERTADO!"}\nLobby *${lobbyId}*\n🔴 @${result.loser.split("@")[0]} foi atingido e punido!`
+            : `💥 ${result.guaranteed ? "Garantido!!!" : "ACERTADO!"}\nLobby *${lobbyId}*\n🔴 @${result.loser.split("@")[0]} foi atingido!`,
+          mentions: [result.loser]
+        })
+
+        await applyRandomGamePunishment(result.loser)
+        storage.clearGameState(from, stateKey)
+      } else {
+        await sock.sendMessage(from, {
+          text: `*CLICK*\n✅ @${sender.split("@")[0]} sobreviveu no lobby *${lobbyId}*!\n\n${roletaRussa.formatStatus(state)}`,
+          mentions: [sender]
+        })
+      }
+      return
+    }
+
+    if ((cmd === prefix + "embaralhado") && isGroup) {
+      const startResult = await startPeriodicGame("embaralhado", {
+        triggeredBy: sender,
+        automatic: false,
+      })
+      if (!startResult.ok) {
+        return sock.sendMessage(from, { text: startResult.message })
+      }
+      return
+    }
+
+    if ((cmd === prefix + "memoria" || cmd === prefix + "memória") && isGroup) {
+      const startResult = await startPeriodicGame("memória", {
+        triggeredBy: sender,
+        automatic: false,
+      })
+      if (!startResult.ok) {
+        return sock.sendMessage(from, { text: startResult.message })
+      }
+      return
+    }
+
+    if ((cmd === prefix + "reacao" || cmd === prefix + "reação") && isGroup) {
+      const metadata = await sock.groupMetadata(from)
+      const botJid = jidNormalizedUser(sock.user?.id || "")
+      const participants = (metadata?.participants || [])
+        .map((p) => jidNormalizedUser(p.id))
+        .filter((id) => id && id !== botJid)
+
+      if (participants.length < 2) {
+        return sock.sendMessage(from, { text: "São necessários pelo menos 2 participantes para iniciar a Reação por comando." })
+      }
+
+      const startResult = await startPeriodicGame("reação", {
+        triggeredBy: sender,
+        automatic: false,
+        reactionParticipants: participants,
+      })
+      if (!startResult.ok) {
+        return sock.sendMessage(from, { text: startResult.message })
+      }
+      return
+    }
+
+    if ((cmd === prefix + "obedecer") && isGroup) {
+      const startResult = await startPeriodicGame("ultimoAObedecer", {
+        triggeredBy: sender,
+        automatic: false,
+      })
+      if (!startResult.ok) {
+        return sock.sendMessage(from, { text: startResult.message })
+      }
+      return
+    }
+
+    // MESSAGE COUNTER for triggered games
+    if (isGroup && !isCommand) {
+      gameManager.incrementMessageCounter(from, sender)
+
+      const reactionActive = storage.getGameState(from, "reaçãoActive")
+      if (reactionActive && reactionActive.started && !reactionActive.winner) {
+        const reactionResult = reação.recordReaction(reactionActive, sender)
+        if (reactionResult.valid) {
+          reactionActive.winner = sender
+          storage.setGameState(from, "reaçãoActive", reactionActive)
+          const results = reação.getResults(reactionActive)
+          const resenhaOn = isResenhaModeEnabled()
+
+          await sock.sendMessage(from, {
+            text: reação.formatResults(reactionActive, results, resenhaOn),
+          })
+
+          const allowedTargets = reactionActive.restrictToPlayers
+            ? (reactionActive.players || []).filter((p) => p !== sender)
+            : null
+          await createPendingTargetForWinner(
+            sender,
+            `⚡ @${sender.split("@")[0]} venceu o Teste de Reação!`,
+            1,
+            allowedTargets
+          )
+
+          storage.clearGameState(from, "reaçãoActive")
+          return
+        }
+      }
+
+      // Check for triggered games state responses
+      const wsActive = storage.getGameState(from, "embaralhadoActive")
+      if (wsActive && !wsActive.winner) {
+        const result = embaralhado.checkAnswer(wsActive, sender, text)
+        if (result.correct) {
+          storage.setGameState(from, "embaralhadoActive", wsActive)
+          const resenhaOn = isResenhaModeEnabled()
+          await sock.sendMessage(from, {
+            text: embaralhado.formatResults(wsActive, resenhaOn)
+          })
+
+          await createPendingTargetForWinner(
+            sender,
+            `📝 @${sender.split("@")[0]}, você venceu o Embaralhado!`,
+            1,
+            null
+          )
+
+          storage.clearGameState(from, "embaralhadoActive")
+          return
+        }
+      }
+
+      const memActive = storage.getGameState(from, "memóriaActive")
+      if (memActive && !memActive.winner) {
+        const memoryAnswerText = text.trim()
+        const memoryAnswerOnlyPattern = /^[A-Za-z0-9]{12}$/
+        if (!memoryAnswerOnlyPattern.test(memoryAnswerText)) {
+          // Memory answers must be message-only, exact 12 chars (A-Z/0-9).
+        } else {
+          const result = memória.recordAttempt(memActive, sender, memoryAnswerText)
+        if (result.correct) {
+          storage.setGameState(from, "memóriaActive", memActive)
+          const resenhaOn = isResenhaModeEnabled()
+          await sock.sendMessage(from, {
+            text: memória.formatResults(memActive, resenhaOn)
+          })
+
+          await createPendingTargetForWinner(
+            result.winner,
+            `🎯 @${result.winner.split("@")[0]}, você venceu a Memória!`,
+            1,
+            null
+          )
+
+          storage.clearGameState(from, "memóriaActive")
+          return
+        }
+        }
+      }
+
+      const uaActive = storage.getGameState(from, "ultimoAObedecerActive")
+      if (uaActive && uaActive.instruction.cmd === "silence") {
+        // Someone broke silence
+        ultimoAObedecer.recordSilenceBreaker(uaActive, sender)
+        storage.setGameState(from, "ultimoAObedecerActive", uaActive)
+      } else if (uaActive && uaActive.instruction.cmd !== "silence") {
+        const isCompliant = ultimoAObedecer.isValidCompliance(uaActive, {
+          text,
+          mentioned,
+          rawMsg: msg,
+        })
+        if (isCompliant) {
+          ultimoAObedecer.recordCompliance(uaActive, sender)
+          storage.setGameState(from, "ultimoAObedecerActive", uaActive)
+        }
+      }
+
+      // Check if should trigger periodic games
+      if (gameManager.shouldTriggerPeriodicGame(from)) {
+        const gameType = gameManager.pickRandom(["embaralhado", "reação", "ultimoAObedecer", "memória"])
+        const startResult = await startPeriodicGame(gameType, {
+          triggeredBy: sender,
+          automatic: true,
+        })
+
+        if (startResult.ok) {
+          gameManager.recordPeriodicTrigger(from)
+        } else {
+          gameManager.resetMessageCounter(from)
+        }
+      }
     }
 
     let media =
@@ -559,8 +1264,19 @@ async function startBot(){
 │ ${prefix}ship @a @b
 │ ${prefix}treta
 │ ${prefix}moeda
+│--- ${prefix}moeda dobroounada
 │--- ${prefix}streak (para ver sua sequência)
 │--- ${prefix}streakranking (para ver o ranking do grupo)
+│ ${prefix}adivinhanumero 
+│ ${prefix}batata 
+│ ${prefix}dados 
+│ ${prefix}rr
+│ ${prefix}embaralhado 
+│ ${prefix}memoria 
+│ ${prefix}reacao 
+│ ${prefix}obedecer
+│ ${prefix}lobbies
+│--- ${prefix}optar <LobbyID>
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
 ╭━━━〔 ⚡ ADM 〕━━━╮
@@ -768,47 +1484,15 @@ async function startBot(){
     // =========================
     // MOEDA (cara ou coroa)
     // =========================
-    if (cmd === prefix + "moeda" && isGroup){
-      // bloqueia nova rodada para este jogador se já houver prêmio pendente
-      if (coinPunishmentPending[from]?.[sender]) {
-        await sock.sendMessage(from, {
-          text: "Você já tem uma escolha de punição pendente. Resolva isso antes de iniciar outra rodada."
-        })
-        return
-      }
-
-      // bloqueia nova rodada para este jogador se já houver jogo dele em andamento
-      if (coinGames[from]?.[sender]) {
-        await sock.sendMessage(from, {
-          text: "Você já tem uma rodada em andamento. Responda com *cara* ou *coroa*."
-        })
-        return
-      }
-
-      // RNG criptográfico (já que reclamaram)
-      const resultado = crypto.randomInt(0, 2) === 0 ? "cara" : "coroa"
-
-      if (!coinGames[from]) coinGames[from] = {}
-      coinGames[from][sender] = {
-        player: sender,
-        resultado,
-        createdAt: Date.now()
-      }
-
-      await sock.sendMessage(from, {
-        text: `Cara ou Coroa, ladrão?`
-      })
-
-      // expira depois de 30s (apenas a rodada deste jogador)
-      setTimeout(() => {
-        if (coinGames[from]?.[sender]) {
-          delete coinGames[from][sender]
-          if (Object.keys(coinGames[from]).length === 0) delete coinGames[from]
-        }
-      }, 30_000)
-
-      return
-    }
+    const handledCoinRound = await caraOuCoroa.startCoinRound({
+      sock,
+      from,
+      sender,
+      cmd,
+      prefix,
+      isGroup,
+    })
+    if (handledCoinRound) return
 
     // =========================
     // MUTE / UNMUTE / BAN / NUKE
@@ -818,8 +1502,10 @@ async function startBot(){
       if(!alvo) return sock.sendMessage(from,{ text:"Marque alguém para mutar!" })
       if(alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from,{ text:"Não posso me mutar!" }) 
       if(!senderIsAdmin) return sock.sendMessage(from,{ text:"Apenas admins podem mutar!" })
+      const mutedUsers = storage.getMutedUsers()
       if (!mutedUsers[from]) mutedUsers[from] = {}
       mutedUsers[from][alvo] = true
+      storage.setMutedUsers(mutedUsers)
       await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi mutado! Finalmente vai calar a boca.`, mentions:[alvo] })
     }
 
@@ -828,10 +1514,12 @@ async function startBot(){
       if(!alvo) return sock.sendMessage(from,{ text:"Marque alguém para desmutar!" })
       if(alvo === sock.user.id + "@s.whatsapp.net") return sock.sendMessage(from,{ text:"Não posso me desmutar!" }) 
       if(!senderIsAdmin) return sock.sendMessage(from,{ text:"Apenas admins podem desmutar!" })
+      const mutedUsers = storage.getMutedUsers()
       if (mutedUsers[from]) {
         delete mutedUsers[from][alvo]
         if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
       }
+      storage.setMutedUsers(mutedUsers)
       await sock.sendMessage(from,{ text:`@${alvo.split("@")[0]} foi desmutado! Infelizmente pode falar de novo.`, mentions:[alvo] })
     }
 
@@ -852,10 +1540,13 @@ async function startBot(){
         console.error("Erro ao apagar mensagem do !nuke", e)
       }
       clearPunishment(from, sender)
+      const mutedUsers = storage.getMutedUsers()
       if (mutedUsers[from]?.[sender]) {
         delete mutedUsers[from][sender]
         if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
+        storage.setMutedUsers(mutedUsers)
       }
+      const coinPunishmentPending = storage.getCoinPunishmentPending()
       if (coinPunishmentPending[from]?.[sender]) clearPendingPunishment(from, sender)
       await sock.sendMessage(from, {
         text: `@${sender.split("@")[0]} teve todas as punições removidas instantaneamente.`,
@@ -873,8 +1564,10 @@ async function startBot(){
       if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para listar as punições." })
 
       const lines = []
+      const mutedUsers = storage.getMutedUsers()
       if (mutedUsers[from]?.[alvo]) lines.push("- Mute admin manual (indefinido)")
 
+      const activePunishments = storage.getActivePunishments()
       const active = activePunishments[from]?.[alvo]
       if (active) {
         if (active.type === "max5chars") lines.push("- Máx. 5 caracteres")
@@ -884,6 +1577,7 @@ async function startBot(){
         if (active.type === "mute5m") lines.push("- Mute total 5 minutos")
       }
 
+      const coinPunishmentPending = storage.getCoinPunishmentPending()
       if (coinPunishmentPending[from]) {
         const penders = Object.keys(coinPunishmentPending[from]).filter((jid) => {
           const p = coinPunishmentPending[from][jid]
@@ -907,11 +1601,14 @@ async function startBot(){
       if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para limpar as punições." })
 
       clearPunishment(from, alvo)
+      const mutedUsers = storage.getMutedUsers()
       if (mutedUsers[from]?.[alvo]) {
         delete mutedUsers[from][alvo]
         if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
+        storage.setMutedUsers(mutedUsers)
       }
 
+      const coinPunishmentPending = storage.getCoinPunishmentPending()
       if (coinPunishmentPending[from]) {
         const keys = Object.keys(coinPunishmentPending[from])
         for (const key of keys) {
@@ -950,59 +1647,39 @@ async function startBot(){
     // =========================
     // BLOQUEIO DE MENSAGENS DE USUÁRIOS MUTADOS
     // =========================
-    if(mutedUsers[from]?.[sender] && isGroup && sender !== sock.user.id && !(senderIsAdmin && isCommand)){
-      try{
-        await sock.sendMessage(from,{ delete: msg.key })
-      }catch(e){
-        console.error("Erro ao apagar mensagem de usuário mutado", e)
+    {
+      const mutedUsers = storage.getMutedUsers()
+      if(mutedUsers[from]?.[sender] && isGroup && sender !== sock.user.id && !(senderIsAdmin && isCommand)){
+        try{
+          await sock.sendMessage(from,{ delete: msg.key })
+        }catch(e){
+          console.error("Erro ao apagar mensagem de usuário mutado", e)
+        }
+        return
       }
-      return
     }
     // =========================
     // COMANDOS DE STREAKS
     // =========================
-    if (cmd === prefix + "streakranking" && isGroup) {
-      const maxMap = coinStreakMax[from] || {}
-      const currentMap = coinStreaks[from] || {}
+    const handledStreakRanking = await caraOuCoroa.sendStreakRanking({
+      sock,
+      from,
+      cmd,
+      prefix,
+      isGroup,
+    })
+    if (handledStreakRanking) return
 
-      const entries = Object.keys(maxMap).map((jid) => ({
-        jid,
-        max: maxMap[jid] || 0,
-        current: currentMap[jid] || 0
-      }))
-
-      if (entries.length === 0) {
-        await sock.sendMessage(from, { text: "Sem dados de streak neste grupo ainda." })
-        return
-      }
-
-      entries.sort((a, b) => (b.max - a.max) || (b.current - a.current))
-      const top = entries.slice(0, 10)
-      const hist = coinHistoricalMax[from] || top[0].max || 0
-
-      const rankingLines = top.map((u, i) =>
-        `${i + 1}. @${u.jid.split("@")[0]} — max: *${u.max}* | atual: *${u.current}*`
-      )
-
-      await sock.sendMessage(from, {
-        text:
-          `🏆 Recorde histórico do grupo: *${hist}*\nPelo menos até o bot resetar.\n` +
-          `📊 Ranking de streak (max | atual):\n` +
-          rankingLines.join("\n"),
-        mentions: top.map(u => u.jid)
-      })
-      return
-    }
-
-    if ((cmd === prefix + "streak" || cmd.startsWith(prefix + "streak ")) && isGroup) {
-      const alvo = mentioned[0] || sender
-      const valor = coinStreaks[from]?.[alvo] || 0
-      await sock.sendMessage(from, {
-        text: `Streak de @${alvo.split("@")[0]}: *${valor}*`,
-        mentions: [alvo]
-      })
-      return
-    }
+    const handledStreakValue = await caraOuCoroa.sendStreakValue({
+      sock,
+      from,
+      sender,
+      mentioned,
+      cmd,
+      prefix,
+      isGroup,
+    })
+    if (handledStreakValue) return
 
   })
 } 

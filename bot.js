@@ -286,7 +286,7 @@ async function startBot(){
           incrementUserStat(winnerId, "gameDobroWin", 1)
         }
         await sock.sendMessage(from, {
-          text: `💰 @${winnerId.split("@")[0]} ganhou *${amount}* PPlaceholdercoins (Cara ou Coroa).`,
+          text: `💰 @${winnerId.split("@")[0]} ganhou *${amount}* Epsteincoins (Cara ou Coroa).`,
           mentions: [winnerId],
         })
       },
@@ -309,7 +309,7 @@ async function startBot(){
         }
         if (taken > 0) {
           await sock.sendMessage(from, {
-            text: `💸 @${loserId.split("@")[0]} perdeu *${taken}* PPlaceholdercoins (Cara ou Coroa).`,
+            text: `💸 @${loserId.split("@")[0]} perdeu *${taken}* Epsteincoins (Cara ou Coroa).`,
             mentions: [loserId],
           })
         }
@@ -420,7 +420,7 @@ async function startBot(){
       })
       incrementUserStat(playerId, "moneyGameWon", amount)
       await sock.sendMessage(from, {
-        text: `💰 @${playerId.split("@")[0]} ganhou *${amount}* PPlaceholdercoins (${reasonLabel}).`,
+        text: `💰 @${playerId.split("@")[0]} ganhou *${amount}* Epsteincoins (${reasonLabel}).`,
         mentions: [playerId],
       })
       return amount
@@ -488,7 +488,7 @@ async function startBot(){
         })
         incrementUserStat(playerId, "moneyGameWon", amount)
         await sock.sendMessage(from, {
-          text: `🏦 @${playerId.split("@")[0]} recebeu *${amount}* PPlaceholdercoins da pool (${gameLabel}).`,
+          text: `🏦 @${playerId.split("@")[0]} recebeu *${amount}* Epsteincoins da pool (${gameLabel}).`,
           mentions: [playerId],
         })
       }

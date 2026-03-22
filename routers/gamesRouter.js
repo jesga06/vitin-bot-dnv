@@ -152,7 +152,6 @@ async function handleGameCommands(ctx) {
     await sock.sendMessage(from, {
       text: `
 ╭━━━〔 🎮 SUBMENU: BRINCADEIRAS 〕━━━╮
-│ Jogos de lobby:
 │ - roleta
 │ - bombardeio @user
 │ - gay @user
@@ -184,39 +183,6 @@ async function handleGameCommands(ctx) {
     const profile = economyService.getProfile(sender)
     await sock.sendMessage(from, {
       text: `${buildGameStatsText(profile)}\n\nUse *!jogos* para ver a lista de jogos.`,
-    })
-    return true
-  }
-
-  if (cmd === prefix + "jogos") {
-    await sock.sendMessage(from, {
-      text:
-`╭━━━〔 🎮 SUBMENU: JOGOS 〕━━━╮
-│ Jogos de lobby:
-│ - adivinhacao
-│ - batata
-│ - dados
-│ - rr
-│ - moeda
-│ - moeda dobro / moeda dobroounada
-│ - streak / streakranking
-│
-│ Jogos rápidos:
-│ - embaralhado
-│ - memória
-│ - reação
-│ - comando
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-╭━━━〔 📌 COMANDOS 〕━━━╮
-│ ${prefix}jogos stats
-│ ${prefix}entrar <LobbyID> / ${prefix}join <LobbyID>
-│ ${prefix}lobbies
-│ ${prefix}começar <jogo> (ou ${prefix}comecar / ${prefix}start)
-│ ${prefix}começar <LobbyID> (ou ${prefix}comecar / ${prefix}start)
-│ ${prefix}começar <embaralhado|memória|reação|comando>
-│ ${prefix}comecar <embaralhado|memoria|reacao|comando>
-╰━━━━━━━━━━━━━━━━━━━━╯`,
     })
     return true
   }

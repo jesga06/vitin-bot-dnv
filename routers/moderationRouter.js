@@ -40,6 +40,9 @@ async function handleModerationCommands(ctx) {
 
   const botJid = jidNormalizedUser(sock.user?.id || "")
 
+  // =========================
+  // COMANDOS DE MODERAÇÃO
+  // =========================
   if (cmdName === prefix + "mute") {
     const alvo = mentioned[0]
     if (!alvo) {
@@ -196,6 +199,9 @@ async function handleModerationCommands(ctx) {
     return true
   }
 
+  // =========================
+  // COMANDOS DE PUNIÇÕES
+  // =========================
   if (cmdName === prefix + "punições" || cmdName === prefix + "punicoes") {
     if (!senderIsAdmin) {
       trackModeration("punicoes", "rejected", { reason: "not-admin" })
@@ -315,7 +321,6 @@ async function handleModerationCommands(ctx) {
     const secondTokenAfterCommand = parts[2] || ""
     const thirdTokenAfterCommand = parts[3] || ""
 
-    // Suporta com e sem menção textual no comando.
     if (/^(?:1[0-3]|[1-9])$/.test(tokenAfterCommand)) {
       punishmentChoiceToken = tokenAfterCommand
       severityToken = secondTokenAfterCommand
@@ -347,12 +352,6 @@ async function handleModerationCommands(ctx) {
     return true
   }
 
-  return false
-}
-
-module.exports = {
-  handleModerationCommands,
-}
   // =========================
   // SUBMENUS !ADM e !ADMECONOMIA
   // =========================
@@ -398,3 +397,10 @@ module.exports = {
     await sock.sendMessage(from, { text: admeconomiaMenu })
     return true
   }
+
+  return false
+}
+
+module.exports = {
+  handleModerationCommands,
+}

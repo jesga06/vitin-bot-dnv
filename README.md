@@ -86,12 +86,12 @@ Observações de lobby:
 - O LobbyID pode ser informado em maiúsculas ou minúsculas para entrar/iniciar.
 
 ### Economia
-- !perfil / !perfil stats
+- !perfil / !perfil @user / !perfil stats
 - !economia
 - !coinsranking
 - !extrato
 - !loja
-- !comprar / !comprarpara
+- !comprar <item|indice> / !comprarpara
 - !vender
 - !doarcoins / !doaritem
 - !roubar
@@ -107,6 +107,9 @@ Observações de lobby:
 - !punições
 - !puniçõesclr
 - !puniçõesadd
+- !adminadd @user
+- !adminrm @user
+- !setcoins @user <quantidade>
 - !addcoins / !removecoins / !additem / !removeitem
 
 ### Utilitários e diversão

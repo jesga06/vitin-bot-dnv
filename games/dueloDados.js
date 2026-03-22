@@ -91,8 +91,8 @@ module.exports = {
     const [p1, p2] = state.players
     let msg = `🎲 Duelo de Dados!\n\n`
 
-    msg += `${p1.substring(0, 5)}: ${state.rolls[p1]}\n`
-    msg += `${p2.substring(0, 5)}: ${state.rolls[p2]}\n\n`
+    msg += `@${p1.split("@")[0]}: ${state.rolls[p1]}\n`
+    msg += `@${p2.split("@")[0]}: ${state.rolls[p2]}\n\n`
 
     if (results.type === "both_critical") {
       msg += `💥 AMBOS ROLARAM 1!\n`
@@ -105,13 +105,13 @@ module.exports = {
         ? `Os dois serão punidos.`
         : `Rodada empatada.`
     } else {
-      msg += `🏆 ${results.winner.substring(0, 5)}... ganhou!\n`
+      msg += `🏆 @${results.winner.split("@")[0]} ganhou!\n`
       if (!includePunishmentWarnings) {
-        msg += `${results.loser.substring(0, 5)}... perdeu a rodada`
+        msg += `@${results.loser.split("@")[0]} perdeu a rodada`
       } else if (results.severity === 2) {
-        msg += `⚠️ ${results.loser.substring(0, 5)}... recebe punição 2x`
+        msg += `⚠️ @${results.loser.split("@")[0]} recebe punição 2x`
       } else {
-        msg += `${results.loser.substring(0, 5)}... foi punido`
+        msg += `@${results.loser.split("@")[0]} foi punido`
       }
     }
 

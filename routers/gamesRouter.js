@@ -39,6 +39,8 @@ async function handleGameCommands(ctx) {
     applyRandomGamePunishment,
     createPendingTargetForWinner,
     jidNormalizedUser,
+    createLobbyWarningCallback,
+    buildGameStatsText,
   } = ctx
 
   const isJoinCommand = cmdName === prefix + "entrar" || cmdName === prefix + "join"
@@ -48,20 +50,57 @@ async function handleGameCommands(ctx) {
     cmdName === prefix + "start"
   )
 
-  if ((cmdName === prefix + "começa" || cmdName === prefix + "comeca") && isGroup) {
-    const targetType = normalizeUnifiedGameType(cmdArg1)
-    if (!targetType) {
+  if ((cmd === prefix + "moeda dobro" || cmd === prefix + "moeda dobroounada" || cmd === prefix + "moeda dobrounada") && isGroup) {
+    const toggle = caraOuCoroa.toggleDobroOuNada(from, sender)
+    if (toggle.enabled) {
       await sock.sendMessage(from, {
-        text: "Use: !começa <adivinhacao|batata|dados|rr|embaralhado|memoria|reacao|comando>",
+        text: `🎲 Dobro ou Nada ATIVADO para !moeda!\n\n${caraOuCoroa.formatDobroStatus(from, toggle.state)}`,
       })
-      return true
+    } else {
+      await sock.sendMessage(from, {
+        text: "🎲 Dobro ou Nada DESATIVADO para !moeda.",
+      })
     }
+    return true
   }
 
-  if ((cmd === prefix + "moeda dobro" || cmd === prefix + "moeda dobroounada") && isGroup) {
-    const state = caraOuCoroa.startDobroOuNada(from, sender)
+  if (cmdName === prefix + "jogos" && cmdArg1 === "stats") {
+    const profile = economyService.getProfile(sender)
     await sock.sendMessage(from, {
-      text: `🎲 Dobro ou Nada iniciado!\n\n${caraOuCoroa.formatDobroStatus(from, state)}`,
+      text: `${buildGameStatsText(profile)}\n\nUse *!jogos* para ver a lista de jogos.`,
+    })
+    return true
+  }
+
+  if (cmd === prefix + "jogos") {
+    await sock.sendMessage(from, {
+      text:
+`╭━━━〔 🎮 SUBMENU: JOGOS 〕━━━╮
+│ Jogos de lobby:
+│ - adivinhacao
+│ - batata
+│ - dados
+│ - rr
+│ - moeda
+│ - moeda dobro / moeda dobroounada
+│ - streak / streakranking
+│
+│ Jogos rápidos:
+│ - embaralhado
+│ - memória
+│ - reação
+│ - comando
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+╭━━━〔 📌 COMANDOS 〕━━━╮
+│ ${prefix}jogos stats
+│ ${prefix}entrar <LobbyID> / ${prefix}join <LobbyID>
+│ ${prefix}lobbies
+│ ${prefix}começar <jogo> (ou ${prefix}comecar / ${prefix}start)
+│ ${prefix}começar <LobbyID> (ou ${prefix}comecar / ${prefix}start)
+│ ${prefix}começa <embaralhado|memória|reação|comando>
+│ ${prefix}comeca <embaralhado|memoria|reacao|comando>
+╰━━━━━━━━━━━━━━━━━━━━╯`,
     })
     return true
   }
@@ -73,8 +112,9 @@ async function handleGameCommands(ctx) {
       return true
     }
 
-    const lobbyId = gameManager.createOptInSession(from, "adivinhacao", 1, 4, 30000, {
+    const lobbyId = gameManager.createOptInSession(from, "adivinhacao", 1, 4, 120000, {
       initialPlayers: [sender],
+      onLobbyWarning: createLobbyWarningCallback,
     })
     await sock.sendMessage(from, {
       text:
@@ -97,8 +137,9 @@ async function handleGameCommands(ctx) {
       return true
     }
 
-    const lobbyId = gameManager.createOptInSession(from, "batata", 2, null, 30000, {
+    const lobbyId = gameManager.createOptInSession(from, "batata", 2, null, 120000, {
       initialPlayers: [sender],
+      onLobbyWarning: createLobbyWarningCallback,
     })
     await sock.sendMessage(from, {
       text:
@@ -120,8 +161,9 @@ async function handleGameCommands(ctx) {
       return true
     }
 
-    const lobbyId = gameManager.createOptInSession(from, "dados", 2, 2, 30000, {
+    const lobbyId = gameManager.createOptInSession(from, "dados", 2, 2, 120000, {
       initialPlayers: [sender],
+      onLobbyWarning: createLobbyWarningCallback,
     })
     await sock.sendMessage(from, {
       text:
@@ -142,8 +184,9 @@ async function handleGameCommands(ctx) {
       return true
     }
 
-    const lobbyId = gameManager.createOptInSession(from, "rr", 1, 4, 30000, {
+    const lobbyId = gameManager.createOptInSession(from, "rr", 1, 4, 120000, {
       initialPlayers: [sender],
+      onLobbyWarning: createLobbyWarningCallback,
     })
     await sock.sendMessage(from, {
       text:
@@ -467,6 +510,7 @@ async function handleGameCommands(ctx) {
           }
       await sock.sendMessage(from, {
         text: `Lobby *${lobbyId}*\n\n${adivinhacao.formatResults(state, displayResults, resenhaOn)}`,
+        mentions: state.players || [],
       })
 
       if (results.chooser) {
@@ -579,6 +623,7 @@ async function handleGameCommands(ctx) {
       const resenhaOn = isResenhaModeEnabled()
       await sock.sendMessage(from, {
         text: `Lobby *${lobbyId}*\n\n${dueloDados.formatResults(state, results, resenhaOn)}`,
+        mentions: state.players || [],
       })
 
       if (results.winner) {
@@ -689,7 +734,7 @@ async function handleGameCommands(ctx) {
     return true
   }
 
-  if ((cmd === prefix + "embaralhado" || (cmdName === prefix + "começa" && normalizeUnifiedGameType(cmdArg1) === "embaralhado")) && isGroup) {
+  if ((cmd === prefix + "embaralhado" || ((cmdName === prefix + "começa" || cmdName === prefix + "comeca") && normalizeUnifiedGameType(cmdArg1) === "embaralhado")) && isGroup) {
     const startResult = await startPeriodicGame("embaralhado", {
       triggeredBy: sender,
       automatic: false,
@@ -700,7 +745,7 @@ async function handleGameCommands(ctx) {
     return true
   }
 
-  if ((cmdName === prefix + "começa" && normalizeUnifiedGameType(cmdArg1) === "memória") && isGroup) {
+  if (((cmdName === prefix + "começa" || cmdName === prefix + "comeca") && normalizeUnifiedGameType(cmdArg1) === "memória") && isGroup) {
     const startResult = await startPeriodicGame("memória", {
       triggeredBy: sender,
       automatic: false,
@@ -711,7 +756,7 @@ async function handleGameCommands(ctx) {
     return true
   }
 
-  if ((cmdName === prefix + "começa" && normalizeUnifiedGameType(cmdArg1) === "reação") && isGroup) {
+  if (((cmdName === prefix + "começa" || cmdName === prefix + "comeca") && normalizeUnifiedGameType(cmdArg1) === "reação") && isGroup) {
     const metadata = await sock.groupMetadata(from)
     const botJid = jidNormalizedUser(sock.user?.id || "")
     const participants = (metadata?.participants || [])
@@ -734,7 +779,7 @@ async function handleGameCommands(ctx) {
     return true
   }
 
-  if ((cmdName === prefix + "começa" && normalizeUnifiedGameType(cmdArg1) === "comando") && isGroup) {
+  if (((cmdName === prefix + "começa" || cmdName === prefix + "comeca") && normalizeUnifiedGameType(cmdArg1) === "comando") && isGroup) {
     const startResult = await startPeriodicGame("comando", {
       triggeredBy: sender,
       automatic: false,
@@ -787,6 +832,7 @@ async function handleGameMessageFlow(ctx) {
 
       await sock.sendMessage(from, {
         text: reação.formatResults(reactionActive, results, resenhaOn),
+        mentions: Array.from(new Set((results.reactions || []).map((r) => r.playerId))),
       })
 
       await rewardPlayer(sender, GAME_REWARDS.REACAO, 1, "Reação")
@@ -843,6 +889,7 @@ async function handleGameMessageFlow(ctx) {
         const resenhaOn = isResenhaModeEnabled()
         await sock.sendMessage(from, {
           text: memória.formatResults(memActive, resenhaOn),
+          mentions: [result.winner],
         })
 
         await rewardPlayer(result.winner, GAME_REWARDS.MEMORIA, 1, "Memória")

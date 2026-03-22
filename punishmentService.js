@@ -7,11 +7,8 @@ const LETTER_ALPHABET = "abcdefghijklmnopqrstuvwxyz"
 
 function getPunishmentChoiceFromText(text = "") {
   const cleaned = text.toLowerCase().trim()
-  if (cleaned === "1") return "1"
-  if (cleaned === "2") return "2"
-  if (cleaned === "3") return "3"
-  if (cleaned === "4") return "4"
-  if (cleaned === "5") return "5"
+  const match = cleaned.match(/(?:^|\s)([1-5])(?:\s|$)/)
+  if (match?.[1]) return match[1]
   return null
 }
 
@@ -21,22 +18,22 @@ function getRandomPunishmentChoice() {
 }
 
 function getPunishmentNameById(punishmentId) {
-  if (punishmentId === "1") return "max. 5 caracteres (5 min)"
-  if (punishmentId === "2") return "1 mensagem/20s (10 min)"
+  if (punishmentId === "1") return "máx. 5 caracteres"
+  if (punishmentId === "2") return "1 mensagem/20s"
   if (punishmentId === "3") return "bloqueio por 2 letras (indefinido)"
-  if (punishmentId === "4") return "somente emojis (5 min)"
-  if (punishmentId === "5") return "mute total (5 min)"
+  if (punishmentId === "4") return "somente emojis e figurinhas"
+  if (punishmentId === "5") return "mute total"
   return "desconhecida"
 }
 
 function getPunishmentMenuText() {
   return [
-    "Escolha a punicao digitando *1*, *2*, *3*, *4* ou *5*:",
-    "1. Mensagens com no maximo 5 caracteres por 5 minutos.",
-    "2. Maximo de 1 mensagem a cada 20 segundos por 10 minutos.",
-    "3. Bloqueio por duas letras aleatorias (indefinido ate cumprir condicao de saida).",
-    "4. So pode enviar emojis por 5 minutos.",
-    "5. Mute total por 5 minutos (tudo que enviar sera apagado)."
+    "Escolha a punição digitando *1*, *2*, *3*, *4* ou *5*:",
+    "1. Mensagens com no máximo 5 caracteres por 5 minutos.",
+    "2. Máximo de 1 mensagem a cada 20 segundos por 10 minutos.",
+    "3. Bloqueio por duas letras aleatórias (indefinido até cumprir condição de saída).",
+    "4. Só pode enviar emojis e figurinhas por 5 minutos.",
+    "5. Mute total por 5 minutos (tudo que enviar será apagado)."
   ].join("\n")
 }
 
@@ -56,6 +53,10 @@ function isEmojiOnlyMessage(text = "") {
   if (!compact) return false
   const emojiCluster = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?)*)+$/u
   return emojiCluster.test(compact)
+}
+
+function isStickerMessage(msg = null) {
+  return Boolean(msg?.message?.stickerMessage)
 }
 
 function isUnlockLettersMessage(text = "", letters = []) {
@@ -135,7 +136,7 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
       type: "max5chars",
       endsAt: now + durationMs
     }
-    warningText = `${mentionTag}, punicao ativada: suas mensagens so podem ter ate *5 caracteres* por *${Math.floor(durationMs / 60_000)} minutos* (espaco conta). Mensagens fora disso serao apagadas.`
+    warningText = `${mentionTag}, punição ativada: suas mensagens só podem ter até *5 caracteres* por *${Math.floor(durationMs / 60_000)} minutos* (espaço conta). Mensagens fora disso serão apagadas.`
   }
 
   if (punishmentId === "2") {
@@ -145,7 +146,7 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
       endsAt: now + durationMs,
       lastAllowedAt: 0
     }
-    warningText = `${mentionTag}, punicao ativada: voce so pode enviar *1 mensagem a cada 20 segundos* por *${Math.floor(durationMs / 60_000)} minutos*. Mensagens acima da taxa serao apagadas.`
+    warningText = `${mentionTag}, punição ativada: você só pode enviar *1 mensagem a cada 20 segundos* por *${Math.floor(durationMs / 60_000)} minutos*. Mensagens acima da taxa serão apagadas.`
   }
 
   if (punishmentId === "3") {
@@ -154,7 +155,7 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
       type: "lettersBlock",
       letters
     }
-    warningText = `${mentionTag}, punicao ativada: qualquer mensagem sua contendo ao menos 1 de 2 letras selecionadas aleatoriamente sera apagada. Isso e *indefinido* e so acaba quando voce enviar uma mensagem contendo apenas uma ou ambas essas letras.\nBoa sorte tentando descobrir quais letras elas sao.`
+    warningText = `${mentionTag}, punição ativada: qualquer mensagem sua contendo ao menos 1 de 2 letras selecionadas aleatoriamente será apagada. Isso é *indefinido* e só acaba quando você enviar uma mensagem contendo apenas uma ou ambas essas letras.\nBoa sorte tentando descobrir quais letras elas são.`
   }
 
   if (punishmentId === "4") {
@@ -163,7 +164,7 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
       type: "emojiOnly",
       endsAt: now + durationMs
     }
-    warningText = `${mentionTag}, punicao ativada: por *${Math.floor(durationMs / 60_000)} minutos* voce so pode enviar mensagens formadas apenas por emojis. Qualquer mensagem contendo texto nao emoji sera apagada.`
+    warningText = `${mentionTag}, punição ativada: por *${Math.floor(durationMs / 60_000)} minutos* você só pode enviar mensagens formadas por emojis ou figurinhas. Qualquer mensagem com texto fora desse formato será apagada.`
   }
 
   if (punishmentId === "5") {
@@ -172,7 +173,7 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
       type: "mute5m",
       endsAt: now + durationMs
     }
-    warningText = `${mentionTag}, punicao ativada: *mute total por ${Math.floor(durationMs / 60_000)} minutos*. Qualquer mensagem sua sera apagada.`
+    warningText = `${mentionTag}, punição ativada: *mute total por ${Math.floor(durationMs / 60_000)} minutos*. Qualquer mensagem sua será apagada.`
   }
 
   if (!punishmentState) return
@@ -242,7 +243,7 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
     if (isUnlockLettersMessage(text, letters)) {
       clearPunishment(from, sender)
       await sock.sendMessage(from, {
-        text: `@${sender.split("@")[0]}, voce cumpriu a condicao e foi liberado da punicao das letras (${letters[0]} / ${letters[1]}).`,
+        text: `@${sender.split("@")[0]}, você cumpriu a condição e foi liberado da punição das letras (${letters[0]} / ${letters[1]}).`,
         mentions: [sender]
       })
       return false
@@ -251,7 +252,7 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
   }
 
   if (punishment.type === "emojiOnly") {
-    shouldDelete = !isEmojiOnlyMessage(text)
+    shouldDelete = !isEmojiOnlyMessage(text) && !isStickerMessage(msg)
   }
 
   if (punishment.type === "mute5m") {
@@ -263,7 +264,7 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
   try {
     await sock.sendMessage(from, { delete: msg.key })
   } catch (e) {
-    console.error("Erro ao apagar mensagem por punicao", e)
+    console.error("Erro ao apagar mensagem por punição", e)
   }
   return true
 }
@@ -303,14 +304,14 @@ async function handlePendingPunishmentChoice({ sock, from, sender, text, mention
 
   if (pending.mode === "target" && !target) {
     await sock.sendMessage(from, {
-      text: "Marque primeiro quem vai receber a punicao.\n" + getPunishmentMenuText()
+      text: "Marque primeiro quem vai receber a punição.\n" + getPunishmentMenuText()
     })
     return true
   }
 
   if (!punishmentChoice) {
     await sock.sendMessage(from, {
-      text: "Escolha invalida.\n" + getPunishmentMenuText()
+      text: "Escolha inválida.\n" + getPunishmentMenuText()
     })
     return true
   }

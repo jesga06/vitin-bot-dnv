@@ -7,6 +7,72 @@ const ECONOMY_FILE = path.join(DATA_DIR, "economy.json")
 const DEFAULT_COINS = 0
 const DAY_MS = 24 * 60 * 60 * 1000
 
+const PUNISHMENT_TYPE_NAMES = {
+  1: "max. 5 caracteres",
+  2: "1 msg/20s",
+  3: "bloqueio 2 letras",
+  4: "somente emojis/figurinhas",
+  5: "mute total",
+}
+
+const PUNISHMENT_PASS_BASE_SELL = {
+  1: 400,
+  2: 520,
+  3: 680,
+  4: 820,
+  5: 950,
+}
+
+function normalizePassSeverity(value, fallback = 1) {
+  const parsed = Math.floor(Number(value) || 0)
+  return parsed > 0 ? parsed : fallback
+}
+
+function isValidPunishmentType(type) {
+  const parsed = Math.floor(Number(type) || 0)
+  return parsed >= 1 && parsed <= 5
+}
+
+function buildPunishmentPassKey(type, severity = 1) {
+  const safeType = Math.floor(Number(type) || 0)
+  const safeSeverity = normalizePassSeverity(severity, 1)
+  return `passPunicao${safeType}x${safeSeverity}`
+}
+
+function parsePunishmentPassKey(itemKey = "") {
+  const raw = String(itemKey || "")
+  const match = raw.match(/^passPunicao([1-5])x(\d+)$/i)
+  if (!match) return null
+  const type = Number.parseInt(match[1], 10)
+  const severity = normalizePassSeverity(match[2], 1)
+  return { type, severity, key: buildPunishmentPassKey(type, severity) }
+}
+
+function getPunishmentPassDefinition(type, severity = 1) {
+  if (!isValidPunishmentType(type)) return null
+  const parsedType = Math.floor(Number(type) || 0)
+  const parsedSeverity = normalizePassSeverity(severity, 1)
+  const baseSell = Number(PUNISHMENT_PASS_BASE_SELL[parsedType]) || 400
+  const sellValue = Math.floor(baseSell * parsedSeverity)
+  return {
+    key: buildPunishmentPassKey(parsedType, parsedSeverity),
+    aliases: [],
+    name: `Passe de Punição ${parsedType} (${parsedSeverity}x)`,
+    price: sellValue,
+    sellRate: 1,
+    stackable: true,
+    buyable: false,
+    punishmentType: parsedType,
+    severity: parsedSeverity,
+    description: `Permite aplicar punição '${PUNISHMENT_TYPE_NAMES[parsedType]}' com severidade ${parsedSeverity}x. Item não comprável na loja.`,
+  }
+}
+
+function pickRandomPunishmentType(excludedType = null) {
+  const options = [1, 2, 3, 4, 5].filter((type) => type !== excludedType)
+  return options[Math.floor(Math.random() * options.length)]
+}
+
 const ITEM_DEFINITIONS = {
   escudo: {
     key: "escudo",
@@ -17,24 +83,34 @@ const ITEM_DEFINITIONS = {
     stackable: true,
     description: "Protege automaticamente contra 1 punição não administrativa.",
   },
-  mute: {
-    key: "mute",
-    aliases: ["silencio", "silêncio"],
-    name: "Mute",
-    price: 600,
-    sellRate: 0.8,
-    stackable: true,
-    description: "Permite usar !silenciar @alvo. Dura por 10 minutos.",
-  },
-  kronos: {
-    key: "kronos",
-    aliases: ["coroa", "coroakronos", "kronos"],
-    name: "Coroa Kronos",
+  kronosQuebrada: {
+    key: "kronosQuebrada",
+    aliases: ["coroakronosquebrada"],
+    name: "Coroa Kronos (Quebrada)",
     price: 18000,
     sellRate: 0.8,
     stackable: true,
     durationMs: 10 * DAY_MS,
-    description: "+30% ganhos (cassino, roubo, trabalhos), +10% daily, -10% chance de ser roubado e +10 escudos.",
+    description: "+30% ganhos (cassino, roubo, trabalhos), +10% daily, -10% chance de ser roubado, +10% chance ao roubar e 2 escudos temporarios por dia.",
+  },
+  kronosVerdadeira: {
+    key: "kronosVerdadeira",
+    aliases: ["coroakronosverdadeira"],
+    name: "Coroa Kronos Verdadeira",
+    price: 45000,
+    sellRate: 0.8,
+    stackable: true,
+    permanent: true,
+    description: "+30% ganhos (cassino, roubo, trabalhos), +10% daily, -10% chance de ser roubado, +10% chance ao roubar e 2 escudos temporarios por dia. PERMANENTE!",
+  },
+  lootbox: {
+    key: "lootbox",
+    aliases: ["caixa", "lootcaixa"],
+    name: "Lootbox",
+    price: 900,
+    sellRate: 0.8,
+    stackable: true,
+    description: "Use !lootbox <quantidade> para abrir. Cada lootbox contém efeitos aleatórios incríveis!",
   },
 }
 
@@ -138,8 +214,34 @@ function saveEconomy(immediate = false) {
 function migrateUserShape(user) {
   if (!user || typeof user !== "object") return
   if (!user.items || typeof user.items !== "object") user.items = {}
-  if (!user.buffs || typeof user.buffs !== "object") user.buffs = { kronosExpiresAt: 0 }
+  
+  // Migrar dados antigos de "kronos" para "kronosQuebrada"
+  if (user.items.kronos && user.items.kronos > 0) {
+    user.items.kronosQuebrada = (Number(user.items.kronosQuebrada) || 0) + Number(user.items.kronos)
+    delete user.items.kronos
+  }
+
+  // Migrar item antigo de silenciar/mute para passe de punição tipo 5 (1x)
+  if (user.items.mute && user.items.mute > 0) {
+    const passKey = buildPunishmentPassKey(5, 1)
+    user.items[passKey] = (Number(user.items[passKey]) || 0) + Number(user.items.mute)
+    delete user.items.mute
+  }
+  
+  if (!user.buffs || typeof user.buffs !== "object") {
+    user.buffs = {
+      kronosExpiresAt: 0,
+      kronosTempShieldDayKey: null,
+      kronosTempShields: 0,
+      kronosVerdadeiraActive: false,
+    }
+  }
   if (!Number.isFinite(user.buffs.kronosExpiresAt)) user.buffs.kronosExpiresAt = 0
+  if (typeof user.buffs.kronosTempShieldDayKey !== "string" && user.buffs.kronosTempShieldDayKey !== null) {
+    user.buffs.kronosTempShieldDayKey = null
+  }
+  if (!Number.isFinite(user.buffs.kronosTempShields)) user.buffs.kronosTempShields = 0
+  if (typeof user.buffs.kronosVerdadeiraActive !== "boolean") user.buffs.kronosVerdadeiraActive = false
   if (!user.cooldowns || typeof user.cooldowns !== "object") {
     user.cooldowns = {
       dailyClaimKey: null,
@@ -187,6 +289,9 @@ function ensureUser(userId) {
       items: {},
       buffs: {
         kronosExpiresAt: 0,
+        kronosTempShieldDayKey: null,
+        kronosTempShields: 0,
+        kronosVerdadeiraActive: false,
       },
       cooldowns: {
         dailyClaimKey: null,
@@ -236,6 +341,27 @@ function getCoins(userId) {
   const user = ensureUser(userId)
   if (!user) return 0
   return Number.isFinite(user.coins) ? user.coins : DEFAULT_COINS
+}
+
+function setCoins(userId, amount, transaction = null) {
+  const user = ensureUser(userId)
+  if (!user) return { ok: false, balance: 0, delta: 0 }
+
+  const previous = getCoins(userId)
+  const next = Math.max(0, Math.floor(Number(amount) || 0))
+  user.coins = next
+  touchUser(user)
+  saveEconomy()
+
+  const delta = next - previous
+  if (transaction) {
+    pushTransaction(userId, {
+      ...transaction,
+      deltaCoins: delta,
+    })
+  }
+
+  return { ok: true, previous, balance: next, delta }
 }
 
 function creditCoins(userId, amount, transaction = null) {
@@ -320,14 +446,39 @@ function debitCoinsFlexible(userId, amount, transaction = null) {
 function normalizeItemKey(itemKey = "") {
   const normalized = String(itemKey || "").trim().toLowerCase()
   if (!normalized) return null
+
+  if (["mute", "silenciar", "silencio", "silêncio"].includes(normalized)) {
+    return buildPunishmentPassKey(5, 1)
+  }
+
+  const passAlias = normalized.match(/^(?:passe|pass)(?:punicao)?([1-5])(?:x(\d+))?$/)
+  if (passAlias) {
+    const type = Number.parseInt(passAlias[1], 10)
+    const severity = normalizePassSeverity(passAlias[2], 1)
+    return buildPunishmentPassKey(type, severity)
+  }
+
+  const passKey = parsePunishmentPassKey(normalized)
+  if (passKey) {
+    return passKey.key
+  }
+
   const entries = Object.values(ITEM_DEFINITIONS)
-  const found = entries.find((item) => item.key === normalized || (item.aliases || []).includes(normalized))
+  const found = entries.find((item) => {
+    const canonical = String(item.key || "").toLowerCase()
+    const aliases = (item.aliases || []).map((alias) => String(alias || "").toLowerCase())
+    return canonical === normalized || aliases.includes(normalized)
+  })
   return found?.key || null
 }
 
 function getItemDefinition(itemKey = "") {
   const key = normalizeItemKey(itemKey)
   if (!key) return null
+  const passParsed = parsePunishmentPassKey(key)
+  if (passParsed) {
+    return getPunishmentPassDefinition(passParsed.type, passParsed.severity)
+  }
   return ITEM_DEFINITIONS[key] || null
 }
 
@@ -353,24 +504,39 @@ function setItemQuantity(userId, itemKey, quantity) {
   return next
 }
 
-function grantKronosBenefits(userId, quantity = 1) {
+function grantKronosBenefits(userId, itemKey = "kronosQuebrada", quantity = 1) {
   const user = ensureUser(userId)
   const qty = Math.max(1, Math.floor(Number(quantity) || 1))
-  const def = getItemDefinition("kronos")
+  const def = getItemDefinition(itemKey)
   if (!user || !def) return
+  
   const now = Date.now()
-  const currentEnd = Math.max(Number(user.buffs.kronosExpiresAt) || 0, now)
-  user.buffs.kronosExpiresAt = currentEnd + (def.durationMs * qty)
-  user.items.escudo = (Math.floor(Number(user.items.escudo) || 0) + (10 * qty))
-  touchUser(user)
-  saveEconomy()
+  
+  if (itemKey === "kronosVerdadeira") {
+    // Coroa Kronos Verdadeira é permanente
+    user.buffs.kronosVerdadeiraActive = true
+    touchUser(user)
+    saveEconomy()
+  } else {
+    // Coroa Kronos Quebrada tem duração temporária
+    const currentEnd = Math.max(Number(user.buffs.kronosExpiresAt) || 0, now)
+    user.buffs.kronosExpiresAt = currentEnd + (def.durationMs * qty)
+    touchUser(user)
+    saveEconomy()
+  }
 }
 
-function removeKronosDuration(userId, quantity = 1) {
+function removeKronosDuration(userId, itemKey = "kronosQuebrada", quantity = 1) {
   const user = ensureUser(userId)
   const qty = Math.max(1, Math.floor(Number(quantity) || 1))
-  const def = getItemDefinition("kronos")
+  const def = getItemDefinition(itemKey)
   if (!user || !def) return
+  
+  if (itemKey === "kronosVerdadeira") {
+    // Não pode remover Coroa Kronos Verdadeira (é permanente)
+    return
+  }
+  
   const now = Date.now()
   const currentEnd = Math.max(Number(user.buffs.kronosExpiresAt) || 0, now)
   user.buffs.kronosExpiresAt = Math.max(now, currentEnd - (def.durationMs * qty))
@@ -384,8 +550,10 @@ function addItem(userId, itemKey, quantity = 1) {
   if (!key || qty <= 0) return 0
   const current = getItemQuantity(userId, key)
   const next = setItemQuantity(userId, key, current + qty)
-  if (key === "kronos") {
-    grantKronosBenefits(userId, qty)
+  if (key === "kronosQuebrada") {
+    grantKronosBenefits(userId, "kronosQuebrada", qty)
+  } else if (key === "kronosVerdadeira") {
+    grantKronosBenefits(userId, "kronosVerdadeira", qty)
   }
   return next
 }
@@ -397,14 +565,21 @@ function removeItem(userId, itemKey, quantity = 1) {
   const current = getItemQuantity(userId, key)
   const next = Math.max(0, current - qty)
   setItemQuantity(userId, key, next)
-  if (key === "kronos") {
-    removeKronosDuration(userId, Math.min(current, qty))
+  if (key === "kronosQuebrada") {
+    removeKronosDuration(userId, "kronosQuebrada", Math.min(current, qty))
+  } else if (key === "kronosVerdadeira") {
+    // Não pode remover Coroa Kronos Verdadeira
   }
   return next
 }
 
 function getShields(userId) {
-  return getItemQuantity(userId, "escudo")
+  refreshKronosTemporaryShields(userId)
+  const user = ensureUser(userId)
+  if (!user) return 0
+  const permanentShields = getItemQuantity(userId, "escudo")
+  const temporaryShields = Math.max(0, Math.floor(Number(user.buffs.kronosTempShields) || 0))
+  return permanentShields + temporaryShields
 }
 
 function addShields(userId, quantity = 1) {
@@ -412,7 +587,20 @@ function addShields(userId, quantity = 1) {
 }
 
 function consumeShield(userId) {
-  if (getShields(userId) <= 0) return false
+  refreshKronosTemporaryShields(userId)
+  const user = ensureUser(userId)
+  if (!user) return false
+
+  const temporaryShields = Math.max(0, Math.floor(Number(user.buffs.kronosTempShields) || 0))
+  if (temporaryShields > 0) {
+    user.buffs.kronosTempShields = temporaryShields - 1
+    touchUser(user)
+    saveEconomy()
+    incrementStat(userId, "shieldsUsed", 1)
+    return true
+  }
+
+  if (getItemQuantity(userId, "escudo") <= 0) return false
   removeItem(userId, "escudo", 1)
   incrementStat(userId, "shieldsUsed", 1)
   return true
@@ -425,8 +613,43 @@ function buyShield(userId) {
 function hasActiveKronos(userId) {
   const user = ensureUser(userId)
   if (!user) return false
+  
+  // Verifica Coroa Kronos Verdadeira (permanente)
+  if (user.buffs.kronosVerdadeiraActive) {
+    return true
+  }
+  
+  // Verifica Coroa Kronos Quebrada (temporária)
   const expiresAt = Number(user.buffs.kronosExpiresAt) || 0
   return expiresAt > Date.now()
+}
+
+function refreshKronosTemporaryShields(userId) {
+  const user = ensureUser(userId)
+  if (!user) return
+
+  const expiresAt = Number(user.buffs.kronosExpiresAt) || 0
+  const kronosQuebradaActive = expiresAt > Date.now()
+  const kronosVerdadeiraActive = Boolean(user.buffs.kronosVerdadeiraActive)
+  const kronosActive = kronosQuebradaActive || kronosVerdadeiraActive
+  const dayKey = getDayKey()
+
+  if (!kronosActive) {
+    if ((Number(user.buffs.kronosTempShields) || 0) > 0 || user.buffs.kronosTempShieldDayKey !== null) {
+      user.buffs.kronosTempShields = 0
+      user.buffs.kronosTempShieldDayKey = null
+      touchUser(user)
+      saveEconomy()
+    }
+    return
+  }
+
+  if (user.buffs.kronosTempShieldDayKey !== dayKey) {
+    user.buffs.kronosTempShieldDayKey = dayKey
+    user.buffs.kronosTempShields = 2
+    touchUser(user)
+    saveEconomy()
+  }
 }
 
 function applyKronosGainMultiplier(userId, amount, type = "generic") {
@@ -438,10 +661,11 @@ function applyKronosGainMultiplier(userId, amount, type = "generic") {
   return base
 }
 
-function getStealSuccessChance(victimId) {
+function getStealSuccessChance(victimId, thiefId = "") {
   const baseChance = 0.3
   const protection = hasActiveKronos(victimId) ? 0.1 : 0
-  return Math.max(0.05, Math.min(0.95, baseChance - protection))
+  const thiefBuff = hasActiveKronos(thiefId) ? 0.1 : 0
+  return Math.max(0.05, Math.min(0.95, baseChance - protection + thiefBuff))
 }
 
 function canAttemptSteal(thiefId, victimId) {
@@ -490,6 +714,10 @@ function buyItem(buyerId, itemKey, quantity = 1, recipientId = buyerId) {
   const qty = Math.floor(Number(quantity) || 0)
   if (!item || qty <= 0) {
     return { ok: false, reason: "invalid-item" }
+  }
+
+  if (item.buyable === false) {
+    return { ok: false, reason: "not-for-sale" }
   }
 
   const totalCost = item.price * qty
@@ -591,7 +819,7 @@ function attemptSteal(thiefId, victimId, requestedAmount = 0) {
     return { ok: false, reason: "victim-empty" }
   }
 
-  const chance = getStealSuccessChance(victimId)
+  const chance = getStealSuccessChance(victimId, thiefId)
   const roll = Math.random()
   const success = roll <= chance
 
@@ -745,7 +973,7 @@ function getItemCatalog() {
 
 function getShopIndexText() {
   const lines = ["Loja (indice)"]
-  const catalog = getItemCatalog()
+  const catalog = getItemCatalog().filter((item) => item.buyable !== false)
   catalog.forEach((item, idx) => {
     lines.push(`${idx + 1}. ${item.name} (${item.key}) - ${item.price} Epsteincoins`)
   })
@@ -776,6 +1004,7 @@ function getProfile(userId) {
     buffs: {
       kronosActive: hasActiveKronos(userId),
       kronosExpiresAt: Number(user.buffs?.kronosExpiresAt) || 0,
+      kronosVerdadeiraActive: Boolean(user.buffs?.kronosVerdadeiraActive),
     },
     cooldowns: { ...user.cooldowns },
     stats: { ...user.stats },
@@ -800,6 +1029,181 @@ function getStatement(userId, limit = 10) {
   return (user.transactions || []).slice(-safeLimit).reverse()
 }
 
+// Sistema de Lootbox
+const LOOTBOX_EFFECTS = [
+  { id: "daily_reset", name: "Resetar cooldown !daily", weight: 30, description: "Reseta !daily" },
+  { id: "work_reset", name: "Resetar cooldown !trabalho", weight: 30, description: "Reseta !trabalho" },
+  { id: "coins_1000_gain", name: "Ganhar 1000 coins", weight: 6, description: "+1000 moedas" },
+  { id: "coins_1000_loss", name: "Perder 1000 coins", weight: 5, description: "-1000 moedas" },
+  { id: "coins_2500_gain", name: "Ganhar 2500 coins", weight: 4, description: "+2500 moedas" },
+  { id: "coins_2500_loss", name: "Perder 2500 coins", weight: 3, description: "-2500 moedas" },
+  { id: "shield_1_gain", name: "Ganhar 1 escudo", weight: 4, description: "+1 escudo" },
+  { id: "shield_1_loss", name: "Perder 1 escudo", weight: 3, description: "-1 escudo" },
+  { id: "shield_3_gain", name: "Ganhar 3 escudos", weight: 3, description: "+3 escudos" },
+  { id: "shield_3_loss", name: "Perder 3 escudos", weight: 2, description: "-3 escudos" },
+  { id: "kronos_quebrada", name: "Ganhar Coroa Kronos (Quebrada)", weight: 1, description: "+1 Coroa Kronos (Quebrada)" },
+  { id: "punishment_pass_1x", name: "Passe de Punição (1x)", weight: 2, description: "+1 Passe de Punição (1x)" },
+  { id: "punishment_1x", name: "Punição (1x)", weight: 4, description: "-1 de punição" },
+  { id: "punishment_pass_5x", name: "Passe de Punição (5x)", weight: 1, description: "+1 Passe de Punição (5x)" },
+  { id: "punishment_5x", name: "Punição (5x)", weight: 3, description: "-1 de punição (5x)" },
+]
+
+function selectRandomEffect() {
+  const totalWeight = LOOTBOX_EFFECTS.reduce((sum, effect) => sum + effect.weight, 0)
+  let random = Math.random() * totalWeight
+  
+  for (const effect of LOOTBOX_EFFECTS) {
+    random -= effect.weight
+    if (random <= 0) {
+      return effect
+    }
+  }
+  
+  return LOOTBOX_EFFECTS[0]
+}
+
+function openLootbox(userId, quantity = 1, groupMembers = []) {
+  const qty = Math.max(1, Math.floor(Number(quantity) || 1))
+  const user = ensureUser(userId)
+  if (!user) return { ok: false, reason: "invalid-user" }
+  
+  const available = getItemQuantity(userId, "lootbox")
+  if (available < qty) {
+    return { ok: false, reason: "insufficient-items", available }
+  }
+  
+  removeItem(userId, "lootbox", qty)
+  
+  const results = []
+  for (let i = 0; i < qty; i++) {
+    const effect = selectRandomEffect()
+    
+    // Decide if the effect goes to the user or another member
+    let targetUser = userId
+    const isNegativeEffect = effect.id.includes("loss") || effect.id.includes("punishment")
+    
+    if (!isNegativeEffect && groupMembers.length > 0) {
+      // 25% chance para efeitos positivos irem para outro jogador
+      if (Math.random() < 0.25) {
+        const eligibleMembers = groupMembers.filter((memberId) => {
+          return getCoins(memberId) >= 100 && normalizeUserId(memberId) !== normalizeUserId(userId)
+        })
+        
+        if (eligibleMembers.length > 0) {
+          targetUser = eligibleMembers[Math.floor(Math.random() * eligibleMembers.length)]
+        }
+      }
+    } else if (isNegativeEffect && groupMembers.length > 0) {
+      // Efeitos negativos tem chance menor (20%) de ir para outro jogador
+      if (Math.random() < 0.2) {
+        const eligibleMembers = groupMembers.filter((memberId) => {
+          return getCoins(memberId) >= 100 && normalizeUserId(memberId) !== normalizeUserId(userId)
+        })
+        
+        if (eligibleMembers.length > 0) {
+          targetUser = eligibleMembers[Math.floor(Math.random() * eligibleMembers.length)]
+        }
+      }
+    }
+    
+    let resultText = ""
+    const targetIsOther = normalizeUserId(targetUser) !== normalizeUserId(userId)
+    const targetPrefix = targetIsOther ? `@${targetUser.split("@")[0]}: ` : "Você: "
+    
+    // Apply the effect
+    switch (effect.id) {
+      case "coins_1000_gain":
+        creditCoins(targetUser, 1000, { type: "lootbox", details: "Efeito: +1000 coins" })
+        resultText = `${targetPrefix}+1000 moedas`
+        break
+      case "coins_1000_loss":
+        debitCoinsFlexible(targetUser, 1000, { type: "lootbox", details: "Efeito: -1000 coins" })
+        resultText = `${targetPrefix}-1000 moedas`
+        break
+      case "coins_2500_gain":
+        creditCoins(targetUser, 2500, { type: "lootbox", details: "Efeito: +2500 coins" })
+        resultText = `${targetPrefix}+2500 moedas`
+        break
+      case "coins_2500_loss":
+        debitCoinsFlexible(targetUser, 2500, { type: "lootbox", details: "Efeito: -2500 coins" })
+        resultText = `${targetPrefix}-2500 moedas`
+        break
+      case "shield_1_gain":
+        addShields(targetUser, 1)
+        resultText = `${targetPrefix}+1 escudo`
+        break
+      case "shield_1_loss":
+        removeItem(targetUser, "escudo", 1)
+        resultText = `${targetPrefix}-1 escudo`
+        break
+      case "shield_3_gain":
+        addShields(targetUser, 3)
+        resultText = `${targetPrefix}+3 escudos`
+        break
+      case "shield_3_loss":
+        removeItem(targetUser, "escudo", 3)
+        resultText = `${targetPrefix}-3 escudos`
+        break
+      case "kronos_quebrada":
+        addItem(targetUser, "kronosQuebrada", 1)
+        resultText = `${targetPrefix}+1 Coroa Kronos (Quebrada)`
+        break
+      case "punishment_pass_1x":
+        {
+          const passType = pickRandomPunishmentType()
+          const passKey = buildPunishmentPassKey(passType, 1)
+          addItem(targetUser, passKey, 1)
+          resultText = `${targetPrefix}+1 Passe de Punição ${passType} (1x)`
+        }
+        break
+      case "punishment_1x":
+        // Aplicar punição (futuro: usar sistema de punishments)
+        resultText = `${targetPrefix}Sofreu punição (1x)`
+        break
+      case "punishment_pass_5x":
+        {
+          const passType = pickRandomPunishmentType()
+          const passKey = buildPunishmentPassKey(passType, 5)
+          addItem(targetUser, passKey, 1)
+          resultText = `${targetPrefix}+1 Passe de Punição ${passType} (5x)`
+        }
+        break
+      case "punishment_5x":
+        resultText = `${targetPrefix}Sofreu punição (5x)`
+        break
+      case "daily_reset":
+        {
+          const targetProfile = ensureUser(targetUser)
+          if (targetProfile) {
+            targetProfile.cooldowns.dailyClaimKey = null
+            touchUser(targetProfile)
+            saveEconomy()
+          }
+        }
+        resultText = `${targetPrefix}Cooldown de !daily resetado`
+        break
+      case "work_reset":
+        setWorkCooldown(targetUser, 0)
+        resultText = `${targetPrefix}Cooldown de !trabalho resetado`
+        break
+    }
+    
+    results.push({
+      effect: effect.name,
+      description: effect.description,
+      result: resultText,
+      targetUser,
+      targetIsOther,
+    })
+  }
+  
+  return {
+    ok: true,
+    quantity: qty,
+    results,
+  }
+}
+
 function setWorkCooldown(userId, timestamp = Date.now()) {
   const user = ensureUser(userId)
   if (!user) return
@@ -814,18 +1218,94 @@ function getWorkCooldown(userId) {
   return Math.floor(Number(user.cooldowns.workAt) || 0)
 }
 
-function setStealCooldown(userId, timestamp = Date.now()) {
-  const user = ensureUser(userId)
-  if (!user) return
-  user.cooldowns.stealAt = Math.floor(Number(timestamp) || Date.now())
-  touchUser(user)
-  saveEconomy()
+function forgePunishmentPass(userId, punishmentType, severity = 1, quantity = 1) {
+  if (!isValidPunishmentType(punishmentType)) {
+    return { ok: false, reason: "invalid-type" }
+  }
+
+  const safeSeverity = normalizePassSeverity(severity, 1)
+  const qty = Math.floor(Number(quantity) || 0)
+  if (qty <= 0) return { ok: false, reason: "invalid-quantity" }
+
+  const selectedKey = buildPunishmentPassKey(punishmentType, safeSeverity)
+  const available = getItemQuantity(userId, selectedKey)
+  if (available < qty) {
+    return { ok: false, reason: "insufficient-items", available, selectedKey }
+  }
+
+  const forgeCost = 150 * qty
+  if (!debitCoins(userId, forgeCost, {
+    type: "forge-fee",
+    details: `Taxa de falsificacao de ${qty}x ${selectedKey}`,
+    meta: { punishmentType, severity: safeSeverity, quantity: qty },
+  })) {
+    return { ok: false, reason: "insufficient-funds", forgeCost }
+  }
+
+  const roll = Math.random()
+  if (roll < 0.05) {
+    const bonus = Math.ceil(qty * 0.5)
+    addItem(userId, selectedKey, bonus)
+    return {
+      ok: true,
+      outcome: "multiply",
+      forgeCost,
+      selectedKey,
+      quantity: qty,
+      bonus,
+      finalQuantity: getItemQuantity(userId, selectedKey),
+    }
+  }
+
+  if (roll < 0.10) {
+    const upgradedSeverity = safeSeverity * 5
+    const upgradedKey = buildPunishmentPassKey(punishmentType, upgradedSeverity)
+    removeItem(userId, selectedKey, qty)
+    addItem(userId, upgradedKey, qty)
+    return {
+      ok: true,
+      outcome: "upgrade-severity",
+      forgeCost,
+      selectedKey,
+      quantity: qty,
+      upgradedSeverity,
+      upgradedKey,
+    }
+  }
+
+  if (roll < 0.40) {
+    const nextType = pickRandomPunishmentType(Math.floor(Number(punishmentType) || 0))
+    const convertedKey = buildPunishmentPassKey(nextType, safeSeverity)
+    removeItem(userId, selectedKey, qty)
+    addItem(userId, convertedKey, qty)
+    return {
+      ok: true,
+      outcome: "change-type",
+      forgeCost,
+      selectedKey,
+      quantity: qty,
+      fromType: punishmentType,
+      toType: nextType,
+      convertedKey,
+    }
+  }
+
+  const lost = Math.ceil(qty / 2)
+  removeItem(userId, selectedKey, lost)
+  return {
+    ok: true,
+    outcome: "lose-half",
+    forgeCost,
+    selectedKey,
+    quantity: qty,
+    lost,
+    remaining: getItemQuantity(userId, selectedKey),
+  }
 }
 
-function getStealCooldown(userId) {
-  const user = ensureUser(userId)
-  if (!user) return 0
-  return Math.floor(Number(user.cooldowns.stealAt) || 0)
+function createPunishmentPassKey(punishmentType, severity = 1) {
+  if (!isValidPunishmentType(punishmentType)) return null
+  return buildPunishmentPassKey(punishmentType, normalizePassSeverity(severity, 1))
 }
 
 loadEconomy()
@@ -838,6 +1318,7 @@ module.exports = {
   loadEconomy,
   saveEconomy,
   getCoins,
+  setCoins,
   creditCoins,
   debitCoins,
   debitCoinsFlexible,
@@ -870,7 +1351,8 @@ module.exports = {
   incrementStat,
   setWorkCooldown,
   getWorkCooldown,
-  setStealCooldown,
-  getStealCooldown,
   getProfile,
+  openLootbox,
+  forgePunishmentPass,
+  createPunishmentPassKey,
 }

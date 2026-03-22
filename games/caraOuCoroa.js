@@ -30,6 +30,17 @@ function startDobroOuNada(groupId, playerId) {
   return state
 }
 
+function toggleDobroOuNada(groupId, playerId) {
+  const current = getDobroState(groupId)
+  if (current?.enabled) {
+    storage.clearGameState(groupId, DOBRO_STATE_KEY)
+    return { enabled: false, state: null }
+  }
+
+  const state = startDobroOuNada(groupId, playerId)
+  return { enabled: true, state }
+}
+
 function formatDobroStatus(groupId, preloadedState = null) {
   const state = preloadedState || getDobroState(groupId)
   if (!state?.enabled) return "Dobro ou Nada não está ativo neste grupo."
@@ -37,7 +48,7 @@ function formatDobroStatus(groupId, preloadedState = null) {
   const resenhaOn = storage.isResenhaEnabled(groupId)
 
   let msg = `🔥 Sequência: ${state.activeStreak}/2 vitórias\n`
-  msg += `🎯 Jogador: ${state.streakPlayer.substring(0, 5)}...\n`
+  msg += `🎯 Jogador: @${state.streakPlayer.split("@")[0]}\n`
 
   if (state.doubledEnabled && resenhaOn) {
     msg += "\n⚠️ DOBRO OU NADA ATIVADO!\n"
@@ -192,7 +203,7 @@ async function handleCoinGuess({
     }
 
     let winText =
-      `Voce acertou! A moeda caiu em *${game.resultado}*.\n` +
+      `Você acertou! A moeda caiu em *${game.resultado}*.\n` +
       `Streak: *${streak}*\n`
 
     if (dobroOutcome.active) {
@@ -205,9 +216,15 @@ async function handleCoinGuess({
       }
     }
 
-    winText += `Escolha um alvo e a punicao dele em ate 30 segundos.\n${getPunishmentMenuText()}\nMarque alguem para punir.`
+    await sock.sendMessage(from, { text: winText, mentions: [sender] })
 
-    await sock.sendMessage(from, { text: winText })
+    await sock.sendMessage(from, {
+      text:
+        `Escolha um alvo e a punição dele em até 30 segundos.\n` +
+        `${getPunishmentMenuText()}\n` +
+        `Formato: @mention <número da punição>`,
+      mentions: [sender],
+    })
 
     const coinPunishmentPending = storage.getCoinPunishmentPending()
     if (!coinPunishmentPending[from]) coinPunishmentPending[from] = {}
@@ -249,7 +266,7 @@ async function handleCoinGuess({
       await rewardWinner(sender, rewardMultiplier)
     }
 
-    let winText = `Voce acertou! A moeda caiu em *${game.resultado}*.\n🔥 Streak: *${streak}*`
+    let winText = `Você acertou! A moeda caiu em *${game.resultado}*.\n🔥 Streak: *${streak}*`
     if (dobroOutcome.active) {
       winText += `\nDobro ou Nada: ${dobroOutcome.state.activeStreak}/2`
       if (dobroOutcome.doubledJustActivated && resenhaAveriguada[from]) {
@@ -288,7 +305,7 @@ async function handleCoinGuess({
     const randomPunishment = getRandomPunishmentChoice()
     const punishmentPrefix = dobroTriggered ? "Dobro ou Nada ativo: punição com duração dobrada.\n" : ""
     await sock.sendMessage(from, {
-      text: `${punishmentPrefix}Punicao sorteada: *${getPunishmentNameById(randomPunishment)}*`,
+      text: `${punishmentPrefix}Punição sorteada: *${getPunishmentNameById(randomPunishment)}*`,
       mentions: [sender]
     })
     await applyPunishment(sock, from, sender, randomPunishment, { origin: "game" })
@@ -310,6 +327,8 @@ async function handleCoinGuess({
 async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
   if (!(cmd === prefix + "moeda" && isGroup)) return false
   const resenhaOn = storage.isResenhaEnabled(from)
+  const dobroState = getDobroState(from)
+  const dobroToggleActive = Boolean(dobroState?.enabled)
 
   const coinPunishmentPending = storage.getCoinPunishmentPending()
   const coinGames = storage.getCoinGames()
@@ -317,15 +336,15 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
   if (coinPunishmentPending[from]?.[sender]) {
     await sock.sendMessage(from, {
       text: resenhaOn
-        ? "Voce ja tem uma escolha de punição pendente. Resolva isso antes de iniciar outra rodada."
-        : "Voce ja tem uma escolha pendente. Resolva isso antes de iniciar outra rodada."
+        ? "Você já tem uma escolha de punição pendente. Resolva isso antes de iniciar outra rodada."
+        : "Você já tem uma escolha pendente. Resolva isso antes de iniciar outra rodada."
     })
     return true
   }
 
   if (coinGames[from]?.[sender]) {
     await sock.sendMessage(from, {
-      text: "Voce ja tem uma rodada em andamento. Responda com *cara* ou *coroa*."
+      text: "Você já tem uma rodada em andamento. Responda com *cara* ou *coroa*."
     })
     return true
   }
@@ -341,7 +360,9 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
   storage.setCoinGames(coinGames)
 
   await sock.sendMessage(from, {
-    text: "Cara ou Coroa, ladrao?"
+    text: dobroToggleActive
+      ? "Cara ou Coroa, ladrão?\n⚠️ Dobro ou Nada está ATIVO para esta rodada de !moeda."
+      : "Cara ou Coroa, ladrão?"
   })
 
   setTimeout(() => {
@@ -386,7 +407,7 @@ async function sendStreakRanking({ sock, from, cmd, prefix, isGroup }) {
 
   await sock.sendMessage(from, {
     text:
-      `🏆 Recorde historico do grupo: *${hist}*\n\n` +
+      `🏆 Recorde histórico do grupo: *${hist}*\n\n` +
       `📊 Ranking de streak (max | atual):\n` +
       rankingLines.join("\n"),
     mentions: top.map((u) => u.jid)
@@ -410,6 +431,7 @@ async function sendStreakValue({ sock, from, sender, mentioned, cmd, prefix, isG
 
 module.exports = {
   startDobroOuNada,
+  toggleDobroOuNada,
   formatDobroStatus,
   getDobroState,
   isCoinGuessCommand,

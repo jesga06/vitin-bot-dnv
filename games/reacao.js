@@ -85,10 +85,10 @@ module.exports = {
 
     results.reactions.forEach((r, idx) => {
       const ms = Math.round(r.time)
-      msg += `${idx + 1}. ${r.playerId.substring(0, 5)}: ${ms}ms\n`
+      msg += `${idx + 1}. @${r.playerId.split("@")[0]}: ${ms}ms\n`
     })
 
-    msg += `\n🏆 ${results.winner.substring(0, 5)}... foi o mais rápido!`
+    msg += `\n🏆 @${results.winner.split("@")[0]} foi o mais rápido!`
     if (includePunishmentWarning) {
       msg += `\nEsse vencedor ganhou o passe para escolher 1 alvo para punição.`
     }

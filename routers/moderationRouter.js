@@ -62,6 +62,35 @@ async function handleModerationCommands(ctx) {
     return true
   }
 
+  if (cmdName === prefix + "adminadd") {
+    if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+    const alvo = mentioned[0]
+    if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para promover a admin do grupo." })
+    if (jidNormalizedUser(alvo) === botJid) return sock.sendMessage(from, { text: "O bot já possui privilégios administrativos." })
+
+    await sock.groupParticipantsUpdate(from, [alvo], "promote")
+
+    await sock.sendMessage(from, {
+      text: `@${alvo.split("@")[0]} agora é admin do grupo.`,
+      mentions: [alvo],
+    })
+    return true
+  }
+
+  if (cmdName === prefix + "adminrm") {
+    if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+    const alvo = mentioned[0]
+    if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para remover de admin do grupo." })
+
+    await sock.groupParticipantsUpdate(from, [alvo], "demote")
+
+    await sock.sendMessage(from, {
+      text: `@${alvo.split("@")[0]} não é mais admin do grupo.`,
+      mentions: [alvo],
+    })
+    return true
+  }
+
   if (cmd === prefix + "nuke") {
     if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
     try {
@@ -85,7 +114,7 @@ async function handleModerationCommands(ctx) {
     return true
   }
 
-  if (cmd === prefix + "punições") {
+  if (cmd === prefix + "punições" || cmd === prefix + "punicoes") {
     if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
     const alvo = mentioned[0]
     if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para listar as punições." })
@@ -100,7 +129,7 @@ async function handleModerationCommands(ctx) {
       if (active.type === "max5chars") lines.push("- Máx. 5 caracteres")
       if (active.type === "rate20s") lines.push("- 1 mensagem/20s")
       if (active.type === "lettersBlock") lines.push(`- Bloqueio por letras (${(active.letters || []).join("/")})`)
-      if (active.type === "emojiOnly") lines.push("- Somente emojis")
+        if (active.type === "emojiOnly") lines.push("- Somente emojis e figurinhas")
       if (active.type === "mute5m") lines.push("- Mute total 5 minutos")
     }
 
@@ -122,7 +151,7 @@ async function handleModerationCommands(ctx) {
     return true
   }
 
-  if (cmdName === prefix + "puniçõesclr") {
+  if (cmdName === prefix + "puniçõesclr" || cmdName === prefix + "punicoesclr") {
     if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
     const alvo = mentioned[0]
     if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para limpar as punições." })
@@ -153,21 +182,27 @@ async function handleModerationCommands(ctx) {
     return true
   }
 
-  if (cmdName === prefix + "puniçõesadd") {
+  if (cmdName === prefix + "puniçõesadd" || cmdName === prefix + "punicoesadd") {
     if (!senderIsAdmin) return sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
     const alvo = mentioned[0]
     if (!alvo) return sock.sendMessage(from, { text: "Marque alguém para aplicar punição." })
 
     const parts = text.trim().split(/\s+/)
-    const punishmentChoice = getPunishmentChoiceFromText(parts[parts.length - 1] || "")
+    const punishmentChoice = getPunishmentChoiceFromText(parts[2] || "")
+    const severityToken = parts[3]
+    const parsedSeverity = Number.parseInt(String(severityToken || "1"), 10)
+    const severityMultiplier = Number.isFinite(parsedSeverity) && parsedSeverity > 0 ? parsedSeverity : 1
     if (!punishmentChoice) {
       return sock.sendMessage(from, {
-        text: "Use: !puniçõesadd @user <1-5>\n" + getPunishmentMenuText(),
+        text: "Use: !puniçõesadd @user <1-5> [multiplicador]\n" + getPunishmentMenuText(),
         mentions: [alvo],
       })
     }
 
-    await applyPunishment(sock, from, alvo, punishmentChoice)
+    await applyPunishment(sock, from, alvo, punishmentChoice, {
+      origin: "admin",
+      severityMultiplier,
+    })
     return true
   }
 

@@ -1,12 +1,45 @@
 const crypto = require("crypto")
 const telemetry = require("./telemetryService")
 
+const LOBBY_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+const LOBBY_ID_LENGTH = 2
+const MAX_LOBBY_ID_SPACE = LOBBY_ID_ALPHABET.length ** LOBBY_ID_LENGTH
+
 function generateLobbyId() {
-  return crypto.randomBytes(3).toString("hex").toUpperCase()
+  let id = ""
+  for (let i = 0; i < LOBBY_ID_LENGTH; i++) {
+    const idx = crypto.randomInt(0, LOBBY_ID_ALPHABET.length)
+    id += LOBBY_ID_ALPHABET[idx]
+  }
+  return id
 }
 
 function normalizeLobbyId(lobbyId = "") {
-  return String(lobbyId).trim().toUpperCase()
+  const cleaned = String(lobbyId)
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+  return cleaned.length === LOBBY_ID_LENGTH ? cleaned : ""
+}
+
+function isLobbyIdInUseEverywhere(gameId) {
+  const normalizedGameId = normalizeLobbyId(gameId)
+  if (!normalizedGameId) return false
+
+  for (const groupId of Object.keys(gameManager.optInSessions)) {
+    if (gameManager.optInSessions[groupId]?.[normalizedGameId]) {
+      return true
+    }
+  }
+  return false
+}
+
+function countOpenLobbies() {
+  let count = 0
+  for (const groupId of Object.keys(gameManager.optInSessions)) {
+    count += Object.keys(gameManager.optInSessions[groupId] || {}).length
+  }
+  return count
 }
 
 // Registro de jogos e gerenciamento de entrada
@@ -16,12 +49,16 @@ const gameManager = {
 
   // Obtém ou cria lobby para um jogo
   createOptInSession: (groupId, gameType, minPlayers, maxPlayers, timeoutMs = 120000, options = {}) => {
-    let gameId = generateLobbyId()
     if (!gameManager.optInSessions[groupId]) {
       gameManager.optInSessions[groupId] = {}
     }
 
-    while (gameManager.optInSessions[groupId][gameId]) {
+    if (countOpenLobbies() >= MAX_LOBBY_ID_SPACE) {
+      throw new Error("Sem IDs de lobby disponíveis no momento.")
+    }
+
+    let gameId = generateLobbyId()
+    while (isLobbyIdInUseEverywhere(gameId)) {
       gameId = generateLobbyId()
     }
     

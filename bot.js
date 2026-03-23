@@ -556,6 +556,41 @@ async function startBot(){
       const uniquePlayers = [...new Set(playerIds.filter(Boolean))]
       if (uniquePlayers.length === 0) return
 
+      if (options?.payoutMode === "lobby-bet-formula") {
+        const playerBetByPlayer = options?.playerBetByPlayer || {}
+        const buyInByPlayer = options?.buyInByPlayer || {}
+
+        for (const playerId of uniquePlayers) {
+          const betRaw = Number.parseInt(String(playerBetByPlayer[playerId] ?? 1), 10)
+          const bet = Number.isFinite(betRaw) ? Math.max(1, Math.min(10, betRaw)) : 1
+          const ownBuyInRaw = Number.parseInt(String(buyInByPlayer[playerId] ?? 0), 10)
+          const ownBuyIn = Number.isFinite(ownBuyInRaw) ? Math.max(0, ownBuyInRaw) : 0
+
+          const amount = Math.max(0, safePool - ownBuyIn) * bet
+          if (amount <= 0) continue
+
+          economyService.creditCoins(playerId, amount, {
+            type: "game-buyin-payout",
+            details: `Partilha de entrada (${gameLabel})`,
+            meta: {
+              game: gameLabel.toLowerCase(),
+              poolAmount: safePool,
+              ownBuyIn,
+              playerBet: bet,
+              formula: "(pool-ownBuyIn)*bet",
+            },
+          })
+          incrementUserStat(playerId, "moneyGameWon", amount)
+          await sock.sendMessage(from, {
+            text:
+              `🏦 @${playerId.split("@")[0]} recebeu *${amount}* Epsteincoins da pool (${gameLabel}).\n` +
+              `Fórmula: (pool ${safePool} - buy-in ${ownBuyIn}) x bet ${bet}.`,
+            mentions: [playerId],
+          })
+        }
+        return
+      }
+
       const betMultiplierByPlayer = options?.betMultiplierByPlayer || {}
       const playerMultipliers = uniquePlayers.map((playerId) => {
         const raw = Number.parseInt(String(betMultiplierByPlayer[playerId] ?? 1), 10)
@@ -867,41 +902,62 @@ async function startBot(){
       if (gameType === "comando") {
         const state = comando.start(from, triggeredBy)
         storage.setGameState(from, "comandoActive", state)
-        const resenhaOn = isResenhaModeEnabled()
         await sock.sendMessage(from, {
-          text: comando.formatInstruction(state, resenhaOn)
+          text: "⚠️ O desafio *Comando* vai começar em 10 segundos. Preparem-se para obedecer na hora certa!"
         })
 
         setTimeout(async () => {
-          const finalState = storage.getGameState(from, "comandoActive")
-          if (finalState) {
-            const participants = Array.from(new Set((finalState.participants || []).filter(Boolean)))
-            const resenhaOn = isResenhaModeEnabled()
-            const loser = comando.getLoser(finalState)
-            await sock.sendMessage(from, {
-              text: comando.formatResults(finalState, resenhaOn),
-              mentions: loser ? [loser] : [],
-            })
-            if (participants.length <= 1) {
-              if (participants.length === 1) {
-                const soloPlayer = participants[0]
-                incrementUserStat(soloPlayer, "gameComandoWin", 1)
-                await rewardPlayer(soloPlayer, 20, 1, "Comando (solo)")
+          const currentState = storage.getGameState(from, "comandoActive")
+          if (!currentState) return
+
+          currentState.instructionStartedAt = Date.now()
+          storage.setGameState(from, "comandoActive", currentState)
+
+          const resenhaOn = isResenhaModeEnabled()
+          await sock.sendMessage(from, {
+            text: comando.formatInstruction(currentState, resenhaOn)
+          })
+
+          setTimeout(async () => {
+            const finalState = storage.getGameState(from, "comandoActive")
+            if (finalState) {
+              const participants = Array.from(new Set((finalState.participants || []).filter(Boolean)))
+              const resenhaOn = isResenhaModeEnabled()
+              const loser = comando.getLoser(finalState)
+              await sock.sendMessage(from, {
+                text: comando.formatResults(finalState, resenhaOn),
+                mentions: loser ? [loser] : [],
+              })
+              if (participants.length <= 1) {
+                if (participants.length === 1) {
+                  const soloPlayer = participants[0]
+                  incrementUserStat(soloPlayer, "gameComandoWin", 1)
+                  await rewardPlayer(soloPlayer, 20, 1, "Comando (solo)")
+                }
+              } else if (loser) {
+                const rewardedPlayers = finalState.instruction?.cmd === "silence"
+                  ? (() => {
+                      const startedAt = Number(finalState.instructionStartedAt) || 0
+                      const endedAt = Date.now()
+                      const participantLastMessageAt = finalState.participantLastMessageAt || {}
+                      return (finalState.participants || []).filter((playerId) => {
+                        if (!playerId || playerId === loser) return false
+                        const lastAt = Number(participantLastMessageAt[playerId]) || 0
+                        return lastAt >= startedAt && lastAt <= endedAt
+                      })
+                    })()
+                  : (finalState.compliers || [])
+                      .map((entry) => entry.playerId)
+                      .filter((playerId) => playerId && playerId !== loser)
+                rewardedPlayers.forEach((playerId) => incrementUserStat(playerId, "gameComandoWin", 1))
+                incrementUserStat(loser, "gameComandoLoss", 1)
+                await rewardPlayers(rewardedPlayers, GAME_REWARDS.COMANDO_SUCCESS, 1, "Comando")
+                await applyRandomGamePunishment(loser)
               }
-            } else if (loser) {
-              const rewardedPlayers = finalState.instruction?.cmd === "silence"
-                ? (finalState.participants || []).filter((playerId) => playerId && playerId !== loser)
-                : (finalState.compliers || [])
-                    .map((entry) => entry.playerId)
-                    .filter((playerId) => playerId && playerId !== loser)
-              rewardedPlayers.forEach((playerId) => incrementUserStat(playerId, "gameComandoWin", 1))
-              incrementUserStat(loser, "gameComandoLoss", 1)
-              await rewardPlayers(rewardedPlayers, GAME_REWARDS.COMANDO_SUCCESS, 1, "Comando")
-              await applyRandomGamePunishment(loser)
+              storage.clearGameState(from, "comandoActive")
             }
-            storage.clearGameState(from, "comandoActive")
-          }
-        }, 20_000)
+          }, 20_000)
+        }, 10_000)
 
         return { ok: true }
       }

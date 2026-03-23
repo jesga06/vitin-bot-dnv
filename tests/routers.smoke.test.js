@@ -184,7 +184,10 @@ test("games router handles !começar with missing lobby id", async () => {
     getGameBuyIn: () => 0,
     collectLobbyBuyIn: () => ({ ok: true, pool: 0 }),
     distributeLobbyBuyInPool: async () => {},
-    parsePositiveInt: () => 1,
+    parsePositiveInt: (value, fallback = 1) => {
+      const n = Number.parseInt(String(value ?? ""), 10)
+      return Number.isFinite(n) && n > 0 ? n : fallback
+    },
     isResenhaModeEnabled: () => false,
     rewardPlayer: async () => {},
     rewardPlayers: async () => {},
@@ -277,7 +280,10 @@ test("games router handles !jogos submenu", async () => {
     getGameBuyIn: () => 0,
     collectLobbyBuyIn: () => ({ ok: true, pool: 0 }),
     distributeLobbyBuyInPool: async () => {},
-    parsePositiveInt: () => 1,
+    parsePositiveInt: (value, fallback = 1) => {
+      const n = Number.parseInt(String(value ?? ""), 10)
+      return Number.isFinite(n) && n > 0 ? n : fallback
+    },
     isResenhaModeEnabled: () => false,
     rewardPlayer: async () => {},
     rewardPlayers: async () => {},
@@ -407,6 +413,549 @@ test("games router blocks !começar reação with fewer than 3 participants", as
   assert.equal(started, false)
   assert.equal(sent.length, 1)
   assert.match(sent[0].payload.text, /pelo menos 3 participantes/i)
+})
+
+test("games router starts 15s lobby bet grace on !começar <LobbyID>", async () => {
+  const { sock, sent } = createSockCapture()
+  let clearCalled = false
+  const setGameStateCalls = []
+
+  const handled = await handleGameCommands({
+    sock,
+    from: "group@g.us",
+    sender: "starter@s.whatsapp.net",
+    cmd: "!começar AB",
+    cmdName: "!começar",
+    cmdArg1: "AB",
+    cmdArg2: "",
+    mentioned: [],
+    prefix: "!",
+    isGroup: true,
+    text: "!começar AB",
+    msg: { message: {} },
+    storage: {
+      getGameState: () => null,
+      getGameStates: () => ({}),
+      setGameState: (...args) => setGameStateCalls.push(args),
+      clearGameState: () => {},
+    },
+    gameManager: {
+      createOptInSession: () => "AB",
+      getOptInSession: () => ({ gameType: "dados", players: ["starter@s.whatsapp.net", "other@s.whatsapp.net"] }),
+      addPlayerToOptIn: () => false,
+      clearOptInSession: () => {
+        clearCalled = true
+      },
+      optInSessions: {},
+    },
+    economyService: {
+      getCoins: () => 1000,
+      debitCoins: () => true,
+      debitCoinsFlexible: () => 0,
+    },
+    caraOuCoroa: {
+      toggleDobroOuNada: () => ({ enabled: false }),
+      formatDobroStatus: () => "",
+    },
+    adivinhacao: {
+      start: () => ({}),
+      recordGuess: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    batataquente: {
+      start: () => ({}),
+      formatStatus: () => "",
+      getLoser: () => "",
+      recordPass: () => ({ valid: false, error: "" }),
+    },
+    dueloDados: {
+      start: () => ({}),
+      recordRoll: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    roletaRussa: {
+      start: () => ({}),
+      getCurrentPlayer: () => "",
+      takeShotAt: () => ({ hit: false }),
+      formatStatus: () => "",
+    },
+    startPeriodicGame: async () => ({ ok: true }),
+    GAME_REWARDS: {
+      ADIVINHACAO_EXACT: 60,
+      ADIVINHACAO_CLOSEST: 30,
+      DADOS_WIN: 35,
+      BATATA_WIN: 20,
+      ROLETA_WIN: 45,
+      ROLETA_WIN_GUARANTEED: 30,
+    },
+    BASE_GAME_REWARD: 30,
+    normalizeUnifiedGameType: () => null,
+    normalizeLobbyId: (v) => String(v || "").toUpperCase(),
+    activeGameKey: () => "dadosActive:AB",
+    resolveActiveLobbyForPlayer: () => ({ ok: false, reason: "not-found" }),
+    getLobbyCreateBlockMessage: () => null,
+    getGameBuyIn: () => 100,
+    collectLobbyBuyIn: () => ({ ok: true, pool: 0 }),
+    distributeLobbyBuyInPool: async () => {},
+    parsePositiveInt: (value, fallback = 1) => {
+      const n = Number.parseInt(String(value ?? ""), 10)
+      return Number.isFinite(n) && n > 0 ? n : fallback
+    },
+    isResenhaModeEnabled: () => false,
+    rewardPlayer: async () => {},
+    rewardPlayers: async () => {},
+    incrementUserStat: () => {},
+    applyRandomGamePunishment: async () => {},
+    createPendingTargetForWinner: async () => {},
+    jidNormalizedUser: (id) => id,
+    createLobbyWarningCallback: () => {},
+    createLobbyTimeoutCallback: () => {},
+    buildGameStatsText: () => "",
+  })
+
+  assert.equal(handled, true)
+  assert.equal(clearCalled, false)
+  assert.equal(setGameStateCalls.length >= 1, true)
+  assert.match(String(sent[0]?.payload?.text || ""), /período de aposta por 15s/i)
+})
+
+test("games router updates player lobby bet with !aposta during grace", async () => {
+  const { sock, sent } = createSockCapture()
+  const sender = "starter@s.whatsapp.net"
+  const graceState = {
+    players: [sender],
+    buyInAmount: 100,
+    playerBetByPlayer: { [sender]: 1 },
+  }
+  let savedState = null
+
+  const handled = await handleGameCommands({
+    sock,
+    from: "group@g.us",
+    sender,
+    cmd: "!aposta 5",
+    cmdName: "!aposta",
+    cmdArg1: "5",
+    cmdArg2: "",
+    mentioned: [],
+    prefix: "!",
+    isGroup: true,
+    text: "!aposta 5",
+    msg: { message: {} },
+    storage: {
+      getGameState: (_groupId, key) => (key === "lobbyGrace:AB" ? graceState : null),
+      getGameStates: () => ({ "lobbyGrace:AB": graceState }),
+      setGameState: (_groupId, _key, state) => {
+        savedState = state
+      },
+      clearGameState: () => {},
+    },
+    gameManager: {
+      createOptInSession: () => "AB",
+      getOptInSession: () => null,
+      addPlayerToOptIn: () => false,
+      clearOptInSession: () => {},
+      optInSessions: {},
+    },
+    economyService: {
+      getCoins: () => 1000,
+      debitCoins: () => true,
+      debitCoinsFlexible: () => 0,
+    },
+    caraOuCoroa: {
+      toggleDobroOuNada: () => ({ enabled: false }),
+      formatDobroStatus: () => "",
+    },
+    adivinhacao: {
+      start: () => ({}),
+      recordGuess: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    batataquente: {
+      start: () => ({}),
+      formatStatus: () => "",
+      getLoser: () => "",
+      recordPass: () => ({ valid: false, error: "" }),
+    },
+    dueloDados: {
+      start: () => ({}),
+      recordRoll: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    roletaRussa: {
+      start: () => ({}),
+      getCurrentPlayer: () => "",
+      takeShotAt: () => ({ hit: false }),
+      formatStatus: () => "",
+    },
+    startPeriodicGame: async () => ({ ok: true }),
+    GAME_REWARDS: {
+      ADIVINHACAO_EXACT: 60,
+      ADIVINHACAO_CLOSEST: 30,
+      DADOS_WIN: 35,
+      BATATA_WIN: 20,
+      ROLETA_WIN: 45,
+      ROLETA_WIN_GUARANTEED: 30,
+    },
+    BASE_GAME_REWARD: 30,
+    normalizeUnifiedGameType: () => null,
+    normalizeLobbyId: () => "",
+    activeGameKey: () => "",
+    resolveActiveLobbyForPlayer: () => ({ ok: false, reason: "not-found" }),
+    getLobbyCreateBlockMessage: () => null,
+    getGameBuyIn: () => 100,
+    collectLobbyBuyIn: () => ({ ok: true, pool: 0 }),
+    distributeLobbyBuyInPool: async () => {},
+    parsePositiveInt: (value, fallback = 1) => {
+      const n = Number.parseInt(String(value ?? ""), 10)
+      return Number.isFinite(n) && n > 0 ? n : fallback
+    },
+    isResenhaModeEnabled: () => false,
+    rewardPlayer: async () => {},
+    rewardPlayers: async () => {},
+    incrementUserStat: () => {},
+    applyRandomGamePunishment: async () => {},
+    createPendingTargetForWinner: async () => {},
+    jidNormalizedUser: (id) => id,
+    createLobbyWarningCallback: () => {},
+    createLobbyTimeoutCallback: () => {},
+    buildGameStatsText: () => "",
+  })
+
+  assert.equal(handled, true)
+  assert.equal(savedState.playerBetByPlayer[sender], 5)
+  assert.match(String(sent[0]?.payload?.text || ""), /5x/)
+})
+
+test("games router excludes shot player from rr allWin rewards", async () => {
+  const { sock, sent } = createSockCapture()
+  const shooter = "shot@s.whatsapp.net"
+  const other = "other@s.whatsapp.net"
+  const distributed = []
+
+  const state = {
+    players: [shooter, other],
+    buyInPool: 100,
+    betMultiplier: 2,
+    betValue: 1,
+  }
+
+  const handled = await handleGameCommands({
+    sock,
+    from: "group@g.us",
+    sender: shooter,
+    cmd: "!atirar",
+    cmdName: "!atirar",
+    cmdArg1: "",
+    cmdArg2: "",
+    mentioned: [],
+    prefix: "!",
+    isGroup: true,
+    text: "!atirar",
+    msg: { message: {} },
+    storage: {
+      getGameState: () => null,
+      setGameState: () => {},
+      clearGameState: () => {},
+    },
+    gameManager: {
+      createOptInSession: () => "ABCD",
+      getOptInSession: () => null,
+      addPlayerToOptIn: () => false,
+      clearOptInSession: () => {},
+      optInSessions: {},
+    },
+    economyService: {
+      debitCoinsFlexible: () => 0,
+    },
+    caraOuCoroa: {
+      toggleDobroOuNada: () => ({ enabled: false }),
+      formatDobroStatus: () => "",
+    },
+    adivinhacao: {
+      start: () => ({}),
+      recordGuess: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    batataquente: {
+      start: () => ({}),
+      formatStatus: () => "",
+      getLoser: () => "",
+      recordPass: () => ({ valid: false, error: "" }),
+    },
+    dueloDados: {
+      start: () => ({}),
+      recordRoll: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    roletaRussa: {
+      start: () => ({}),
+      getCurrentPlayer: () => shooter,
+      takeShotAt: () => ({ hit: true, allWin: true, guaranteed: false, winners: [shooter, other] }),
+      formatStatus: () => "",
+    },
+    startPeriodicGame: async () => ({ ok: true }),
+    GAME_REWARDS: {
+      ADIVINHACAO_EXACT: 60,
+      ADIVINHACAO_CLOSEST: 30,
+      DADOS_WIN: 35,
+      BATATA_WIN: 20,
+      ROLETA_WIN: 45,
+      ROLETA_WIN_GUARANTEED: 30,
+    },
+    BASE_GAME_REWARD: 30,
+    normalizeUnifiedGameType: () => null,
+    normalizeLobbyId: () => "",
+    activeGameKey: () => "",
+    resolveActiveLobbyForPlayer: () => ({ ok: true, lobbyId: "ABCD", stateKey: "rrActive:ABCD", state }),
+    getLobbyCreateBlockMessage: () => null,
+    getGameBuyIn: () => 0,
+    collectLobbyBuyIn: () => ({ ok: true, pool: 0 }),
+    distributeLobbyBuyInPool: async (winners) => {
+      distributed.push(winners)
+    },
+    parsePositiveInt: () => 1,
+    isResenhaModeEnabled: () => false,
+    rewardPlayer: async () => {},
+    rewardPlayers: async () => {},
+    incrementUserStat: () => {},
+    applyRandomGamePunishment: async () => {},
+    createPendingTargetForWinner: async () => {},
+    jidNormalizedUser: (id) => id,
+    createLobbyWarningCallback: () => {},
+    buildGameStatsText: () => "",
+  })
+
+  assert.equal(handled, true)
+  assert.equal(distributed.length, 1)
+  assert.deepEqual(distributed[0], [other])
+  assert.equal(sent.length, 1)
+  assert.match(sent[0].payload.text, /quem tomou tiro não recebe prêmio/i)
+})
+
+test("games router applies lobby bet payout formula options on rr solo autoWin", async () => {
+  const { sock } = createSockCapture()
+  const shooter = "solo@s.whatsapp.net"
+  const distributeCalls = []
+
+  const handled = await handleGameCommands({
+    sock,
+    from: "group@g.us",
+    sender: shooter,
+    cmd: "!atirar",
+    cmdName: "!atirar",
+    cmdArg1: "",
+    cmdArg2: "",
+    mentioned: [],
+    prefix: "!",
+    isGroup: true,
+    text: "!atirar",
+    msg: { message: {} },
+    storage: {
+      getGameState: () => null,
+      setGameState: () => {},
+      clearGameState: () => {},
+    },
+    gameManager: {
+      createOptInSession: () => "ABCD",
+      getOptInSession: () => null,
+      addPlayerToOptIn: () => false,
+      clearOptInSession: () => {},
+      optInSessions: {},
+    },
+    economyService: {
+      debitCoinsFlexible: () => 0,
+    },
+    caraOuCoroa: {
+      toggleDobroOuNada: () => ({ enabled: false }),
+      formatDobroStatus: () => "",
+    },
+    adivinhacao: {
+      start: () => ({}),
+      recordGuess: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    batataquente: {
+      start: () => ({}),
+      formatStatus: () => "",
+      getLoser: () => "",
+      recordPass: () => ({ valid: false, error: "" }),
+    },
+    dueloDados: {
+      start: () => ({}),
+      recordRoll: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    roletaRussa: {
+      start: () => ({}),
+      getCurrentPlayer: () => shooter,
+      takeShotAt: () => ({ hit: true, autoWin: true, winners: [shooter], surpassedBet: true }),
+      formatStatus: () => "",
+    },
+    startPeriodicGame: async () => ({ ok: true }),
+    GAME_REWARDS: {
+      ADIVINHACAO_EXACT: 60,
+      ADIVINHACAO_CLOSEST: 30,
+      DADOS_WIN: 35,
+      BATATA_WIN: 20,
+      ROLETA_WIN: 45,
+      ROLETA_WIN_GUARANTEED: 30,
+    },
+    BASE_GAME_REWARD: 30,
+    normalizeUnifiedGameType: () => null,
+    normalizeLobbyId: () => "",
+    activeGameKey: () => "",
+    resolveActiveLobbyForPlayer: () => ({
+      ok: true,
+      lobbyId: "ABCD",
+      stateKey: "rrActive:ABCD",
+      state: {
+        players: [shooter],
+        buyInPool: 100,
+        betValue: 3,
+        betMultiplier: 4,
+        playerBetByPlayer: { [shooter]: 3 },
+        buyInByPlayer: { [shooter]: 300 },
+      },
+    }),
+    getLobbyCreateBlockMessage: () => null,
+    getGameBuyIn: () => 0,
+    collectLobbyBuyIn: () => ({ ok: true, pool: 0 }),
+    distributeLobbyBuyInPool: async (_winners, _pool, _label, options = {}) => {
+      distributeCalls.push(options)
+    },
+    parsePositiveInt: (value, fallback = 1) => {
+      const n = Number.parseInt(String(value ?? ""), 10)
+      return Number.isFinite(n) && n > 0 ? n : fallback
+    },
+    isResenhaModeEnabled: () => false,
+    rewardPlayer: async () => {},
+    rewardPlayers: async () => {},
+    incrementUserStat: () => {},
+    applyRandomGamePunishment: async () => {},
+    createPendingTargetForWinner: async () => {},
+    jidNormalizedUser: (id) => id,
+    createLobbyWarningCallback: () => {},
+    buildGameStatsText: () => "",
+  })
+
+  assert.equal(handled, true)
+  assert.equal(distributeCalls.length, 1)
+  assert.equal(distributeCalls[0].payoutMode, "lobby-bet-formula")
+  assert.equal(distributeCalls[0].playerBetByPlayer[shooter], 3)
+  assert.equal(distributeCalls[0].buyInByPlayer[shooter], 300)
+})
+
+test("games router uses bet value multiplier for rr solo loss", async () => {
+  const { sock } = createSockCapture()
+  const shooter = "solo@s.whatsapp.net"
+  const debitCalls = []
+
+  const handled = await handleGameCommands({
+    sock,
+    from: "group@g.us",
+    sender: shooter,
+    cmd: "!atirar",
+    cmdName: "!atirar",
+    cmdArg1: "",
+    cmdArg2: "",
+    mentioned: [],
+    prefix: "!",
+    isGroup: true,
+    text: "!atirar",
+    msg: { message: {} },
+    storage: {
+      getGameState: () => null,
+      setGameState: () => {},
+      clearGameState: () => {},
+    },
+    gameManager: {
+      createOptInSession: () => "ABCD",
+      getOptInSession: () => null,
+      addPlayerToOptIn: () => false,
+      clearOptInSession: () => {},
+      optInSessions: {},
+    },
+    economyService: {
+      debitCoinsFlexible: (userId, amount) => {
+        debitCalls.push({ userId, amount })
+        return amount
+      },
+    },
+    caraOuCoroa: {
+      toggleDobroOuNada: () => ({ enabled: false }),
+      formatDobroStatus: () => "",
+    },
+    adivinhacao: {
+      start: () => ({}),
+      recordGuess: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    batataquente: {
+      start: () => ({}),
+      formatStatus: () => "",
+      getLoser: () => "",
+      recordPass: () => ({ valid: false, error: "" }),
+    },
+    dueloDados: {
+      start: () => ({}),
+      recordRoll: () => ({ valid: false, error: "" }),
+      getResults: () => ({}),
+      formatResults: () => "",
+    },
+    roletaRussa: {
+      start: () => ({}),
+      getCurrentPlayer: () => shooter,
+      takeShotAt: () => ({ hit: true, loser: shooter, surpassedBet: false }),
+      formatStatus: () => "",
+    },
+    startPeriodicGame: async () => ({ ok: true }),
+    GAME_REWARDS: {
+      ADIVINHACAO_EXACT: 60,
+      ADIVINHACAO_CLOSEST: 30,
+      DADOS_WIN: 35,
+      BATATA_WIN: 20,
+      ROLETA_WIN: 45,
+      ROLETA_WIN_GUARANTEED: 30,
+    },
+    BASE_GAME_REWARD: 30,
+    normalizeUnifiedGameType: () => null,
+    normalizeLobbyId: () => "",
+    activeGameKey: () => "",
+    resolveActiveLobbyForPlayer: () => ({
+      ok: true,
+      lobbyId: "ABCD",
+      stateKey: "rrActive:ABCD",
+      state: { players: [shooter], buyInPool: 100, betValue: 3, betMultiplier: 4 },
+    }),
+    getLobbyCreateBlockMessage: () => null,
+    getGameBuyIn: () => 0,
+    collectLobbyBuyIn: () => ({ ok: true, pool: 0 }),
+    distributeLobbyBuyInPool: async () => {},
+    parsePositiveInt: () => 1,
+    isResenhaModeEnabled: () => false,
+    rewardPlayer: async () => {},
+    rewardPlayers: async () => {},
+    incrementUserStat: () => {},
+    applyRandomGamePunishment: async () => {},
+    createPendingTargetForWinner: async () => {},
+    jidNormalizedUser: (id) => id,
+    createLobbyWarningCallback: () => {},
+    buildGameStatsText: () => "",
+  })
+
+  assert.equal(handled, true)
+  assert.equal(debitCalls.length, 1)
+  assert.equal(debitCalls[0].amount, 90)
 })
 
 test("economy router no longer handles !jogos", async () => {

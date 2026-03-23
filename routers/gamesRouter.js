@@ -2,6 +2,7 @@ const telemetry = require("../telemetryService")
 
 const RR_TURN_TIMEOUT_MS = 60_000
 const RR_TURN_TIMEOUT_SECONDS = Math.floor(RR_TURN_TIMEOUT_MS / 1000)
+const LOBBY_BET_GRACE_MS = 15_000
 const rrTurnTimeouts = new Map()
 
 function rrTurnTimerKey(groupId, lobbyId) {
@@ -88,6 +89,81 @@ async function handleGameCommands(ctx) {
     }, {})
   }
 
+  function getLobbyGraceStateKey(lobbyId) {
+    return `lobbyGrace:${lobbyId}`
+  }
+
+  function sanitizeLobbyBet(value, fallback = 1) {
+    const parsed = parsePositiveInt(value, fallback)
+    return Math.max(1, Math.min(10, parsed))
+  }
+
+  function getGraceStates() {
+    const states = storage.getGameStates(from)
+    return Object.keys(states || {})
+      .filter((key) => key.startsWith("lobbyGrace:"))
+      .map((key) => ({ key, state: states[key], lobbyId: key.substring("lobbyGrace:".length) }))
+      .filter((entry) => entry.state && entry.lobbyId)
+  }
+
+  function collectLobbyBuyInWithBets(playerIds, buyInAmount, gameType, playerBetByPlayer = {}) {
+    if (!Array.isArray(playerIds) || playerIds.length === 0) {
+      return { ok: true, pool: 0, buyInByPlayer: {}, playerBetByPlayer: {} }
+    }
+    if (buyInAmount <= 0) {
+      const normalizedBets = playerIds.reduce((acc, playerId) => {
+        acc[playerId] = sanitizeLobbyBet(playerBetByPlayer[playerId], 1)
+        return acc
+      }, {})
+      return { ok: true, pool: 0, buyInByPlayer: {}, playerBetByPlayer: normalizedBets }
+    }
+
+    const uniquePlayers = [...new Set(playerIds.filter(Boolean))]
+    const normalizedBets = uniquePlayers.reduce((acc, playerId) => {
+      acc[playerId] = sanitizeLobbyBet(playerBetByPlayer[playerId], 1)
+      return acc
+    }, {})
+
+    const buyInByPlayer = uniquePlayers.reduce((acc, playerId) => {
+      acc[playerId] = buyInAmount * normalizedBets[playerId]
+      return acc
+    }, {})
+
+    const insufficient = uniquePlayers.filter((playerId) => economyService.getCoins(playerId) < buyInByPlayer[playerId])
+    if (insufficient.length > 0) {
+      return { ok: false, insufficient, buyInByPlayer, playerBetByPlayer: normalizedBets }
+    }
+
+    let pool = 0
+    for (const playerId of uniquePlayers) {
+      const debitAmount = buyInByPlayer[playerId]
+      const debited = economyService.debitCoins(playerId, debitAmount, {
+        type: "game-buyin",
+        details: `Entrada para ${gameType}`,
+        meta: {
+          game: gameType,
+          buyInBase: buyInAmount,
+          playerBet: normalizedBets[playerId],
+          buyInAmount: debitAmount,
+        },
+      })
+      if (debited) {
+        pool += debitAmount
+        incrementUserStat(playerId, "moneyGameLost", debitAmount)
+      }
+    }
+
+    return { ok: true, pool, buyInByPlayer, playerBetByPlayer: normalizedBets }
+  }
+
+  function getLobbyPayoutOptions(state = {}) {
+    return {
+      payoutMode: "lobby-bet-formula",
+      playerBetByPlayer: state.playerBetByPlayer || {},
+      buyInByPlayer: state.buyInByPlayer || {},
+    }
+  }
+
   function scheduleRrTurnTimeout(lobbyId, stateKey) {
     clearRrTurnTimeout(from, lobbyId)
     const key = rrTurnTimerKey(from, lobbyId)
@@ -113,9 +189,7 @@ async function handleGameCommands(ctx) {
           incrementUserStat(playerId, "gameRrWin", 1)
           incrementUserStat(playerId, "gameRrBetWin", 1)
         })
-        await distributeLobbyBuyInPool(winners, latestState.buyInPool, "Roleta Russa", {
-          betMultiplierByPlayer: buildBetMultiplierMap(winners, betMultiplier),
-        })
+        await distributeLobbyBuyInPool(winners, latestState.buyInPool, "Roleta Russa", getLobbyPayoutOptions(latestState))
       }
 
       await sock.sendMessage(from, {
@@ -398,6 +472,64 @@ module.exports = { handleGamesCommand };
     return true
   }
 
+  if (cmdName === prefix + "aposta" && isGroup) {
+    const explicitLobbyId = normalizeLobbyId(cmdArg1)
+    let targetLobbyId = ""
+    let betToken = ""
+
+    if (explicitLobbyId) {
+      targetLobbyId = explicitLobbyId
+      betToken = cmdArg2
+    } else {
+      betToken = cmdArg1
+      const playerGraceStates = getGraceStates().filter((entry) =>
+        Array.isArray(entry.state?.players) && entry.state.players.includes(sender)
+      )
+
+      if (playerGraceStates.length === 0) return false
+      if (playerGraceStates.length > 1) {
+        await sock.sendMessage(from, {
+          text: "Você está em múltiplos lobbies em período de aposta. Use: !aposta <LobbyID> <1-10>",
+        })
+        return true
+      }
+      targetLobbyId = playerGraceStates[0].lobbyId
+    }
+
+    const graceKey = getLobbyGraceStateKey(targetLobbyId)
+    const graceState = storage.getGameState(from, graceKey)
+    if (!graceState) return false
+
+    if (!Array.isArray(graceState.players) || !graceState.players.includes(sender)) {
+      await sock.sendMessage(from, {
+        text: `Você não está no lobby *${targetLobbyId}* em preparação.`,
+      })
+      return true
+    }
+
+    const betRaw = Number.parseInt(String(betToken || ""), 10)
+    if (!Number.isFinite(betRaw) || betRaw < 1 || betRaw > 10) {
+      await sock.sendMessage(from, {
+        text: "Use: !aposta <1-10> ou !aposta <LobbyID> <1-10>",
+      })
+      return true
+    }
+
+    if (!graceState.playerBetByPlayer) graceState.playerBetByPlayer = {}
+    graceState.playerBetByPlayer[sender] = betRaw
+    storage.setGameState(from, graceKey, graceState)
+
+    const baseBuyIn = Math.max(0, Number(graceState.buyInAmount) || 0)
+    const multipliedBuyIn = baseBuyIn * betRaw
+    await sock.sendMessage(from, {
+      text:
+        `🎯 Lobby *${targetLobbyId}*: bet de @${sender.split("@")[0]} ajustada para *${betRaw}x*.\n` +
+        `Buy-in deste jogador: *${multipliedBuyIn}* Epsteincoins (base ${baseBuyIn}).`,
+      mentions: [sender],
+    })
+    return true
+  }
+
   if (isStartCommand && isGroup && !isQuickGameStartTarget) {
     const lobbyId = normalizeLobbyId(cmdArg1)
     if (!lobbyId) {
@@ -417,6 +549,100 @@ module.exports = { handleGamesCommand };
       return true
     }
 
+    const graceStateKey = getLobbyGraceStateKey(lobbyId)
+    const existingGraceState = storage.getGameState(from, graceStateKey)
+    if (!existingGraceState?.forceStart) {
+      if (existingGraceState) {
+        await sock.sendMessage(from, {
+          text: `Lobby *${lobbyId}* já está no período de aposta. Use: !aposta ${lobbyId} <1-10>`,
+        })
+        return true
+      }
+
+      const buyInAmount = getGameBuyIn(session.gameType)
+      const graceState = {
+        lobbyId,
+        gameType: session.gameType,
+        players: [...session.players],
+        buyInAmount,
+        playerBetByPlayer: (session.players || []).reduce((acc, playerId) => {
+          acc[playerId] = 1
+          return acc
+        }, {}),
+        rrBetValueToken: cmdArg2,
+        startedBy: sender,
+        forceStart: false,
+        createdAt: Date.now(),
+      }
+      storage.setGameState(from, graceStateKey, graceState)
+
+      await sock.sendMessage(from, {
+        text:
+          `⏳ Lobby *${lobbyId}* entra em período de aposta por 15s.\n` +
+          `Cada jogador pode definir bet de *1x a 10x* para multiplicar o buy-in.\n` +
+          `Use: *!aposta <1-10>* (ou *!aposta ${lobbyId} <1-10>*).\n` +
+          `Se não escolher, fica em *1x*.`,
+        mentions: session.players || [],
+      })
+
+      setTimeout(async () => {
+        const latestGraceState = storage.getGameState(from, graceStateKey)
+        if (!latestGraceState) return
+        latestGraceState.forceStart = true
+        storage.setGameState(from, graceStateKey, latestGraceState)
+
+        await handleGameCommands({
+          sock,
+          from,
+          sender: latestGraceState.startedBy || sender,
+          cmd: `${prefix}começar ${lobbyId}`,
+          cmdName,
+          cmdArg1: lobbyId,
+          cmdArg2: latestGraceState.rrBetValueToken || "",
+          mentioned,
+          prefix,
+          isGroup,
+          text,
+          msg,
+          storage,
+          gameManager,
+          economyService,
+          caraOuCoroa,
+          adivinhacao,
+          batataquente,
+          dueloDados,
+          roletaRussa,
+          startPeriodicGame,
+          GAME_REWARDS,
+          BASE_GAME_REWARD,
+          normalizeUnifiedGameType,
+          normalizeLobbyId,
+          activeGameKey,
+          resolveActiveLobbyForPlayer,
+          getLobbyCreateBlockMessage,
+          getGameBuyIn,
+          collectLobbyBuyIn,
+          distributeLobbyBuyInPool,
+          parsePositiveInt,
+          isResenhaModeEnabled,
+          rewardPlayer,
+          rewardPlayers,
+          incrementUserStat,
+          applyRandomGamePunishment,
+          createPendingTargetForWinner,
+          jidNormalizedUser,
+          createLobbyWarningCallback,
+          createLobbyTimeoutCallback,
+          buildGameStatsText,
+        })
+      }, LOBBY_BET_GRACE_MS)
+
+      return true
+    }
+
+    const graceBetByPlayer = existingGraceState?.playerBetByPlayer || {}
+    storage.clearGameState(from, graceStateKey)
+
     incrementUserStat(sender, "lobbiesStarted", 1)
     telemetry.incrementCounter("game.lobby.started", 1, { gameType: session.gameType })
     telemetry.appendEvent("game.lobby.started", {
@@ -434,10 +660,10 @@ module.exports = { handleGamesCommand };
       }
 
       const buyInAmount = getGameBuyIn(session.gameType)
-      const buyInResult = collectLobbyBuyIn(session.players, buyInAmount, session.gameType)
+      const buyInResult = collectLobbyBuyInWithBets(session.players, buyInAmount, session.gameType, graceBetByPlayer)
       if (!buyInResult.ok) {
         await sock.sendMessage(from, {
-          text: `Sem saldo para entrada (${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
           mentions: buyInResult.insufficient,
         })
         return true
@@ -446,6 +672,8 @@ module.exports = { handleGamesCommand };
       const state = adivinhacao.start(from, session.players)
       state.buyInPool = buyInResult.pool || 0
       state.buyInAmount = buyInAmount
+      state.buyInByPlayer = buyInResult.buyInByPlayer || {}
+      state.playerBetByPlayer = buyInResult.playerBetByPlayer || {}
       storage.setGameState(from, stateKey, state)
       gameManager.clearOptInSession(from, lobbyId)
 
@@ -469,10 +697,10 @@ module.exports = { handleGamesCommand };
       }
 
       const buyInAmount = getGameBuyIn(session.gameType)
-      const buyInResult = collectLobbyBuyIn(session.players, buyInAmount, session.gameType)
+      const buyInResult = collectLobbyBuyInWithBets(session.players, buyInAmount, session.gameType, graceBetByPlayer)
       if (!buyInResult.ok) {
         await sock.sendMessage(from, {
-          text: `Sem saldo para entrada (${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
           mentions: buyInResult.insufficient,
         })
         return true
@@ -481,6 +709,8 @@ module.exports = { handleGamesCommand };
       const state = batataquente.start(from, session.players)
       state.buyInPool = buyInResult.pool || 0
       state.buyInAmount = buyInAmount
+      state.buyInByPlayer = buyInResult.buyInByPlayer || {}
+      state.playerBetByPlayer = buyInResult.playerBetByPlayer || {}
       storage.setGameState(from, stateKey, state)
       gameManager.clearOptInSession(from, lobbyId)
 
@@ -533,7 +763,7 @@ module.exports = { handleGamesCommand };
             loser,
             winners,
           })
-          await distributeLobbyBuyInPool(winners, finalState.buyInPool, "Batata Quente")
+          await distributeLobbyBuyInPool(winners, finalState.buyInPool, "Batata Quente", getLobbyPayoutOptions(finalState))
 
           await applyRandomGamePunishment(loser)
           storage.clearGameState(from, stateKey)
@@ -550,10 +780,10 @@ module.exports = { handleGamesCommand };
       }
 
       const buyInAmount = getGameBuyIn(session.gameType)
-      const buyInResult = collectLobbyBuyIn(session.players, buyInAmount, session.gameType)
+      const buyInResult = collectLobbyBuyInWithBets(session.players, buyInAmount, session.gameType, graceBetByPlayer)
       if (!buyInResult.ok) {
         await sock.sendMessage(from, {
-          text: `Sem saldo para entrada (${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
           mentions: buyInResult.insufficient,
         })
         return true
@@ -562,6 +792,8 @@ module.exports = { handleGamesCommand };
       const state = dueloDados.start(from, session.players)
       state.buyInPool = buyInResult.pool || 0
       state.buyInAmount = buyInAmount
+      state.buyInByPlayer = buyInResult.buyInByPlayer || {}
+      state.playerBetByPlayer = buyInResult.playerBetByPlayer || {}
       storage.setGameState(from, stateKey, state)
       gameManager.clearOptInSession(from, lobbyId)
 
@@ -583,10 +815,10 @@ module.exports = { handleGamesCommand };
       }
 
       const buyInAmount = getGameBuyIn(session.gameType)
-      const buyInResult = collectLobbyBuyIn(session.players, buyInAmount, session.gameType)
+      const buyInResult = collectLobbyBuyInWithBets(session.players, buyInAmount, session.gameType, graceBetByPlayer)
       if (!buyInResult.ok) {
         await sock.sendMessage(from, {
-          text: `Sem saldo para entrada (${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
           mentions: buyInResult.insufficient,
         })
         return true
@@ -597,6 +829,8 @@ module.exports = { handleGamesCommand };
       const state = roletaRussa.start(from, session.players, { betValue })
       state.buyInPool = buyInResult.pool || 0
       state.buyInAmount = buyInAmount
+      state.buyInByPlayer = buyInResult.buyInByPlayer || {}
+      state.playerBetByPlayer = buyInResult.playerBetByPlayer || {}
       storage.setGameState(from, stateKey, state)
       gameManager.clearOptInSession(from, lobbyId)
 
@@ -685,10 +919,10 @@ module.exports = { handleGamesCommand };
 
       if (results.chooser) {
         incrementUserStat(results.chooser, "gameGuessExact", 1)
-        await distributeLobbyBuyInPool([results.chooser], state.buyInPool, "Adivinhação")
+        await distributeLobbyBuyInPool([results.chooser], state.buyInPool, "Adivinhação", getLobbyPayoutOptions(state))
       } else if (Array.isArray(results.closestPlayers) && results.closestPlayers.length > 0 && state.players.length > 1) {
         results.closestPlayers.forEach((playerId) => incrementUserStat(playerId, "gameGuessClosest", 1))
-        await distributeLobbyBuyInPool(results.closestPlayers, state.buyInPool, "Adivinhação")
+        await distributeLobbyBuyInPool(results.closestPlayers, state.buyInPool, "Adivinhação", getLobbyPayoutOptions(state))
       } else if (state.players.length === 1) {
         incrementUserStat(state.players[0], "gameGuessLoss", 1)
         await sock.sendMessage(from, {
@@ -807,7 +1041,7 @@ module.exports = { handleGamesCommand };
 
       if (results.winner) {
         incrementUserStat(results.winner, "gameDadosWin", 1)
-        await distributeLobbyBuyInPool([results.winner], state.buyInPool, "Duelo de Dados")
+        await distributeLobbyBuyInPool([results.winner], state.buyInPool, "Duelo de Dados", getLobbyPayoutOptions(state))
       }
 
       if (results.punish && results.punish.length > 0) {
@@ -877,6 +1111,8 @@ module.exports = { handleGamesCommand };
     const betMultiplier = parsePositiveInt(state.betMultiplier, 1)
     const betValueRaw = Number.parseInt(String(state.betValue), 10)
     const betValue = Number.isFinite(betValueRaw) ? Math.max(0, Math.min(5, betValueRaw)) : Math.max(0, betMultiplier - 1)
+    const soloCoinMultiplier = Math.max(1, betValue)
+    const rrCoinMultiplier = state.players.length === 1 ? soloCoinMultiplier : betMultiplier
 
     if (result.autoWin) {
       const winners = Array.isArray(result.winners) && result.winners.length > 0
@@ -886,9 +1122,7 @@ module.exports = { handleGamesCommand };
         incrementUserStat(playerId, "gameRrWin", 1)
         incrementUserStat(playerId, "gameRrBetWin", 1)
       })
-      await distributeLobbyBuyInPool(winners, state.buyInPool, "Roleta Russa", {
-        betMultiplierByPlayer: buildBetMultiplierMap(winners, betMultiplier),
-      })
+      await distributeLobbyBuyInPool(winners, state.buyInPool, "Roleta Russa", getLobbyPayoutOptions(state))
       await sock.sendMessage(from, {
         text:
           `*CLICK*\n` +
@@ -916,22 +1150,27 @@ module.exports = { handleGamesCommand };
 
     if (result.hit) {
       if (result.allWin) {
-        const winners = Array.isArray(result.winners) && result.winners.length > 0
+        const shotPlayer = sender
+        const winnersRaw = Array.isArray(result.winners) && result.winners.length > 0
           ? result.winners
           : (state.players || [])
+        const winners = winnersRaw.filter((playerId) => playerId !== shotPlayer)
         winners.forEach((playerId) => {
           incrementUserStat(playerId, "gameRrWin", 1)
           incrementUserStat(playerId, "gameRrBetWin", 1)
         })
-        await distributeLobbyBuyInPool(winners, state.buyInPool, "Roleta Russa", {
-          betMultiplierByPlayer: buildBetMultiplierMap(winners, betMultiplier),
-        })
+        if (winners.length > 0) {
+          await distributeLobbyBuyInPool(winners, state.buyInPool, "Roleta Russa", getLobbyPayoutOptions(state))
+        }
         await sock.sendMessage(from, {
           text:
             `💥 ${result.guaranteed ? "Garantido!!!" : "ACERTOU!"}\n` +
             `Lobby *${lobbyId}*\n` +
-            `✅ O jogador da vez ultrapassou a aposta (*${betValue}*). Todos vencem esta rodada!`,
-          mentions: winners,
+            `✅ O jogador da vez ultrapassou a aposta (*${betValue}*), mas quem tomou tiro não recebe prêmio.\n` +
+            (winners.length > 0
+              ? `🏆 Premiação para: ${winners.map((p) => `@${p.split("@")[0]}`).join(" ")}`
+              : "Sem jogadores elegíveis para premiação nesta rodada."),
+          mentions: [shotPlayer, ...winners],
         })
         telemetry.incrementCounter("game.rr.completed", 1, {
           result: result.guaranteed ? "guaranteed-all-win" : "all-win-surpass",
@@ -940,7 +1179,7 @@ module.exports = { handleGamesCommand };
           groupId: from,
           lobbyId,
           players: state.players,
-          loser: null,
+          loser: shotPlayer,
           guaranteed: Boolean(result.guaranteed),
           betMultiplier,
           betValue,
@@ -959,11 +1198,11 @@ module.exports = { handleGamesCommand };
         mentions: [result.loser],
       })
 
-      const rrLoss = BASE_GAME_REWARD * betMultiplier
+      const rrLoss = BASE_GAME_REWARD * rrCoinMultiplier
       const rrTaken = economyService.debitCoinsFlexible(result.loser, rrLoss, {
         type: "game-loss",
         details: "Derrota em Roleta Russa",
-        meta: { game: "rr", multiplier: betMultiplier },
+        meta: { game: "rr", multiplier: rrCoinMultiplier },
       })
       if (rrTaken > 0) {
         incrementUserStat(result.loser, "moneyGameLost", rrTaken)
@@ -980,9 +1219,7 @@ module.exports = { handleGamesCommand };
         incrementUserStat(playerId, "gameRrWin", 1)
         incrementUserStat(playerId, "gameRrBetWin", 1)
       })
-      await distributeLobbyBuyInPool(winners, state.buyInPool, "Roleta Russa", {
-        betMultiplierByPlayer: buildBetMultiplierMap(winners, betMultiplier),
-      })
+      await distributeLobbyBuyInPool(winners, state.buyInPool, "Roleta Russa", getLobbyPayoutOptions(state))
       telemetry.incrementCounter("game.rr.completed", 1, {
         result: result.guaranteed ? "guaranteed-hit" : "hit",
       })

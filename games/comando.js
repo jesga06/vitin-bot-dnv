@@ -37,6 +37,7 @@ module.exports = {
 			instruction,
 			compliers: [],
 			participants: [],
+			participantLastMessageAt: {},
 			createdAt: Date.now(),
 			triggeredBy,
 			silenceBreaker: null,
@@ -46,9 +47,13 @@ module.exports = {
 
 	recordParticipant: (state, playerId) => {
 		if (!Array.isArray(state.participants)) state.participants = []
+		if (!state.participantLastMessageAt || typeof state.participantLastMessageAt !== "object") {
+			state.participantLastMessageAt = {}
+		}
 		if (!state.participants.includes(playerId)) {
 			state.participants.push(playerId)
 		}
+		state.participantLastMessageAt[playerId] = Date.now()
 	},
 
 	recordCompliance: (state, playerId) => {

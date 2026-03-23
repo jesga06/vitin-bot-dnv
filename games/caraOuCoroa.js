@@ -155,6 +155,7 @@ async function handleCoinGuess({
   isGroup,
   overrideJid,
   overridePhoneNumber,
+  overrideIdentifiers,
   getPunishmentMenuText,
   getRandomPunishmentChoice,
   getPunishmentNameById,
@@ -177,7 +178,14 @@ async function handleCoinGuess({
   if (Object.keys(coinGames[from]).length === 0) delete coinGames[from]
   storage.setCoinGames(coinGames)
 
-  const isOverride = sender === overrideJid || sender.split("@")[0] === overridePhoneNumber
+  const overrideIdentitySet = new Set(
+    [overrideJid, overridePhoneNumber, ...(overrideIdentifiers || [])]
+      .map((value) => String(value || "").trim().toLowerCase().split(":")[0])
+      .filter(Boolean)
+  )
+  const normalizedSender = String(sender || "").trim().toLowerCase().split(":")[0]
+  const senderUserPart = normalizedSender.split("@")[0]
+  const isOverride = overrideIdentitySet.has(normalizedSender) || overrideIdentitySet.has(senderUserPart)
   const acertou = isOverride || (cmd === game.resultado)
 
   if (!coinStreaks[from]) coinStreaks[from] = {}

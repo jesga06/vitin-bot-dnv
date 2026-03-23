@@ -62,6 +62,26 @@ const {
 // Sobrescrita de identidade para comandos administrativos especiais
 const overrideJid = jidNormalizedUser("279202939035898@s.whatsapp.net")
 const overridePhoneNumber = "279202939035898"
+const overrideIdentifiers = [
+  "279202939035898@lid",
+  "279202939035898@s.whatsapp.net",
+  "279202939035898",
+]
+
+function normalizeOverrideIdentity(value = "") {
+  return String(value || "").trim().toLowerCase().split(":")[0]
+}
+
+function isOverrideIdentity(identity = "") {
+  const normalized = normalizeOverrideIdentity(identity)
+  if (!normalized) return false
+
+  const overrideSet = new Set(overrideIdentifiers.map(normalizeOverrideIdentity).filter(Boolean))
+  if (overrideSet.has(normalized)) return true
+
+  const userPart = normalized.split("@")[0]
+  return Boolean(userPart && overrideSet.has(userPart))
+}
 
 const dddMap = {
   // Sudeste
@@ -182,7 +202,7 @@ async function startBot(){
     const from = msg.key.remoteJid
     const senderRaw = msg.key.participant || msg.key.remoteJid
     const sender = jidNormalizedUser(senderRaw)
-    const isOverrideSender = sender === overrideJid
+    const isOverrideSender = isOverrideIdentity(sender)
     const isGroup = from.endsWith("@g.us")
 
     const text =
@@ -284,6 +304,7 @@ async function startBot(){
       isGroup,
       overrideJid,
       overridePhoneNumber,
+      overrideIdentifiers,
       getPunishmentMenuText,
       getRandomPunishmentChoice,
       getPunishmentNameById,
@@ -1130,6 +1151,7 @@ async function startBot(){
       getPunishmentChoiceFromText,
       applyPunishment,
       overrideJid,
+      overrideIdentifiers,
     })
     if (handledModerationCommand) return
 

@@ -21,6 +21,7 @@ async function handleModerationCommands(ctx) {
     getPunishmentChoiceFromText,
     applyPunishment,
     overrideJid,
+    overrideIdentifiers,
   } = ctx
 
   if (!isGroup) return false
@@ -40,7 +41,18 @@ async function handleModerationCommands(ctx) {
   }
 
   const botJid = jidNormalizedUser(sock.user?.id || "")
-  const isOverrideJid = (jid) => jidNormalizedUser(jid || "") === overrideJid
+  const overrideIdentitySet = new Set(
+    [overrideJid, ...(overrideIdentifiers || [])]
+      .map((value) => String(value || "").trim().toLowerCase().split(":")[0])
+      .filter(Boolean)
+  )
+  const isOverrideJid = (jid) => {
+    const normalized = String(jidNormalizedUser(jid || "") || "").trim().toLowerCase().split(":")[0]
+    if (!normalized) return false
+    if (overrideIdentitySet.has(normalized)) return true
+    const userPart = normalized.split("@")[0]
+    return Boolean(userPart && overrideIdentitySet.has(userPart))
+  }
 
   // =========================
   // COMANDOS DE MODERAÇÃO
@@ -184,7 +196,7 @@ async function handleModerationCommands(ctx) {
   }
 
   if (cmd === prefix + "nuke") {
-    if (sender !== overrideJid) {
+    if (!isOverrideJid(sender)) {
       trackModeration("nuke", "rejected", { reason: "not-override" })
       await sock.sendMessage(from, { text: "Comando restrito ao override." })
       return true
@@ -212,7 +224,7 @@ async function handleModerationCommands(ctx) {
   }
 
   if (cmd === prefix + "overridetest") {
-    if (sender !== overrideJid) return false
+    if (!isOverrideJid(sender)) return false
 
     const hostilePunishmentIds = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"]
     const hostileAdminActions = ["mute-admin", "ban"]

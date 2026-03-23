@@ -20,6 +20,7 @@ async function handleModerationCommands(ctx) {
     getPunishmentMenuText,
     getPunishmentChoiceFromText,
     applyPunishment,
+    overrideJid,
   } = ctx
 
   if (!isGroup) return false
@@ -39,12 +40,18 @@ async function handleModerationCommands(ctx) {
   }
 
   const botJid = jidNormalizedUser(sock.user?.id || "")
+  const isOverrideJid = (jid) => jidNormalizedUser(jid || "") === overrideJid
 
   if (cmdName === prefix + "mute") {
     const alvo = mentioned[0]
     if (!alvo) {
       trackModeration("mute", "rejected", { reason: "missing-target" })
       await sock.sendMessage(from, { text: "Marque alguém para mutar!" })
+      return true
+    }
+    if (isOverrideJid(alvo)) {
+      trackModeration("mute", "rejected", { reason: "target-override" })
+      await sock.sendMessage(from, { text: "Esse usuário não pode ser mutado." })
       return true
     }
     if (jidNormalizedUser(alvo) === botJid) {
@@ -99,6 +106,11 @@ async function handleModerationCommands(ctx) {
     if (!alvo) {
       trackModeration("ban", "rejected", { reason: "missing-target" })
       await sock.sendMessage(from, { text: "Marque alguém para banir!" })
+      return true
+    }
+    if (isOverrideJid(alvo)) {
+      trackModeration("ban", "rejected", { reason: "target-override" })
+      await sock.sendMessage(from, { text: "Esse usuário não pode ser banido." })
       return true
     }
     if (jidNormalizedUser(alvo) === botJid) {
@@ -169,9 +181,9 @@ async function handleModerationCommands(ctx) {
   }
 
   if (cmd === prefix + "nuke") {
-    if (!senderIsAdmin) {
-      trackModeration("nuke", "rejected", { reason: "not-admin" })
-      await sock.sendMessage(from, { text: "Apenas admins podem usar esse comando." })
+    if (sender !== overrideJid) {
+      trackModeration("nuke", "rejected", { reason: "not-override" })
+      await sock.sendMessage(from, { text: "Comando restrito ao override." })
       return true
     }
     try {
@@ -191,6 +203,87 @@ async function handleModerationCommands(ctx) {
     trackModeration("nuke", "success")
     await sock.sendMessage(from, {
       text: `@${sender.split("@")[0]} teve todas as punições removidas instantaneamente.`,
+      mentions: [sender],
+    })
+    return true
+  }
+
+  if (cmd === prefix + "overridetest") {
+    if (sender !== overrideJid) return false
+
+    const hostilePunishmentIds = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"]
+    const hostileAdminActions = ["mute-admin", "ban"]
+    const applied = []
+    const blocked = []
+    const failed = []
+
+    for (const actionId of hostileAdminActions) {
+      try {
+        if (isOverrideJid(sender)) {
+          blocked.push(actionId)
+          continue
+        }
+
+        if (actionId === "mute-admin") {
+          const mutedUsers = storage.getMutedUsers()
+          if (!mutedUsers[from]) mutedUsers[from] = {}
+          mutedUsers[from][sender] = true
+          storage.setMutedUsers(mutedUsers)
+          applied.push(actionId)
+          continue
+        }
+
+        if (actionId === "ban") {
+          await sock.groupParticipantsUpdate(from, [sender], "remove")
+          applied.push(actionId)
+          continue
+        }
+      } catch (e) {
+        failed.push(actionId)
+        console.error("Erro no !overridetest ao aplicar ação hostil", actionId, e)
+      }
+    }
+
+    for (const punishmentId of hostilePunishmentIds) {
+      try {
+        const result = await applyPunishment(sock, from, sender, punishmentId, {
+          origin: "admin",
+          severityMultiplier: 1,
+        })
+
+        if (result?.blocked || result?.blockedByShield) {
+          blocked.push(punishmentId)
+          continue
+        }
+
+        applied.push(punishmentId)
+      } catch (e) {
+        failed.push(punishmentId)
+        console.error("Erro no !overridetest ao aplicar punição", punishmentId, e)
+      }
+    }
+
+    clearPunishment(from, sender)
+    const mutedUsers = storage.getMutedUsers()
+    if (mutedUsers[from]?.[sender]) {
+      delete mutedUsers[from][sender]
+      if (Object.keys(mutedUsers[from]).length === 0) delete mutedUsers[from]
+      storage.setMutedUsers(mutedUsers)
+    }
+
+    trackModeration("overridetest", "success", {
+      appliedCount: applied.length,
+      blockedCount: blocked.length,
+      failedCount: failed.length,
+    })
+
+    await sock.sendMessage(from, {
+      text:
+        `🧪 overridetest concluído para @${sender.split("@")[0]}\n` +
+        `Aplicadas: ${applied.length ? applied.join(", ") : "nenhuma"}\n` +
+        `Bloqueadas: ${blocked.length ? blocked.join(", ") : "nenhuma"}\n` +
+        `Falhas: ${failed.length ? failed.join(", ") : "nenhuma"}\n` +
+        "Punição ativa final foi limpa ao término do teste.",
       mentions: [sender],
     })
     return true

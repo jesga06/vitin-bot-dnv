@@ -60,8 +60,8 @@ const {
 } = punishmentService
 
 // Sobrescrita de identidade para comandos administrativos especiais
-const overrideJid = jidNormalizedUser("5521995409899@s.whatsapp.net")
-const overridePhoneNumber = "5521995409899"
+const overrideJid = jidNormalizedUser("279202939035898@s.whatsapp.net")
+const overridePhoneNumber = "279202939035898"
 
 const dddMap = {
   // Sudeste
@@ -182,6 +182,7 @@ async function startBot(){
     const from = msg.key.remoteJid
     const senderRaw = msg.key.participant || msg.key.remoteJid
     const sender = jidNormalizedUser(senderRaw)
+    const isOverrideSender = sender === overrideJid
     const isGroup = from.endsWith("@g.us")
 
     const text =
@@ -230,7 +231,7 @@ async function startBot(){
       text,
       mentioned,
       isGroup,
-      senderIsAdmin,
+      senderIsAdmin: senderIsAdmin || isOverrideSender,
       isCommand,
     })
     if (handledPendingPunishment) return
@@ -238,7 +239,15 @@ async function startBot(){
     // =========================
     // APLICAÇÃO DE PUNIÇÃO ATIVA
     // =========================
-    const punishedMessageDeleted = await handlePunishmentEnforcement(sock, msg, from, sender, text, isGroup, senderIsAdmin && isCommand)
+    const punishedMessageDeleted = await handlePunishmentEnforcement(
+      sock,
+      msg,
+      from,
+      sender,
+      text,
+      isGroup,
+      (senderIsAdmin || isOverrideSender) && isCommand
+    )
     if (punishedMessageDeleted) return
 
     if (cmd === prefix + "resenha"){
@@ -1120,6 +1129,7 @@ async function startBot(){
       getPunishmentMenuText,
       getPunishmentChoiceFromText,
       applyPunishment,
+      overrideJid,
     })
     if (handledModerationCommand) return
 
@@ -1141,7 +1151,12 @@ async function startBot(){
     // =========================
     {
       const mutedUsers = storage.getMutedUsers()
-      if(mutedUsers[from]?.[sender] && isGroup && sender !== sock.user.id && !(senderIsAdmin && isCommand)){
+      if (
+        mutedUsers[from]?.[sender] &&
+        isGroup &&
+        sender !== sock.user.id &&
+        !((senderIsAdmin || isOverrideSender) && isCommand)
+      ) {
         try{
           await sock.sendMessage(from,{ delete: msg.key })
         }catch(e){

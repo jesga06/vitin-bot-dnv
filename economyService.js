@@ -286,6 +286,12 @@ function migrateUserShape(user) {
   if (!user.cooldowns.stealTargets || typeof user.cooldowns.stealTargets !== "object") {
     user.cooldowns.stealTargets = {}
   }
+  if (!Number.isFinite(user.cooldowns.workAt) || user.cooldowns.workAt < 0) {
+    user.cooldowns.workAt = 0
+  }
+  if (!Number.isFinite(user.cooldowns.stealAt) || user.cooldowns.stealAt < 0) {
+    user.cooldowns.stealAt = 0
+  }
   if (!Number.isFinite(user.cooldowns.stealAttemptsToday)) {
     user.cooldowns.stealAttemptsToday = 0
   }
@@ -1293,7 +1299,10 @@ function openLootbox(userId, quantity = 1, groupMembers = []) {
 function setWorkCooldown(userId, timestamp = Date.now()) {
   const user = ensureUser(userId)
   if (!user) return
-  user.cooldowns.workAt = Math.floor(Number(timestamp) || Date.now())
+  const parsed = Number(timestamp)
+  user.cooldowns.workAt = Number.isFinite(parsed) && parsed >= 0
+    ? Math.floor(parsed)
+    : Date.now()
   touchUser(user)
   saveEconomy()
 }
@@ -1302,6 +1311,23 @@ function getWorkCooldown(userId) {
   const user = ensureUser(userId)
   if (!user) return 0
   return Math.floor(Number(user.cooldowns.workAt) || 0)
+}
+
+function setStealCooldown(userId, timestamp = Date.now()) {
+  const user = ensureUser(userId)
+  if (!user) return
+  const parsed = Number(timestamp)
+  user.cooldowns.stealAt = Number.isFinite(parsed) && parsed >= 0
+    ? Math.floor(parsed)
+    : Date.now()
+  touchUser(user)
+  saveEconomy()
+}
+
+function getStealCooldown(userId) {
+  const user = ensureUser(userId)
+  if (!user) return 0
+  return Math.floor(Number(user.cooldowns.stealAt) || 0)
 }
 
 function forgePunishmentPass(userId, punishmentType, severity = 1, quantity = 1) {
@@ -1437,6 +1463,8 @@ module.exports = {
   incrementStat,
   setWorkCooldown,
   getWorkCooldown,
+  setStealCooldown,
+  getStealCooldown,
   getProfile,
   openLootbox,
   forgePunishmentPass,

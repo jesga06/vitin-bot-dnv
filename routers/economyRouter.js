@@ -265,6 +265,16 @@ async function handleEconomyCommands(ctx) {
       return true
     }
 
+    const STEAL_COOLDOWN_MS = 30 * 60_000
+    const lastStealAt = economyService.getStealCooldown(sender)
+    const stealRemaining = (lastStealAt + STEAL_COOLDOWN_MS) - Date.now()
+    if (stealRemaining > 0) {
+      await sock.sendMessage(from, {
+        text: `⏰ Você pode tentar roubar novamente em ${formatDuration(stealRemaining)}.`,
+      })
+      return true
+    }
+
     const steal = economyService.attemptSteal(sender, target)
     if (!steal.ok) {
       if (steal.reason === "same-target-today") {
@@ -282,6 +292,8 @@ async function handleEconomyCommands(ctx) {
       })
       return true
     }
+
+    economyService.setStealCooldown(sender, Date.now())
 
     economyService.incrementStat(sender, "steals", 1)
 

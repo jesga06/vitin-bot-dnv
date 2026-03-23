@@ -84,3 +84,23 @@ test("kronos increases steal success chance by 10 percent", () => {
   const buffedChance = economy.getStealSuccessChance(victim, thief)
   assert.equal(buffedChance, 0.4)
 })
+
+test("work cooldown can be reset to zero", () => {
+  cleanupTestUsers()
+  const a = TEST_USERS[0]
+
+  economy.setWorkCooldown(a, Date.now())
+  assert.equal(economy.getWorkCooldown(a) > 0, true)
+
+  economy.setWorkCooldown(a, 0)
+  assert.equal(economy.getWorkCooldown(a), 0)
+})
+
+test("steal cooldown setter/getter works", () => {
+  cleanupTestUsers()
+  const a = TEST_USERS[0]
+  const stamp = Date.now() - 12345
+
+  economy.setStealCooldown(a, stamp)
+  assert.equal(economy.getStealCooldown(a), Math.floor(stamp))
+})

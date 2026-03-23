@@ -220,6 +220,18 @@ function hasLetters(text = "") {
   return /[a-z]/i.test(String(text || ""))
 }
 
+function matchesUrgentPrefix(text = "", requiredPrefix = "🚨URGENTE:") {
+  const raw = String(text || "")
+  const trimmedStart = raw.trimStart()
+  if (!trimmedStart) return false
+
+  // Keep strict support for configured prefix, but accept small user-input variations.
+  const strictPrefix = String(requiredPrefix || "🚨URGENTE:").trim()
+  if (strictPrefix && trimmedStart.startsWith(strictPrefix)) return true
+
+  return /^(?:🚨\s*)?urgente\s*:?\s*/i.test(trimmedStart)
+}
+
 function getResendText(msg, text = "") {
   const trimmed = String(text || "").trim()
   if (trimmed) return trimmed
@@ -512,9 +524,10 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
   if (punishment.type === "lettersBlock") {
     const letters = punishment.letters || []
     if (isUnlockLettersMessage(text, letters)) {
+      const lettersLabel = letters.length > 0 ? letters.join(" / ") : "(sem letras)"
       clearPunishment(from, sender)
       await sock.sendMessage(from, {
-        text: `@${sender.split("@")[0]}, você cumpriu a condição e foi liberado da punição das letras (${letters[0]} / ${letters[1]}).`,
+        text: `@${sender.split("@")[0]}, você cumpriu a condição e foi liberado da punição das letras (${lettersLabel}).`,
         mentions: [sender]
       })
       return false
@@ -536,7 +549,7 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
 
   if (punishment.type === "urgentPrefix") {
     const prefix = String(punishment.requiredPrefix || "🚨URGENTE:")
-    shouldDelete = !String(text || "").startsWith(prefix)
+    shouldDelete = !matchesUrgentPrefix(text, prefix)
   }
 
   if (punishment.type === "wordListRequired") {

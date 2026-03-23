@@ -220,6 +220,67 @@ function getOperationLimits() {
   }
 }
 
+function getPercentile(sortedValues, percentile) {
+  if (!Array.isArray(sortedValues) || sortedValues.length === 0) return 0
+  const clamped = Math.max(0, Math.min(1, Number(percentile) || 0))
+  const index = Math.floor((sortedValues.length - 1) * clamped)
+  return Math.floor(Number(sortedValues[index]) || 0)
+}
+
+function buildEconomyHealthSnapshot() {
+  const users = Object.values(economyCache.users || {})
+  const totalUsers = users.length
+  const balances = users
+    .map((user) => Math.max(0, Math.floor(Number(user?.coins) || 0)))
+    .sort((a, b) => a - b)
+
+  const totalCoins = balances.reduce((sum, value) => sum + value, 0)
+  const fundedUsers = balances.filter((value) => value > 0).length
+  const zeroBalanceUsers = totalUsers - fundedUsers
+  const meanCoins = totalUsers > 0 ? Math.floor(totalCoins / totalUsers) : 0
+  const medianCoins = getPercentile(balances, 0.5)
+  const p75Coins = getPercentile(balances, 0.75)
+  const p90Coins = getPercentile(balances, 0.9)
+  const p99Coins = getPercentile(balances, 0.99)
+  const maxCoins = balances.length > 0 ? balances[balances.length - 1] : 0
+
+  const kronosActiveUsers = users.filter((user) => {
+    const hasVerdadeira = Boolean(user?.buffs?.kronosVerdadeiraActive)
+    const kronosExpiresAt = Number(user?.buffs?.kronosExpiresAt) || 0
+    return hasVerdadeira || kronosExpiresAt > Date.now()
+  }).length
+
+  const topBalance = maxCoins
+  const topSharePct = totalCoins > 0
+    ? Number(((topBalance / totalCoins) * 100).toFixed(2))
+    : 0
+
+  return {
+    totalUsers,
+    fundedUsers,
+    zeroBalanceUsers,
+    totalCoins,
+    meanCoins,
+    medianCoins,
+    p75Coins,
+    p90Coins,
+    p99Coins,
+    maxCoins,
+    topSharePct,
+    kronosActiveUsers,
+  }
+}
+
+function recordDailyEconomyHealthSnapshot(reason = "runtime") {
+  if (typeof telemetry.recordDailySnapshot !== "function") return
+  const dayKey = getDayKey()
+  const snapshot = buildEconomyHealthSnapshot()
+  telemetry.recordDailySnapshot("economy", dayKey, {
+    reason,
+    ...snapshot,
+  })
+}
+
 function loadEconomy() {
   try {
     if (!fs.existsSync(ECONOMY_FILE)) return
@@ -231,6 +292,7 @@ function loadEconomy() {
     if (!economyCache.users || typeof economyCache.users !== "object") {
       economyCache.users = {}
     }
+    recordDailyEconomyHealthSnapshot("load")
   } catch (err) {
     console.error("Erro ao carregar economia:", err)
     economyCache = { users: {} }
@@ -250,6 +312,7 @@ function saveEconomy(immediate = false) {
   const doSave = () => {
     try {
       fs.writeFileSync(ECONOMY_FILE, JSON.stringify(economyCache, null, 2), "utf8")
+      recordDailyEconomyHealthSnapshot("save")
     } catch (err) {
       console.error("Erro ao salvar economia:", err)
     }

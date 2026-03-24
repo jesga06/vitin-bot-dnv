@@ -46,6 +46,180 @@ const prefix = "!"
 
 let qrImage = null
 
+const METRIC_SAMPLE_LIMIT = 200
+
+function createMetricBucket() {
+  return {
+    count: 0,
+    total: 0,
+    min: null,
+    max: 0,
+    last: 0,
+    samples: [],
+  }
+}
+
+const perfStats = {
+  bootAt: Date.now(),
+  authenticatedAt: 0,
+  connectedAt: 0,
+  connectionState: "starting",
+  reconnects: 0,
+  messagesReceived: 0,
+  messagesErrored: 0,
+  ignoredNoMessage: 0,
+  ignoredFromMe: 0,
+  lastProcessedAt: 0,
+  lastCommand: "",
+  processingMs: createMetricBucket(),
+  queueDelayMs: createMetricBucket(),
+  sendMessageMs: createMetricBucket(),
+  groupMetadataMs: createMetricBucket(),
+  eventLoopLagMs: createMetricBucket(),
+  stages: {},
+}
+
+function recordMetric(bucket, rawValue) {
+  const value = Number(rawValue)
+  if (!Number.isFinite(value) || value < 0) return
+  bucket.count += 1
+  bucket.total += value
+  bucket.last = value
+  bucket.min = bucket.min === null ? value : Math.min(bucket.min, value)
+  bucket.max = Math.max(bucket.max, value)
+  bucket.samples.push(value)
+  if (bucket.samples.length > METRIC_SAMPLE_LIMIT) {
+    bucket.samples.shift()
+  }
+}
+
+function getStageBucket(stageName) {
+  if (!perfStats.stages[stageName]) {
+    perfStats.stages[stageName] = createMetricBucket()
+  }
+  return perfStats.stages[stageName]
+}
+
+function parseMessageTimestampMs(msg) {
+  const ts = msg?.messageTimestamp
+  if (typeof ts === "number") return ts * 1000
+  if (typeof ts === "bigint") return Number(ts) * 1000
+  if (typeof ts === "string") {
+    const parsed = Number.parseInt(ts, 10)
+    return Number.isFinite(parsed) ? parsed * 1000 : 0
+  }
+  if (ts && typeof ts === "object") {
+    if (typeof ts.toNumber === "function") {
+      const parsed = Number(ts.toNumber())
+      return Number.isFinite(parsed) ? parsed * 1000 : 0
+    }
+    const parsed = Number(ts.low)
+    return Number.isFinite(parsed) ? parsed * 1000 : 0
+  }
+  return 0
+}
+
+function percentileFromSamples(samples = [], percentile = 95) {
+  if (!Array.isArray(samples) || samples.length === 0) return 0
+  const sorted = [...samples].sort((a, b) => a - b)
+  const index = Math.max(0, Math.min(sorted.length - 1, Math.ceil((percentile / 100) * sorted.length) - 1))
+  return sorted[index]
+}
+
+function getMetricSummary(bucket) {
+  const count = bucket.count || 0
+  const avg = count > 0 ? bucket.total / count : 0
+  const p95 = percentileFromSamples(bucket.samples, 95)
+  return {
+    count,
+    avg,
+    p95,
+    min: bucket.min ?? 0,
+    max: bucket.max || 0,
+    last: bucket.last || 0,
+  }
+}
+
+function formatMs(value) {
+  return `${Number(value || 0).toFixed(1)} ms`
+}
+
+function formatDateTime(value) {
+  if (!value) return "-"
+  return new Date(value).toLocaleString("pt-BR")
+}
+
+function formatElapsed(ms) {
+  const totalSec = Math.max(0, Math.floor(Number(ms || 0) / 1000))
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  return `${h}h ${m}m ${s}s`
+}
+
+function getMemoryUsageMb() {
+  const heapUsed = Math.round((process.memoryUsage().heapUsed / (1024 * 1024)) * 10) / 10
+  const rss = Math.round((process.memoryUsage().rss / (1024 * 1024)) * 10) / 10
+  return { heapUsed, rss }
+}
+
+function renderMetricRow(label, bucket) {
+  const summary = getMetricSummary(bucket)
+  return `<tr><td>${label}</td><td>${summary.count}</td><td>${formatMs(summary.last)}</td><td>${formatMs(summary.avg)}</td><td>${formatMs(summary.p95)}</td><td>${formatMs(summary.max)}</td></tr>`
+}
+
+function renderPerfPanelHtml() {
+  const now = Date.now()
+  const uptime = formatElapsed(now - perfStats.bootAt)
+  const authUptime = perfStats.authenticatedAt ? formatElapsed(now - perfStats.authenticatedAt) : "-"
+  const mem = getMemoryUsageMb()
+  const stageRows = Object.entries(perfStats.stages)
+    .sort((a, b) => getMetricSummary(b[1]).avg - getMetricSummary(a[1]).avg)
+    .slice(0, 12)
+    .map(([name, bucket]) => renderMetricRow(`stage:${name}`, bucket))
+    .join("")
+
+  return `
+    <section style="margin-top:20px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;max-width:980px">
+      <h3 style="margin:0 0 10px 0">Performance</h3>
+      <p style="margin:4px 0">Estado da conexão: <b>${perfStats.connectionState}</b></p>
+      <p style="margin:4px 0">Uptime do bot: <b>${uptime}</b> | Desde autenticação: <b>${authUptime}</b></p>
+      <p style="margin:4px 0">Autenticado em: <b>${formatDateTime(perfStats.authenticatedAt)}</b> | Conectado em: <b>${formatDateTime(perfStats.connectedAt)}</b></p>
+      <p style="margin:4px 0">Mensagens recebidas: <b>${perfStats.messagesReceived}</b> | Erros: <b>${perfStats.messagesErrored}</b> | Ignoradas (sem conteúdo): <b>${perfStats.ignoredNoMessage}</b> | Ignoradas (fromMe): <b>${perfStats.ignoredFromMe}</b></p>
+      <p style="margin:4px 0">Último comando: <b>${perfStats.lastCommand || "-"}</b> | Último processamento: <b>${formatDateTime(perfStats.lastProcessedAt)}</b> | Reconexões: <b>${perfStats.reconnects}</b></p>
+      <p style="margin:4px 0">Memória: heap <b>${mem.heapUsed} MB</b> | rss <b>${mem.rss} MB</b></p>
+      <table style="width:100%;margin-top:12px;border-collapse:collapse;font-family:monospace;font-size:12px">
+        <thead>
+          <tr>
+            <th style="text-align:left;border-bottom:1px solid #ccc;padding:4px">Métrica</th>
+            <th style="text-align:right;border-bottom:1px solid #ccc;padding:4px">Count</th>
+            <th style="text-align:right;border-bottom:1px solid #ccc;padding:4px">Last</th>
+            <th style="text-align:right;border-bottom:1px solid #ccc;padding:4px">Avg</th>
+            <th style="text-align:right;border-bottom:1px solid #ccc;padding:4px">P95</th>
+            <th style="text-align:right;border-bottom:1px solid #ccc;padding:4px">Max</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${renderMetricRow("message.processing", perfStats.processingMs)}
+          ${renderMetricRow("message.queueDelay", perfStats.queueDelayMs)}
+          ${renderMetricRow("sock.sendMessage", perfStats.sendMessageMs)}
+          ${renderMetricRow("sock.groupMetadata", perfStats.groupMetadataMs)}
+          ${renderMetricRow("eventLoop.lag", perfStats.eventLoopLagMs)}
+          ${stageRows}
+        </tbody>
+      </table>
+    </section>
+  `
+}
+
+let eventLoopLagExpectedAt = Date.now() + 1000
+setInterval(() => {
+  const now = Date.now()
+  const lag = Math.max(0, now - eventLoopLagExpectedAt)
+  recordMetric(perfStats.eventLoopLagMs, lag)
+  eventLoopLagExpectedAt = now + 1000
+}, 1000).unref()
+
 const {
   getPunishmentChoiceFromText,
   getRandomPunishmentChoice,
@@ -134,8 +308,14 @@ const dddMap = {
 }
 
 app.get("/", (req,res)=>{
-  if(qrImage) return res.send(`<h2>Escaneie o QR Code</h2><img src="${qrImage}">`)
-  res.send("<h2>Bot conectado</h2>")
+  const authReady = Boolean(perfStats.authenticatedAt)
+  const qrBlock = qrImage
+    ? `<h2>Escaneie o QR Code</h2><img src="${qrImage}" style="max-width:320px;width:100%;height:auto">`
+    : "<h2>Bot conectado</h2>"
+  const perfBlock = authReady ? renderPerfPanelHtml() : ""
+  res.send(
+    `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="5"><title>Vitin Bot</title></head><body style="font-family:Segoe UI,Arial,sans-serif;padding:16px">${qrBlock}${perfBlock}</body></html>`
+  )
 })
 
 const PORT = process.env.PORT || 3000
@@ -193,10 +373,33 @@ async function startBot(){
     browser:["VitinBot","Chrome","1.0"]
   })
 
+  const originalSendMessage = sock.sendMessage.bind(sock)
+  sock.sendMessage = async (...args) => {
+    const startedAt = Date.now()
+    try {
+      return await originalSendMessage(...args)
+    } finally {
+      recordMetric(perfStats.sendMessageMs, Date.now() - startedAt)
+    }
+  }
+
+  const originalGroupMetadata = sock.groupMetadata.bind(sock)
+  sock.groupMetadata = async (...args) => {
+    const startedAt = Date.now()
+    try {
+      return await originalGroupMetadata(...args)
+    } finally {
+      recordMetric(perfStats.groupMetadataMs, Date.now() - startedAt)
+    }
+  }
+
   sock.ev.on("creds.update", saveCreds)
 
   sock.ev.on("connection.update", async(update)=>{
     const { connection, qr, lastDisconnect } = update
+    if (connection) {
+      perfStats.connectionState = connection
+    }
 
     if(qr){
       qrImage = await QRCode.toDataURL(qr)
@@ -206,9 +409,14 @@ async function startBot(){
     if(connection === "open"){
       console.log("BOT ONLINE")
       qrImage = null
+      perfStats.connectedAt = Date.now()
+      if (!perfStats.authenticatedAt) {
+        perfStats.authenticatedAt = perfStats.connectedAt
+      }
     }
 
     if(connection === "close"){
+      perfStats.reconnects += 1
       const reason = lastDisconnect?.error?.output?.statusCode
       if(reason !== DisconnectReason.loggedOut){
         console.log("Reconectando...")
@@ -218,10 +426,35 @@ async function startBot(){
   })
 
   sock.ev.on("messages.upsert", async ({ messages })=>{
+    const processingStartedAt = Date.now()
+    perfStats.messagesReceived += 1
+
+    const measureStage = async (stageName, task) => {
+      const stageStart = Date.now()
+      try {
+        return await task()
+      } finally {
+        const stageMs = Date.now() - stageStart
+        recordMetric(getStageBucket(stageName), stageMs)
+      }
+    }
+
     try {
     const msg = messages[0]
-    if(!msg.message) return
-    if(msg.key.fromMe) return
+    if(!msg?.message) {
+      perfStats.ignoredNoMessage += 1
+      return
+    }
+    if(msg.key.fromMe) {
+      perfStats.ignoredFromMe += 1
+      return
+    }
+
+    const upstreamTimestampMs = parseMessageTimestampMs(msg)
+    if (upstreamTimestampMs > 0) {
+      const queueDelay = Math.max(0, processingStartedAt - upstreamTimestampMs)
+      recordMetric(perfStats.queueDelayMs, queueDelay)
+    }
 
     const from = msg.key.remoteJid
     const senderRaw = msg.key.participant || msg.key.remoteJid
@@ -247,6 +480,7 @@ async function startBot(){
     const overrideChecksEnabled = getOverrideChecksEnabled()
 
     if (isCommand) {
+      perfStats.lastCommand = cmdName
       telemetry.markCommand(cmdName, {
         group: isGroup,
         groupId: isGroup ? from : null,
@@ -272,40 +506,46 @@ async function startBot(){
     // =========================
     let senderIsAdmin = false
     if (isGroup && isCommand) {
-      const delegatedAdmin = storage.isDelegatedAdmin(from, sender)
-      const metadata = await sock.groupMetadata(from)
-      const admins = (metadata?.participants || [])
-        .filter((p) => p.admin)
-        .map((p) => jidNormalizedUser(p.id))
-      senderIsAdmin = delegatedAdmin || admins.includes(sender)
+      senderIsAdmin = await measureStage("adminLookup", async () => {
+        const delegatedAdmin = storage.isDelegatedAdmin(from, sender)
+        const metadata = await sock.groupMetadata(from)
+        const admins = (metadata?.participants || [])
+          .filter((p) => p.admin)
+          .map((p) => jidNormalizedUser(p.id))
+        return delegatedAdmin || admins.includes(sender)
+      })
     }
 
     // =========================
     // ESCOLHA PENDENTE DE PUNIÇÃO
     // =========================
-    const handledPendingPunishment = await handlePendingPunishmentChoice({
-      sock,
-      from,
-      sender,
-      text,
-      mentioned,
-      isGroup,
-      senderIsAdmin: senderIsAdmin || isOverrideSender,
-      isCommand,
-    })
+    const handledPendingPunishment = await measureStage("pendingPunishment", async () =>
+      handlePendingPunishmentChoice({
+        sock,
+        from,
+        sender,
+        text,
+        mentioned,
+        isGroup,
+        senderIsAdmin: senderIsAdmin || isOverrideSender,
+        isCommand,
+      })
+    )
     if (handledPendingPunishment) return
 
     // =========================
     // APLICAÇÃO DE PUNIÇÃO ATIVA
     // =========================
-    const punishedMessageDeleted = await handlePunishmentEnforcement(
-      sock,
-      msg,
-      from,
-      sender,
-      text,
-      isGroup,
-      (senderIsAdmin || isOverrideSender) && isCommand
+    const punishedMessageDeleted = await measureStage("punishmentEnforcement", async () =>
+      handlePunishmentEnforcement(
+        sock,
+        msg,
+        from,
+        sender,
+        text,
+        isGroup,
+        (senderIsAdmin || isOverrideSender) && isCommand
+      )
     )
     if (punishedMessageDeleted) return
 
@@ -335,22 +575,23 @@ async function startBot(){
     // =========================
     // RESPOSTA PENDENTE DO CARA OU COROA
     // =========================
-    const handledCoinGuess = await caraOuCoroa.handleCoinGuess({
-      sock,
-      from,
-      sender,
-      cmd,
-      isGroup,
-      overrideChecksEnabled,
-      overrideJid,
-      overridePhoneNumber,
-      overrideIdentifiers,
-      getPunishmentMenuText,
-      getRandomPunishmentChoice,
-      getPunishmentNameById,
-      applyPunishment,
-      clearPendingPunishment,
-      rewardWinner: async (winnerId, rewardMultiplier = 1) => {
+    const handledCoinGuess = await measureStage("coinGuess", async () =>
+      caraOuCoroa.handleCoinGuess({
+        sock,
+        from,
+        sender,
+        cmd,
+        isGroup,
+        overrideChecksEnabled,
+        overrideJid,
+        overridePhoneNumber,
+        overrideIdentifiers,
+        getPunishmentMenuText,
+        getRandomPunishmentChoice,
+        getPunishmentNameById,
+        applyPunishment,
+        clearPendingPunishment,
+        rewardWinner: async (winnerId, rewardMultiplier = 1) => {
         const safeMultiplier = Number.isFinite(Number(rewardMultiplier)) && Number(rewardMultiplier) > 0
           ? Math.floor(Number(rewardMultiplier))
           : 1
@@ -370,7 +611,7 @@ async function startBot(){
           mentions: [winnerId],
         })
       },
-      chargeLoser: async (loserId, lossMultiplier = 1) => {
+        chargeLoser: async (loserId, lossMultiplier = 1) => {
         const safeMultiplier = Number.isFinite(Number(lossMultiplier)) && Number(lossMultiplier) > 0
           ? Math.floor(Number(lossMultiplier))
           : 1
@@ -393,8 +634,9 @@ async function startBot(){
             mentions: [loserId],
           })
         }
-      },
-    })
+        },
+      })
+    )
     if (handledCoinGuess) return
 
     // =========================
@@ -1112,158 +1354,170 @@ async function startBot(){
       }
     }
 
-    const handledGameCommand = await handleGameCommands({
-      sock,
-      from,
-      sender,
-      cmd,
-      cmdName,
-      cmdArg1,
-      cmdArg2,
-      mentioned,
-      prefix,
-      isGroup,
-      text,
-      msg,
-      storage,
-      gameManager,
-      economyService,
-      caraOuCoroa,
-      adivinhacao,
-      batataquente,
-      dueloDados,
-      roletaRussa,
-      startPeriodicGame,
-      GAME_REWARDS,
-      BASE_GAME_REWARD,
-      normalizeUnifiedGameType,
-      normalizeLobbyId,
-      activeGameKey,
-      resolveActiveLobbyForPlayer,
-      getLobbyCreateBlockMessage,
-      getGameBuyIn,
-      collectLobbyBuyIn,
-      distributeLobbyBuyInPool,
-      parsePositiveInt,
-      isResenhaModeEnabled,
-      rewardPlayer,
-      rewardPlayers,
-      incrementUserStat,
-      applyRandomGamePunishment,
-      createPendingTargetForWinner,
-      jidNormalizedUser,
-      buildGameStatsText,
-      createLobbyWarningCallback: createLobbyWarningCallback(from),
-      createLobbyTimeoutCallback: createLobbyTimeoutCallback(from),
-    })
+    const handledGameCommand = await measureStage("router.games.command", async () =>
+      handleGameCommands({
+        sock,
+        from,
+        sender,
+        cmd,
+        cmdName,
+        cmdArg1,
+        cmdArg2,
+        mentioned,
+        prefix,
+        isGroup,
+        text,
+        msg,
+        storage,
+        gameManager,
+        economyService,
+        caraOuCoroa,
+        adivinhacao,
+        batataquente,
+        dueloDados,
+        roletaRussa,
+        startPeriodicGame,
+        GAME_REWARDS,
+        BASE_GAME_REWARD,
+        normalizeUnifiedGameType,
+        normalizeLobbyId,
+        activeGameKey,
+        resolveActiveLobbyForPlayer,
+        getLobbyCreateBlockMessage,
+        getGameBuyIn,
+        collectLobbyBuyIn,
+        distributeLobbyBuyInPool,
+        parsePositiveInt,
+        isResenhaModeEnabled,
+        rewardPlayer,
+        rewardPlayers,
+        incrementUserStat,
+        applyRandomGamePunishment,
+        createPendingTargetForWinner,
+        jidNormalizedUser,
+        buildGameStatsText,
+        createLobbyWarningCallback: createLobbyWarningCallback(from),
+        createLobbyTimeoutCallback: createLobbyTimeoutCallback(from),
+      })
+    )
     if (handledGameCommand) return
 
-    const handledGameMessageFlow = await handleGameMessageFlow({
-      sock,
-      from,
-      sender,
-      text,
-      msg,
-      mentioned,
-      isGroup,
-      isCommand,
-      storage,
-      gameManager,
-      reação,
-      embaralhado,
-      memória,
-      comando,
-      startPeriodicGame,
-      GAME_REWARDS,
-      isResenhaModeEnabled,
-      rewardPlayer,
-      incrementUserStat,
-      createPendingTargetForWinner,
-    })
+    const handledGameMessageFlow = await measureStage("router.games.messageFlow", async () =>
+      handleGameMessageFlow({
+        sock,
+        from,
+        sender,
+        text,
+        msg,
+        mentioned,
+        isGroup,
+        isCommand,
+        storage,
+        gameManager,
+        reação,
+        embaralhado,
+        memória,
+        comando,
+        startPeriodicGame,
+        GAME_REWARDS,
+        isResenhaModeEnabled,
+        rewardPlayer,
+        incrementUserStat,
+        createPendingTargetForWinner,
+      })
+    )
     if (handledGameMessageFlow) return
 
-    const handledUtilityCommand = await handleUtilityCommands({
-      sock,
-      from,
-      sender,
-      cmd,
-      prefix,
-      isGroup,
-      isOverrideSender,
-      msg,
-      quoted,
-      mentioned,
-      sharp,
-      downloadMediaMessage,
-      logger,
-      videoToSticker,
-      dddMap,
-      jidNormalizedUser,
-      getPunishmentDetailsText,
-    })
+    const handledUtilityCommand = await measureStage("router.utility", async () =>
+      handleUtilityCommands({
+        sock,
+        from,
+        sender,
+        cmd,
+        prefix,
+        isGroup,
+        isOverrideSender,
+        msg,
+        quoted,
+        mentioned,
+        sharp,
+        downloadMediaMessage,
+        logger,
+        videoToSticker,
+        dddMap,
+        jidNormalizedUser,
+        getPunishmentDetailsText,
+      })
+    )
     if (handledUtilityCommand) return
 
-    const handledEconomyCommand = await handleEconomyCommands({
-      sock,
-      from,
-      sender,
-      cmd,
-      cmdName,
-      cmdArg1,
-      cmdArg2,
-      cmdParts,
-      mentioned,
-      prefix,
-      isGroup,
-      senderIsAdmin,
-      jidNormalizedUser,
-      storage,
-      economyService,
-      parseQuantity,
-      formatDuration,
-      buildEconomyStatsText,
-      buildInventoryText,
-      incrementUserStat,
-      applyPunishment,
-    })
+    const handledEconomyCommand = await measureStage("router.economy", async () =>
+      handleEconomyCommands({
+        sock,
+        from,
+        sender,
+        cmd,
+        cmdName,
+        cmdArg1,
+        cmdArg2,
+        cmdParts,
+        mentioned,
+        prefix,
+        isGroup,
+        senderIsAdmin,
+        jidNormalizedUser,
+        storage,
+        economyService,
+        parseQuantity,
+        formatDuration,
+        buildEconomyStatsText,
+        buildInventoryText,
+        incrementUserStat,
+        applyPunishment,
+      })
+    )
     if (handledEconomyCommand) return
 
-    const handledModerationCommand = await handleModerationCommands({
-      sock,
-      msg,
-      from,
-      sender,
-      text,
-      cmd,
-      cmdName,
-      prefix,
-      isGroup,
-      senderIsAdmin,
-      mentioned,
-      jidNormalizedUser,
-      storage,
-      clearPunishment,
-      clearPendingPunishment,
-      getPunishmentMenuText,
-      getPunishmentChoiceFromText,
-      applyPunishment,
-      overrideChecksEnabled,
-      overrideJid,
-      overrideIdentifiers,
-    })
+    const handledModerationCommand = await measureStage("router.moderation", async () =>
+      handleModerationCommands({
+        sock,
+        msg,
+        from,
+        sender,
+        text,
+        cmd,
+        cmdName,
+        prefix,
+        isGroup,
+        senderIsAdmin,
+        mentioned,
+        jidNormalizedUser,
+        storage,
+        clearPunishment,
+        clearPendingPunishment,
+        getPunishmentMenuText,
+        getPunishmentChoiceFromText,
+        applyPunishment,
+        overrideChecksEnabled,
+        overrideJid,
+        overrideIdentifiers,
+      })
+    )
     if (handledModerationCommand) return
 
     // =========================
     // MOEDA (cara ou coroa)
     // =========================
-    const handledCoinRound = await caraOuCoroa.startCoinRound({
-      sock,
-      from,
-      sender,
-      cmd,
-      prefix,
-      isGroup,
-    })
+    const handledCoinRound = await measureStage("coinRound", async () =>
+      caraOuCoroa.startCoinRound({
+        sock,
+        from,
+        sender,
+        cmd,
+        prefix,
+        isGroup,
+      })
+    )
     if (handledCoinRound) return
 
     // =========================
@@ -1277,38 +1531,45 @@ async function startBot(){
         sender !== sock.user.id &&
         !((senderIsAdmin || isOverrideSender) && isCommand)
       ) {
-        try{
-          await sock.sendMessage(from,{ delete: msg.key })
-        }catch(e){
-          console.error("Erro ao apagar mensagem de usuário mutado", e)
-        }
+        await measureStage("mutedDelete", async () => {
+          try{
+            await sock.sendMessage(from,{ delete: msg.key })
+          }catch(e){
+            console.error("Erro ao apagar mensagem de usuário mutado", e)
+          }
+        })
         return
       }
     }
     // =========================
     // COMANDOS DE STREAKS
     // =========================
-    const handledStreakRanking = await caraOuCoroa.sendStreakRanking({
-      sock,
-      from,
-      cmd,
-      prefix,
-      isGroup,
-    })
+    const handledStreakRanking = await measureStage("streakRanking", async () =>
+      caraOuCoroa.sendStreakRanking({
+        sock,
+        from,
+        cmd,
+        prefix,
+        isGroup,
+      })
+    )
     if (handledStreakRanking) return
 
-    const handledStreakValue = await caraOuCoroa.sendStreakValue({
-      sock,
-      from,
-      sender,
-      mentioned,
-      cmd,
-      prefix,
-      isGroup,
-    })
+    const handledStreakValue = await measureStage("streakValue", async () =>
+      caraOuCoroa.sendStreakValue({
+        sock,
+        from,
+        sender,
+        mentioned,
+        cmd,
+        prefix,
+        isGroup,
+      })
+    )
     if (handledStreakValue) return
 
     } catch (err) {
+      perfStats.messagesErrored += 1
       telemetry.incrementCounter("command.error", 1, {
         scope: "messages.upsert",
       })
@@ -1317,6 +1578,9 @@ async function startBot(){
         message: String(err?.message || err || "unknown"),
       })
       console.error("Erro no processamento de messages.upsert", err)
+    } finally {
+      perfStats.lastProcessedAt = Date.now()
+      recordMetric(perfStats.processingMs, perfStats.lastProcessedAt - processingStartedAt)
     }
 
   })

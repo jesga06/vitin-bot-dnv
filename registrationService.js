@@ -143,6 +143,41 @@ function unregisterUser(userId) {
 
   delete cache.users[normalized]
   save()
+
+  return {
+    ok: true,
+    userId: normalized,
+    message: "Registro removido. Use !deleteconta para apagar tudo."
+  }
+}
+
+// delete completo
+function deleteUserAccount(userId) {
+  const normalized = normalizeUserId(userId)
+  if (!normalized) {
+    return { ok: false, reason: "invalid-user" }
+  }
+
+  // remove registro
+  if (cache.users[normalized]) {
+    delete cache.users[normalized]
+  }
+
+  // remove economia
+  try {
+    if (fs.existsSync(ECONOMY_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(ECONOMY_FILE, "utf8"))
+      if (raw.users && raw.users[normalized]) {
+        delete raw.users[normalized]
+        fs.writeFileSync(ECONOMY_FILE, JSON.stringify(raw, null, 2))
+      }
+    }
+  } catch (err) {
+    console.error("Erro ao deletar economia do usuário", err)
+  }
+
+  save(true)
+
   return { ok: true, userId: normalized }
 }
 
@@ -179,6 +214,7 @@ module.exports = {
   normalizeUserId,
   registerUser,
   unregisterUser,
+  deleteUserAccount, // adicionado
   isRegistered,
   getRegisteredEntry,
   getRegisteredUsers,

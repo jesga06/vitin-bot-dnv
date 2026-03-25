@@ -1,4 +1,4 @@
-﻿const fs = require("fs")
+const fs = require("fs")
 const path = require("path")
 const test = require("node:test")
 const assert = require("node:assert/strict")
@@ -55,4 +55,3 @@ test("opening many lootboxes never grants true kronos crown", () => {
 
   assert.equal(economy.getItemQuantity(TEST_USER, "kronosVerdadeira"), 0)
 })
-

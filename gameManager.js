@@ -1,4 +1,4 @@
-﻿const crypto = require("crypto")
+const crypto = require("crypto")
 const telemetry = require("./services/telemetryService")
 
 const LOBBY_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -47,14 +47,14 @@ const gameManager = {
   // Rastreia entradas de jogos multiplayer por grupo e por sala
   optInSessions: {},
 
-  // ObtÃ©m ou cria lobby para um jogo
+  // Obtém ou cria lobby para um jogo
   createOptInSession: (groupId, gameType, minPlayers, maxPlayers, timeoutMs = 120000, options = {}) => {
     if (!gameManager.optInSessions[groupId]) {
       gameManager.optInSessions[groupId] = {}
     }
 
     if (countOpenLobbies() >= MAX_LOBBY_ID_SPACE) {
-      throw new Error("Sem IDs de lobby disponÃ­veis no momento.")
+      throw new Error("Sem IDs de lobby disponíveis no momento.")
     }
 
     let gameId = generateLobbyId()
@@ -80,7 +80,7 @@ const gameManager = {
       warningTimeoutId: null,
     }
 
-    // Timeout principal: limpa o lobby apÃ³s timeoutMs
+    // Timeout principal: limpa o lobby após timeoutMs
     gameManager.optInSessions[groupId][gameId].timeoutId = setTimeout(() => {
       const session = gameManager.optInSessions[groupId]?.[gameId]
       if (session && typeof options?.onLobbyTimeout === "function") {
@@ -92,7 +92,7 @@ const gameManager = {
     // Timeout de aviso: notifica 20 segundos antes de expirar
     const warningMs = Math.max(0, timeoutMs - 20000)
     gameManager.optInSessions[groupId][gameId].warningTimeoutId = setTimeout(() => {
-      // SÃ³ avisa se o lobby ainda existe
+      // Só avisa se o lobby ainda existe
       const session = gameManager.optInSessions[groupId]?.[gameId]
       if (session && typeof options?.onLobbyWarning === "function") {
         options.onLobbyWarning(groupId, gameId, gameType, session.players)
@@ -116,13 +116,13 @@ const gameManager = {
     return false
   },
 
-  // ObtÃ©m sessÃ£o
+  // Obtém sessão
   getOptInSession: (groupId, gameId) => {
     const normalizedGameId = normalizeLobbyId(gameId)
     return gameManager.optInSessions[groupId]?.[normalizedGameId] || null
   },
 
-  // Limpa sessÃ£o
+  // Limpa sessão
   clearOptInSession: (groupId, gameId) => {
     const normalizedGameId = normalizeLobbyId(gameId)
     if (gameManager.optInSessions[groupId]?.[normalizedGameId]) {
@@ -147,8 +147,8 @@ const gameManager = {
 
   pickRandom: (arr) => arr[Math.floor(Math.random() * arr.length)],
 
-  // LÃ³gica de disparo dos jogos periÃ³dicos (embaralhado, memÃ³ria, Ãºltimo a obedecer)
-  // Rastreia contagem de mensagens por grupo pras ativaÃ§Ãµes periÃ³dicas
+  // Lógica de disparo dos jogos periódicos (embaralhado, memória, último a obedecer)
+  // Rastreia contagem de mensagens por grupo pras ativações periódicas
   messageCounters: {}, // [groupId]: { count: N, users: Set, lastReset: timestamp }
 
   incrementMessageCounter: (groupId, userId) => {
@@ -167,7 +167,7 @@ const gameManager = {
     const windowMs = 20 * 60 * 1000 // 20 minutos
     const burstMs = 30 * 1000 // 30 segundos
 
-    // Reinicia janela global (cota de ativaÃ§Ã£o)
+    // Reinicia janela global (cota de ativação)
     if (now - counter.windowStartedAt > windowMs) {
       counter.count = 0
       counter.users.clear()
@@ -176,7 +176,7 @@ const gameManager = {
       counter.burstStartedAt = now
     }
 
-    // Reinicia contador de rajada usado para detectar o threshold de ativaÃ§Ã£o
+    // Reinicia contador de rajada usado para detectar o threshold de ativação
     if (now - counter.burstStartedAt > burstMs) {
       counter.count = 0
       counter.users.clear()
@@ -187,7 +187,7 @@ const gameManager = {
     counter.users.add(userId)
   },
 
-  // Verifica se deve puxar jogo periÃ³dico (10+ mensagens de 2+ usuÃ¡rios em 30s, mÃ¡x. 4 vezes por 20 min)
+  // Verifica se deve puxar jogo periódico (10+ mensagens de 2+ usuários em 30s, máx. 4 vezes por 20 min)
   shouldTriggerPeriodicGame: (groupId) => {
     const counter = gameManager.messageCounters[groupId]
     if (!counter) return false
@@ -224,4 +224,3 @@ const gameManager = {
 }
 
 module.exports = gameManager
-

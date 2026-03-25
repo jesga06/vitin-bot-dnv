@@ -735,8 +735,6 @@ function isEconomyCommandName(cmdName = "", cmd = "") {
     prefix + "passa",
     prefix + "rolar",
     prefix + "atirar",
-    prefix + "coop",
-    prefix + "teamduelo",
   ])
   if (economyCommands.has(cmdName)) return true
   return economyCommands.has(cmd)
@@ -845,6 +843,11 @@ function getKnownGroupName(groupId = "") {
 function getKnownUserName(userId = "") {
   return userNameCache[userId] || userId.split("@")[0] || "Desconhecido"
 }
+
+telemetry.setIdentityResolvers({
+  getKnownUserName,
+  getKnownGroupName,
+})
 
 function sanitizeInlineText(value = "", maxLen = 42) {
   const raw = String(value || "").replace(/[\r\n\t]+/g, " ").trim()
@@ -1780,6 +1783,7 @@ async function startBot(){
     if (isCommand) {
       perfStats.lastCommand = cmdName
       telemetry.markCommand(cmdName, {
+        sender,
         group: isGroup,
         groupId: isGroup ? from : null,
       })
@@ -2189,6 +2193,27 @@ async function startBot(){
       senderIsNativeAdmin = delegatedAdmin || admins.includes(sender)
     }
     senderIsAdmin = senderIsNativeAdmin || isOverrideSender
+
+    // Phase 11 kickoff: warn broken Kronos crown expiration at <=1h (once per hour key).
+    try {
+      const profile = economyService.getProfile(sender)
+      const hasPermanentCrown = Boolean(profile?.buffs?.kronosVerdadeiraActive)
+      const kronosExpiresAt = Math.max(0, Math.floor(Number(profile?.buffs?.kronosExpiresAt) || 0))
+      const remainingMs = kronosExpiresAt - Date.now()
+      if (!hasPermanentCrown && kronosExpiresAt > 0 && remainingMs > 0 && remainingMs <= (60 * 60 * 1000)) {
+        const warnState = storage.getGameState("__system__", "kronosExpiryWarn") || {}
+        const warnKey = `${sender}:${Math.floor(kronosExpiresAt / (60 * 1000))}`
+        if (!warnState[warnKey]) {
+          warnState[warnKey] = Date.now()
+          storage.setGameState("__system__", "kronosExpiryWarn", warnState)
+          await sock.sendMessage(sender, {
+            text: "⏰ Sua coroa Kronos expira em 1 hora. Use seus benefícios antes do término.",
+          })
+        }
+      }
+    } catch (_) {
+      // Best effort warning; never block message processing.
+    }
 
     const botAdminWarningShown = new Map()
     if (isGroup && !botIsAdmin && !botAdminWarningShown.has(from)) {

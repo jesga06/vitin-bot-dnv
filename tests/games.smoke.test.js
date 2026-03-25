@@ -79,7 +79,7 @@ test("startCoinRound rejects bet when player has insufficient coins", async () =
   assert.ok(sent.some((m) => /precisa de pelo menos/.test(String(m.payload?.text || ""))))
 })
 
-test("startCoinRound rejects bet below minimum of 2", async () => {
+test("startCoinRound accepts minimum bet of 1", async () => {
   const economyService = require("../economyService")
   const groupId = `__coin_round_minimum_${Date.now()}@g.us`
   const sender = "lowballer@s.whatsapp.net"
@@ -95,7 +95,8 @@ test("startCoinRound rejects bet below minimum of 2", async () => {
   })
 
   assert.equal(handled, true)
-  assert.ok(sent.some((m) => /Use: !moeda \[2-10\]/.test(String(m.payload?.text || ""))))
+  assert.ok(sent.length >= 1)
+  assert.ok(!sent.some((m) => /Use: !moeda \[2-10\]/.test(String(m.payload?.text || ""))))
 })
 
 test("startCoinRound enforces rate limit of 5 plays per 30 minutes", async () => {

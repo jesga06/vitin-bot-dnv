@@ -9,6 +9,7 @@ const TRADE_STATE_KEY = "tradeState"
 const TRADE_TIMEOUT_MS = 15 * 60 * 1000
 const TRADE_HISTORY_LIMIT = 100
 const TRADE_ITEM_STACK_LIMIT = 100_000
+const TEAM_WITHDRAW_COOLDOWN_MS = 15 * 60 * 1000
 const COUPON_STATE_KEY = "couponState"
 const ACCOUNT_DELETE_CONFIRMATION_PHRASE = "Estou ciente do uso e efeitos deste comando. Delete a minha conta"
 const ACCOUNT_DELETE_CONFIRMATION_TTL_MS = 2 * 60 * 1000
@@ -306,13 +307,41 @@ function getOfferValue(offer = {}, economyService) {
   return coinValue + itemValue
 }
 
-function getTradeFeeRate(offerValue = 0) {
-  const value = Math.max(0, Math.floor(Number(offerValue) || 0))
-  if (value <= 1000) return 0.01
-  if (value <= 5000) return 0.03
-  if (value <= 20000) return 0.05
-  if (value <= 50000) return 0.08
-  return 0.1
+function getTradeBracketForOffer(offer = {}, economyService) {
+  const items = offer.items && typeof offer.items === "object" ? offer.items : {}
+  let maxRarity = 1
+  for (const [key, qtyRaw] of Object.entries(items)) {
+    const qty = Math.max(0, Math.floor(Number(qtyRaw) || 0))
+    if (qty <= 0) continue
+    const rarity = Math.max(1, Math.min(5, Math.floor(Number(economyService.getItemDefinition(key)?.rarity) || 1)))
+    if (rarity > maxRarity) maxRarity = rarity
+  }
+  return maxRarity
+}
+
+function getTradeFeeRateByBracket(bracket = 1) {
+  const b = Math.max(1, Math.min(5, Math.floor(Number(bracket) || 1)))
+  if (b === 1) return 0.02
+  if (b === 2) return 0.05
+  if (b === 3) return 0.10
+  if (b === 4) return 0.15
+  return 0.20
+}
+
+function getTradeCooldownMsByBracket(bracket = 1) {
+  const b = Math.max(1, Math.min(5, Math.floor(Number(bracket) || 1)))
+  if (b === 1) return 5 * 60 * 1000
+  if (b === 2) return 10 * 60 * 1000
+  if (b === 3) return 15 * 60 * 1000
+  if (b === 4) return 30 * 60 * 1000
+  return 60 * 60 * 1000
+}
+
+function getLevelScaledAmount(base = 0, level = 1, percentPerLevel = 0.03) {
+  const safeBase = Math.max(0, Math.floor(Number(base) || 0))
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1))
+  const multiplier = 1 + (percentPerLevel * (safeLevel - 1))
+  return Math.max(0, Math.floor(safeBase * multiplier))
 }
 
 function hasOfferResources(economyService, userId, offer = {}, extraCoinCost = 0) {
@@ -945,7 +974,42 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
 
   // Team system commands
   if (cmdName === prefix + "time" || cmdName === prefix + "team") {
-    const action = String(cmdArg1 || "").trim().toLowerCase()
+    const actionRaw = String(cmdArg1 || "").trim().toLowerCase()
+    const TEAM_ACTION_ALIASES = {
+      criar: "create",
+      create: "create",
+      entra: "join",
+      join: "join",
+      aceitar: "accept",
+      accept: "accept",
+      promover: "promote",
+      promote: "promote",
+      rebaixar: "demote",
+      demote: "demote",
+      sair: "leave",
+      leave: "leave",
+      membros: "members",
+      members: "members",
+      stats: "stats",
+      info: "info",
+      listar: "list",
+      lista: "list",
+      list: "list",
+      doarcoins: "depositarcoins",
+      depositarcoins: "depositarcoins",
+      depositcoins: "depositarcoins",
+      doaritem: "depositaritem",
+      depositaritem: "depositaritem",
+      deposititem: "depositaritem",
+      sacarcoins: "retirarcoins",
+      retirarcoins: "retirarcoins",
+      withdrawcoins: "retirarcoins",
+      sacaritem: "retiraritem",
+      retiraritem: "retiraritem",
+      withdrawitem: "retiraritem",
+      emergencia: "emergencia",
+    }
+    const action = TEAM_ACTION_ALIASES[actionRaw] || actionRaw
 
     // Generate unique team ID from timestamp and random
     const generateTeamId = () => {
@@ -1006,8 +1070,42 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
     }
 
     if (action === "join") {
+      const requestedTeamId = String(cmdArg2 || "").trim().toUpperCase()
+      if (!requestedTeamId) {
+        await sock.sendMessage(from, {
+          text: `Use: ${prefix}${cmdName} entra <teamID>`,
+        })
+        return true
+      }
+
+      const userTeamId = storage.getUserTeamId(sender)
+      if (userTeamId) {
+        await sock.sendMessage(from, {
+          text: `Você já está em um time (${userTeamId}). Use ${prefix}${cmdName} sair antes de entrar em outro.`,
+        })
+        return true
+      }
+
+      const team = storage.getTeam(requestedTeamId)
+      if (!team) {
+        await sock.sendMessage(from, {
+          text: `Time ${requestedTeamId} não encontrado.`,
+        })
+        return true
+      }
+
+      if (typeof storage.inviteToTeam !== "function") {
+        await sock.sendMessage(from, {
+          text: `⛔ ${prefix}${cmdName} join foi desativado temporariamente. Use ${prefix}${cmdName} accept <team ID> após receber convite.`,
+        })
+        return true
+      }
+
+      storage.inviteToTeam(requestedTeamId, sender, "requested")
       await sock.sendMessage(from, {
-        text: `⛔ ${prefix}${cmdName} join foi desativado temporariamente. Use ${prefix}${cmdName} accept <team ID> após receber convite.`,
+        text:
+          `📨 Pedido de entrada enviado para *${team.name || requestedTeamId}*.
+Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) para aprovar.`,
       })
       return true
     }
@@ -1061,6 +1159,55 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
     }
 
     if (action === "accept") {
+      const requestedUser = mentioned[0]
+      const approvalTeamId = String((requestedUser ? cmdParts[3] : cmdArg2) || "").trim().toUpperCase()
+
+      // Owner/lieutenant approval flow: !time aceitar @user TEAMID
+      if (requestedUser) {
+        if (!approvalTeamId) {
+          await sock.sendMessage(from, { text: `Use: ${prefix}${cmdName} aceitar @user <teamID>` })
+          return true
+        }
+
+        const team = storage.getTeam(approvalTeamId)
+        if (!team) {
+          await sock.sendMessage(from, { text: `Time ${approvalTeamId} não existe.` })
+          return true
+        }
+
+        const canApprove = typeof storage.isTeamOwnerOrLieutenant === "function"
+          ? storage.isTeamOwnerOrLieutenant(approvalTeamId, sender)
+          : (team.createdBy === sender)
+        if (!canApprove) {
+          await sock.sendMessage(from, { text: "Apenas dono ou tenente pode aprovar entradas." })
+          return true
+        }
+
+        if (storage.getUserTeamId(requestedUser)) {
+          await sock.sendMessage(from, { text: "Esse usuário já participa de outro time." })
+          return true
+        }
+
+        const invites = storage.getTeamInvites(approvalTeamId)
+        const inviteStatus = String(invites?.[requestedUser] || "").toLowerCase()
+        if (inviteStatus !== "requested" && inviteStatus !== "pending") {
+          await sock.sendMessage(from, { text: "Esse usuário não possui pedido/convite pendente para este time." })
+          return true
+        }
+
+        const approved = storage.addTeamMember(approvalTeamId, requestedUser)
+        if (!approved) {
+          await sock.sendMessage(from, { text: "Falha ao aprovar entrada no time." })
+          return true
+        }
+
+        await sock.sendMessage(from, {
+          text: `✅ @${requestedUser.split("@")[0]} entrou no time *${team.name || approvalTeamId}*.`,
+          mentions: [requestedUser],
+        })
+        return true
+      }
+
       const acceptTeamId = String(cmdArg2 || "").trim().toUpperCase()
       if (!acceptTeamId) {
         await sock.sendMessage(from, {
@@ -1113,6 +1260,62 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
         teamName: targetTeam.name,
         userId: sender,
         groupId: isGroup ? from : null,
+      })
+      return true
+    }
+
+    if (action === "promote") {
+      const userTeamId = storage.getUserTeamId(sender)
+      const target = mentioned[0]
+      if (!userTeamId || !target) {
+        await sock.sendMessage(from, { text: `Use: ${prefix}${cmdName} promover @user` })
+        return true
+      }
+      const team = storage.getTeam(userTeamId)
+      if (!team || team.createdBy !== sender) {
+        await sock.sendMessage(from, { text: "Somente o dono do time pode promover tenentes." })
+        return true
+      }
+      if (!Array.isArray(team.members) || !team.members.includes(target)) {
+        await sock.sendMessage(from, { text: "O alvo precisa ser membro do seu time." })
+        return true
+      }
+      const ok = typeof storage.promoteTeamLieutenant === "function"
+        ? storage.promoteTeamLieutenant(userTeamId, target)
+        : false
+      if (!ok) {
+        await sock.sendMessage(from, { text: "Falha ao promover (talvez já seja tenente)." })
+        return true
+      }
+      await sock.sendMessage(from, {
+        text: `✅ @${target.split("@")[0]} foi promovido a tenente do time *${team.name || userTeamId}*.`,
+        mentions: [target],
+      })
+      return true
+    }
+
+    if (action === "demote") {
+      const userTeamId = storage.getUserTeamId(sender)
+      const target = mentioned[0]
+      if (!userTeamId || !target) {
+        await sock.sendMessage(from, { text: `Use: ${prefix}${cmdName} rebaixar @user` })
+        return true
+      }
+      const team = storage.getTeam(userTeamId)
+      if (!team || team.createdBy !== sender) {
+        await sock.sendMessage(from, { text: "Somente o dono do time pode rebaixar tenentes." })
+        return true
+      }
+      const ok = typeof storage.demoteTeamLieutenant === "function"
+        ? storage.demoteTeamLieutenant(userTeamId, target)
+        : false
+      if (!ok) {
+        await sock.sendMessage(from, { text: "Falha ao rebaixar (usuário não é tenente)." })
+        return true
+      }
+      await sock.sendMessage(from, {
+        text: `✅ @${target.split("@")[0]} voltou ao cargo de membro no time *${team.name || userTeamId}*.`,
+        mentions: [target],
       })
       return true
     }
@@ -1176,6 +1379,44 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
       })
 
       telemetry.incrementCounter("team.info.viewed", 1)
+      return true
+    }
+
+    if (action === "dispute") {
+      const tradeId = String(cmdArg2 || "").trim().toUpperCase()
+      if (!tradeId) {
+        await sock.sendMessage(from, { text: "Use: !trade dispute <tradeId>" })
+        return true
+      }
+      const trade = tradeState.trades[tradeId]
+      if (!trade) {
+        await sock.sendMessage(from, { text: "Trade não encontrado para disputa." })
+        return true
+      }
+      const role = getTradeParticipantRole(trade, sender)
+      if (!role) {
+        await sock.sendMessage(from, { text: "Somente participantes podem abrir disputa." })
+        return true
+      }
+      appendTradeEvent(trade, "trade.dispute", sender, { role })
+      trade.updatedAt = Date.now()
+      setTradeState(storage, from, tradeState)
+
+      telemetry.incrementCounter("economy.trade.dispute", 1)
+      telemetry.appendEvent("economy.trade.dispute", {
+        groupId: from,
+        tradeId,
+        by: sender,
+        initiator: trade.initiator,
+        counterparty: trade.counterparty,
+        status: trade.status,
+        phase: trade.phase,
+      })
+
+      await sock.sendMessage(from, {
+        text: `⚠️ Disputa registrada para o trade ${tradeId}. A equipe de override pode revisar pelos logs.`,
+        mentions: [trade.initiator, trade.counterparty],
+      })
       return true
     }
 
@@ -1283,11 +1524,22 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
       }
 
       const team = storage.getTeam(userTeamId)
-      const canWithdraw = Boolean(team?.createdBy === sender || senderIsAdmin)
+      const canWithdraw = typeof storage.isTeamOwnerOrLieutenant === "function"
+        ? storage.isTeamOwnerOrLieutenant(userTeamId, sender)
+        : Boolean(team?.createdBy === sender)
       if (!canWithdraw) {
         await sock.sendMessage(from, {
-          text: "Somente o criador do time (ou admin) pode retirar coins do pool.",
+          text: "Somente dono/tenente pode sacar do pool do time.",
         })
+        return true
+      }
+
+      const lastWithdrawAt = typeof storage.getTeamLastWithdrawAt === "function"
+        ? storage.getTeamLastWithdrawAt(userTeamId, sender)
+        : 0
+      const remainingMs = Math.max(0, (lastWithdrawAt + TEAM_WITHDRAW_COOLDOWN_MS) - Date.now())
+      if (remainingMs > 0) {
+        await sock.sendMessage(from, { text: `Cooldown de saque ativo. Aguarde ${formatDuration(remainingMs)}.` })
         return true
       }
 
@@ -1321,6 +1573,10 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
         groupId: isGroup ? from : null,
       })
 
+      if (typeof storage.setTeamLastWithdrawAt === "function") {
+        storage.setTeamLastWithdrawAt(userTeamId, sender, Date.now())
+      }
+
       await sock.sendMessage(from, {
         text: `✅ Retirada concluida: *${credited}* ${CURRENCY_LABEL} do pool para @${sender.split("@")[0]}.`,
         mentions: [sender],
@@ -1336,11 +1592,22 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
       }
 
       const team = storage.getTeam(userTeamId)
-      const canWithdraw = Boolean(team?.createdBy === sender || senderIsAdmin)
+      const canWithdraw = typeof storage.isTeamOwnerOrLieutenant === "function"
+        ? storage.isTeamOwnerOrLieutenant(userTeamId, sender)
+        : Boolean(team?.createdBy === sender)
       if (!canWithdraw) {
         await sock.sendMessage(from, {
-          text: "Somente o criador do time (ou admin) pode retirar itens do pool.",
+          text: "Somente dono/tenente pode sacar itens do pool do time.",
         })
+        return true
+      }
+
+      const lastWithdrawAt = typeof storage.getTeamLastWithdrawAt === "function"
+        ? storage.getTeamLastWithdrawAt(userTeamId, sender)
+        : 0
+      const remainingMs = Math.max(0, (lastWithdrawAt + TEAM_WITHDRAW_COOLDOWN_MS) - Date.now())
+      if (remainingMs > 0) {
+        await sock.sendMessage(from, { text: `Cooldown de saque ativo. Aguarde ${formatDuration(remainingMs)}.` })
         return true
       }
 
@@ -1363,11 +1630,7 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
       }
 
       if (!itemKey || quantity <= 0) {
-        await sock.sendMessage(from, {
-          text: isEmergency
-            ? `Use: ${prefix}${cmdName} emergencia @user <item> [quantidade]`
-            : `Use: ${prefix}${cmdName} retiraritem <item> [quantidade]`,
-        })
+        await sock.sendMessage(from, { text: `Use: ${prefix}${cmdName} retiraritem <item> [quantidade]` })
         return true
       }
 
@@ -1405,6 +1668,10 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
         emergency: isEmergency,
         groupId: isGroup ? from : null,
       })
+
+      if (typeof storage.setTeamLastWithdrawAt === "function") {
+        storage.setTeamLastWithdrawAt(userTeamId, sender, Date.now())
+      }
 
       await sock.sendMessage(from, {
         text: isEmergency
@@ -1483,7 +1750,15 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
 
     if (action === "list" || action === "lista") {
       const userTeamId = storage.getUserTeamId(sender)
-      const teamList = storage.getAllTeams()
+      const teamListAll = storage.getAllTeams()
+      let teamList = teamListAll
+      if (isGroup) {
+        const metadata = await sock.groupMetadata(from)
+        const groupMemberSet = new Set((metadata?.participants || []).map((p) => jidNormalizedUser(p.id)))
+        teamList = teamListAll.filter((team) =>
+          Array.isArray(team.members) && team.members.some((memberId) => groupMemberSet.has(memberId))
+        )
+      }
 
       if (userTeamId) {
         const myTeam = teamList.find(t => t.teamId === userTeamId)
@@ -1507,7 +1782,7 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
 
         await sock.sendMessage(from, {
           text:
-            `*Times disponiveis (${teamList.length} total)*\n\n` +
+            `*Times com membros neste grupo (${teamList.length} total)*\n\n` +
             (teamLines.length > 0 ? teamLines.join("\n") : "Nenhum time criado ainda.") +
             `\n\nUse ${prefix}${cmdName} create <nome> para criar um novo time e ${prefix}${cmdName} accept <ID> para aceitar convites.`,
         })
@@ -1527,9 +1802,8 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
         `- ${prefix}${cmdName} invite @user: Convidar jogador\n` +
         `- ${prefix}${cmdName} depositarcoins <qtd>\n` +
         `- ${prefix}${cmdName} depositaritem <item> [qtd]\n` +
-        `- ${prefix}${cmdName} retirarcoins <qtd> (lider/admin)\n` +
-        `- ${prefix}${cmdName} retiraritem <item> [qtd] (lider/admin)\n` +
-        `- ${prefix}${cmdName} emergencia @user <item> [qtd] (lider/admin)\n` +
+        `- ${prefix}${cmdName} retirarcoins <qtd> (dono/tenente, cooldown 15m)\n` +
+        `- ${prefix}${cmdName} retiraritem <item> [qtd] (dono/tenente, cooldown 15m)\n` +
         `- ${prefix}${cmdName} leave: Sair do time\n` +
         `- ${prefix}${cmdName} list: Ver outros times`
       : `*Sistema de Times*\n\nComandos:\n` +
@@ -1538,6 +1812,44 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
         `- ${prefix}${cmdName} list: Ver times disponiveis`
 
     await sock.sendMessage(from, { text: menuText })
+    return true
+  }
+
+  if (cmdName === prefix + "timeranking" || cmdName === prefix + "teamranking") {
+    const teams = (typeof storage.getAllTeams === "function" ? storage.getAllTeams() : [])
+      .map((team) => {
+        const teamId = String(team?.teamId || "")
+        const poolCoins = Math.max(0, Number(storage.getTeamPoolCoins(teamId)) || 0)
+        const poolItems = storage.getTeamPoolItems(teamId) || {}
+        let poolItemsValue = 0
+        for (const [itemKey, qtyRaw] of Object.entries(poolItems)) {
+          const qty = Math.max(0, Math.floor(Number(qtyRaw) || 0))
+          const unit = Math.max(0, Math.floor(Number(economyService.getItemDefinition(itemKey)?.price) || 0))
+          poolItemsValue += qty * unit
+        }
+        return {
+          teamId,
+          name: team?.name || teamId,
+          members: Array.isArray(team?.members) ? team.members.length : 0,
+          value: poolCoins + poolItemsValue,
+          poolCoins,
+          poolItemsValue,
+        }
+      })
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+
+    if (teams.length === 0) {
+      await sock.sendMessage(from, { text: "Sem times cadastrados para ranking ainda." })
+      return true
+    }
+
+    const lines = teams.map((team, index) =>
+      `${index + 1}. ${team.name} (${team.teamId}) | valor: *${team.value}* | membros: ${team.members}`
+    )
+    await sock.sendMessage(from, {
+      text: `🏆 Ranking global de times (top 10)\n\n${lines.join("\n")}`,
+    })
     return true
   }
 
@@ -1670,11 +1982,10 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
 │ ${prefix}trade review <id> | ${prefix}trade accept <id>
 │ ${prefix}trade counter <id> <coins> [item:quantidade...]
 │ ${prefix}trade reject <id> | ${prefix}trade cancel <id>
-│ ${prefix}trade list | ${prefix}trade info <id>
+│ ${prefix}trade list | ${prefix}trade info <id> | ${prefix}trade dispute <id>
 │ ${prefix}team info | ${prefix}team stats | ${prefix}team members
 │ ${prefix}team depositarcoins <qtd> | ${prefix}team depositaritem <item> [qtd]
 │ ${prefix}team retirarcoins <qtd> | ${prefix}team retiraritem <item> [qtd]
-│ ${prefix}team emergencia @user <item> [qtd]
 │ ${prefix}cupom criar <codigo> <moedas>
 │ ${prefix}cupom resgatar <codigo>
 │ ${prefix}falsificar tipo <1-13> (escolha pendente)
@@ -1778,7 +2089,7 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
     return true
   }
 
-  if (cmdName === prefix + "trade" && isGroup) {
+  if ((cmdName === prefix + "trade" || cmdName === prefix + "troca") && isGroup) {
     const tradeState = getTradeState(storage, from)
     const expiredChanged = cleanupExpiredTrades(tradeState)
     if (expiredChanged) {
@@ -1797,7 +2108,8 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
           `- !trade counter <tradeId> <coins> [item:quantidade...]\n` +
           `- !trade reject <tradeId> | !trade cancel <tradeId>\n` +
           `- !trade list\n` +
-          `- !trade info <tradeId>`
+          `- !trade info <tradeId>\n` +
+          `- !trade dispute <tradeId>`
       })
     }
 
@@ -1807,8 +2119,37 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
 
       const valueA = getOfferValue(offerA, economyService)
       const valueB = getOfferValue(offerB, economyService)
-      const feeA = Math.floor(valueA * getTradeFeeRate(valueA))
-      const feeB = Math.floor(valueB * getTradeFeeRate(valueB))
+      const bracketA = getTradeBracketForOffer(offerA, economyService)
+      const bracketB = getTradeBracketForOffer(offerB, economyService)
+
+      const levelA = Math.max(1, Math.floor(Number(economyService.getProfile(trade.initiator)?.progression?.level) || 1))
+      const levelB = Math.max(1, Math.floor(Number(economyService.getProfile(trade.counterparty)?.progression?.level) || 1))
+      const teamA = typeof storage.getUserTeamId === "function" ? storage.getUserTeamId(trade.initiator) : null
+      const teamB = typeof storage.getUserTeamId === "function" ? storage.getUserTeamId(trade.counterparty) : null
+      const sameTeam = Boolean(teamA && teamB && teamA === teamB)
+
+      const baseFeeRateA = levelA <= 10 ? 0 : getTradeFeeRateByBracket(bracketA)
+      const baseFeeRateB = levelB <= 10 ? 0 : getTradeFeeRateByBracket(bracketB)
+      const effectiveFeeRateA = sameTeam ? (baseFeeRateA * 0.8) : baseFeeRateA
+      const effectiveFeeRateB = sameTeam ? (baseFeeRateB * 0.8) : baseFeeRateB
+      const feeA = Math.floor(valueA * effectiveFeeRateA)
+      const feeB = Math.floor(valueB * effectiveFeeRateB)
+
+      const now = Date.now()
+      const profileA = economyService.getProfile(trade.initiator)
+      const profileB = economyService.getProfile(trade.counterparty)
+      const lastByBracketA = profileA?.progression?.lastTradeByBracket || {}
+      const lastByBracketB = profileB?.progression?.lastTradeByBracket || {}
+      const cooldownA = getTradeCooldownMsByBracket(bracketA)
+      const cooldownB = getTradeCooldownMsByBracket(bracketB)
+      const remainingA = Math.max(0, (Number(lastByBracketA[bracketA]) || 0) + cooldownA - now)
+      const remainingB = Math.max(0, (Number(lastByBracketB[bracketB]) || 0) + cooldownB - now)
+      if (remainingA > 0) {
+        return { ok: false, reason: "initiator-trade-cooldown", details: { bracket: bracketA, remainingMs: remainingA } }
+      }
+      if (remainingB > 0) {
+        return { ok: false, reason: "counterparty-trade-cooldown", details: { bracket: bracketB, remainingMs: remainingB } }
+      }
 
       const canA = hasOfferResources(economyService, trade.initiator, offerA, feeA)
       if (!canA.ok) return { ok: false, reason: "initiator-resource", details: canA }
@@ -1895,7 +2236,7 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
         const debited = economyService.debitCoins(trade.initiator, feeA, {
           type: "trade-fee",
           details: `Taxa trade ${trade.tradeId}`,
-          meta: { tradeId: trade.tradeId, role: "initiator", offerValue: valueA, feeRate: getTradeFeeRate(valueA) },
+          meta: { tradeId: trade.tradeId, role: "initiator", offerValue: valueA, feeRate: effectiveFeeRateA, bracket: bracketA },
         })
         if (!debited) {
           await rollback()
@@ -1911,7 +2252,7 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
         const debited = economyService.debitCoins(trade.counterparty, feeB, {
           type: "trade-fee",
           details: `Taxa trade ${trade.tradeId}`,
-          meta: { tradeId: trade.tradeId, role: "counterparty", offerValue: valueB, feeRate: getTradeFeeRate(valueB) },
+          meta: { tradeId: trade.tradeId, role: "counterparty", offerValue: valueB, feeRate: effectiveFeeRateB, bracket: bracketB },
         })
         if (!debited) {
           await rollback()
@@ -1939,7 +2280,27 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
         })
       }
 
-      return { ok: true, fees: { initiator: feeA, counterparty: feeB } }
+      const userA = storage.economyCache?.users?.[trade.initiator]
+      const userB = storage.economyCache?.users?.[trade.counterparty]
+      if (userA?.progression) {
+        if (!userA.progression.lastTradeByBracket || typeof userA.progression.lastTradeByBracket !== "object") {
+          userA.progression.lastTradeByBracket = {}
+        }
+        userA.progression.lastTradeByBracket[bracketA] = now
+      }
+      if (userB?.progression) {
+        if (!userB.progression.lastTradeByBracket || typeof userB.progression.lastTradeByBracket !== "object") {
+          userB.progression.lastTradeByBracket = {}
+        }
+        userB.progression.lastTradeByBracket[bracketB] = now
+      }
+      storage.saveEconomy?.()
+
+      return {
+        ok: true,
+        fees: { initiator: feeA, counterparty: feeB },
+        brackets: { initiator: bracketA, counterparty: bracketB },
+      }
     }
 
     if (action === "" || action === "help") {
@@ -2439,16 +2800,68 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
 
   // !criarcupom @user percentage (override-only)
   if (cmdName === prefix + "criarcupom" && isOverrideSender) {
+    const target = mentioned[0]
+    const percentage = parsePositiveInt(cmdArg2, 0)
+    if (!target || !percentage || percentage <= 0 || percentage > 100) {
+      await sock.sendMessage(from, {
+        text: `Use: ${prefix}criarcupom @user <1-100>`,
+      })
+      return true
+    }
+
+    const couponKey = percentage <= 5 ? "coupon5pct"
+      : percentage <= 10 ? "coupon10pct"
+      : percentage <= 25 ? "coupon25pct"
+      : "coupon40pct"
+
+    const after = economyService.addItem(target, couponKey, 1)
+    if (after <= 0) {
+      await sock.sendMessage(from, { text: "Falha ao criar cupom para o usuário alvo." })
+      return true
+    }
     await sock.sendMessage(from, {
-      text: `⛔ ${prefix}criarcupom foi desativado temporariamente para manutenção.`,
+      text: `✅ Cupom de ${percentage}% criado para @${target.split("@")[0]}.`,
+      mentions: [target],
     })
     return true
   }
 
   // !usarcupom percentage (player command before !comprar)
   if (cmdName === prefix + "usarcupom") {
+    const percentage = parsePositiveInt(cmdArg1, 0)
+    if (!percentage || percentage <= 0 || percentage > 100) {
+      await sock.sendMessage(from, {
+        text: `Use: ${prefix}usarcupom <1-100>`,
+      })
+      return true
+    }
+
+    const couponKey = percentage <= 5 ? "coupon5pct"
+      : percentage <= 10 ? "coupon10pct"
+      : percentage <= 25 ? "coupon25pct"
+      : "coupon40pct"
+    const hasItem = economyService.getItemQuantity(sender, couponKey)
+    if (hasItem <= 0) {
+      await sock.sendMessage(from, { text: `Você não possui cupom de ${percentage}%.` })
+      return true
+    }
+
+    const user = storage.economyCache?.users?.[sender]
+    if (!user?.progression) {
+      await sock.sendMessage(from, { text: "Perfil não disponível para ativar cupom." })
+      return true
+    }
+
+    user.progression.activeCoupon = {
+      couponKey,
+      percentage,
+      createdAt: Date.now(),
+    }
+    economyService.removeItem(sender, couponKey, 1)
+    storage.saveEconomy?.()
+
     await sock.sendMessage(from, {
-      text: `⛔ ${prefix}usarcupom foi desativado temporariamente para manutenção.`,
+      text: `💳 Cupom de ${percentage}% ativado para a próxima compra.`,
     })
     return true
   }
@@ -2672,7 +3085,10 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
   }
 
   if (cmd === prefix + "daily") {
-    const daily = economyService.claimDaily(sender, 100)
+    const level = Math.max(1, Math.floor(Number(economyService.getProfile(sender)?.progression?.level) || 1))
+    const scaledDailyCoins = getLevelScaledAmount(100, level, 0.03)
+    const scaledDailyXp = getLevelScaledAmount(XP_REWARDS.dailyClaim, level, 0.03)
+    const daily = economyService.claimDaily(sender, scaledDailyCoins)
     if (!daily.ok) {
       await sock.sendMessage(from, {
         text: "⏰ Você já resgatou seu daily hoje. Volte após o próximo reset global da meia-noite.",
@@ -2680,14 +3096,14 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
       return true
     }
 
-    const xpResult = grantCommandXp(economyService, sender, XP_REWARDS.dailyClaim, "daily-claim", {
+    const xpResult = grantCommandXp(economyService, sender, scaledDailyXp, "daily-claim", {
       dayKey: daily.dayKey,
     })
     await sock.sendMessage(from, {
       text:
         `💰 Daily resgatado: *${daily.amount}* ${CURRENCY_LABEL}.` +
         (daily.kronosBonus ? " (bônus da Coroa Kronos aplicado)" : "") +
-        buildXpRewardText(xpResult, XP_REWARDS.dailyClaim),
+        buildXpRewardText(xpResult, scaledDailyXp),
     })
     return true
   }
@@ -3057,6 +3473,7 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
 
   if (cmdName === prefix + "trabalho") {
     const work = cmdArg1
+    const level = Math.max(1, Math.floor(Number(economyService.getProfile(sender)?.progression?.level) || 1))
     if (!work) {
       await sock.sendMessage(from, {
         text: "Use: !trabalho <ifood|capinar|lavagem>",
@@ -3126,6 +3543,7 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
     }
 
     if (gain > 0) {
+      gain = getLevelScaledAmount(gain, level, 0.03)
       gain = economyService.applyKronosGainMultiplier(sender, gain, "work")
       economyService.creditCoins(sender, gain, {
         type: "work-win",
@@ -3145,13 +3563,14 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
       gain,
     })
 
-    const xpResult = grantCommandXp(economyService, sender, xpReward, "work", {
+    const scaledWorkXp = getLevelScaledAmount(xpReward, level, 0.03)
+    const xpResult = grantCommandXp(economyService, sender, scaledWorkXp, "work", {
       work,
       status: workStatus,
       gain,
     })
     await sock.sendMessage(from, {
-      text: message + buildXpRewardText(xpResult, xpReward),
+      text: message + buildXpRewardText(xpResult, scaledWorkXp),
     })
     return true
   }

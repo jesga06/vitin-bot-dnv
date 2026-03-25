@@ -554,7 +554,7 @@ test("economy router handles !team depositarcoins", async () => {
   assert.match(String(sent[0].payload?.text || ""), /depositou/i)
 })
 
-test("economy router handles !team emergencia item share", async () => {
+test("economy router handles !team retiraritem", async () => {
   const { sock, sent } = createSockCapture()
   let removedFromPool = false
 
@@ -562,12 +562,12 @@ test("economy router handles !team emergencia item share", async () => {
     sock,
     from: "group@g.us",
     sender: "leader@s.whatsapp.net",
-    cmd: "!team emergencia @user2 escudo 2",
+    cmd: "!team retiraritem escudo 2",
     cmdName: "!team",
-    cmdArg1: "emergencia",
-    cmdArg2: "@user2",
-    cmdParts: ["!team", "emergencia", "@user2", "escudo", "2"],
-    mentioned: ["user2@s.whatsapp.net"],
+    cmdArg1: "retiraritem",
+    cmdArg2: "escudo",
+    cmdParts: ["!team", "retiraritem", "escudo", "2"],
+    mentioned: [],
     prefix: "!",
     isGroup: true,
     senderIsAdmin: false,
@@ -598,7 +598,51 @@ test("economy router handles !team emergencia item share", async () => {
 
   assert.equal(handled, true)
   assert.equal(removedFromPool, true)
-  assert.match(String(sent[0].payload?.text || ""), /Emergencia do time/i)
+  assert.match(String(sent[0].payload?.text || ""), /Retirada concluida/i)
+})
+
+test("economy router includes XP block in !perfil", async () => {
+  const { sock, sent } = createSockCapture()
+
+  const handled = await handleEconomyCommands({
+    sock,
+    from: "group@g.us",
+    sender: "autor@s.whatsapp.net",
+    cmd: "!perfil",
+    cmdName: "!perfil",
+    cmdArg1: "",
+    cmdArg2: "",
+    cmdParts: ["!perfil"],
+    mentioned: [],
+    prefix: "!",
+    isGroup: true,
+    senderIsAdmin: false,
+    jidNormalizedUser: (id) => id,
+    storage: {
+      getMutedUsers: () => ({}),
+      setMutedUsers: () => {},
+    },
+    economyService: {
+      getProfile: () => ({ coins: 900, shields: 2, buffs: {}, inventory: {} }),
+      getXpProfile: () => ({ level: 6, xp: 45, xpToNextLevel: 120, seasonPoints: 88 }),
+      getUserGlobalXpPosition: () => 5,
+      getStatement: () => [],
+      getGroupRanking: () => [],
+      getShopIndexText: () => "shop",
+    },
+    parseQuantity: () => 0,
+    formatDuration: () => "0m",
+    buildGameStatsText: () => "",
+    buildEconomyStatsText: () => "",
+    buildInventoryText: () => "vazio",
+    incrementUserStat: () => {},
+  })
+
+  assert.equal(handled, true)
+  assert.equal(sent.length, 1)
+  assert.match(String(sent[0].payload?.text || ""), /Nível: \*6\*/)
+  assert.match(String(sent[0].payload?.text || ""), /XP: \*45\/120\*/)
+  assert.match(String(sent[0].payload?.text || ""), /Posição global XP: \*5\*/)
 })
 
 test("economy router handles !missao list and claim", async () => {

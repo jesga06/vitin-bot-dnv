@@ -344,6 +344,15 @@ function getLevelScaledAmount(base = 0, level = 1, percentPerLevel = 0.03) {
   return Math.max(0, Math.floor(safeBase * multiplier))
 }
 
+function getValueBand(value = 0) {
+  const safeValue = Math.max(0, Math.floor(Number(value) || 0))
+  if (safeValue <= 500) return "micro"
+  if (safeValue <= 2000) return "low"
+  if (safeValue <= 10000) return "mid"
+  if (safeValue <= 25000) return "high"
+  return "extreme"
+}
+
 function hasOfferResources(economyService, userId, offer = {}, extraCoinCost = 0) {
   const coinsRequired = Math.max(0, Math.floor(Number(offer.coins) || 0)) + Math.max(0, Math.floor(Number(extraCoinCost) || 0))
   if (economyService.getCoins(userId) < coinsRequired) {
@@ -378,10 +387,38 @@ function grantCommandXp(economyService, userId, xpAmount, source, meta = {}) {
   const safeXp = Math.max(0, Math.floor(Number(xpAmount) || 0))
   if (safeXp <= 0) return { ok: false, granted: 0 }
   if (typeof economyService?.addXp !== "function") return { ok: false, granted: 0 }
-  return economyService.addXp(userId, safeXp, {
+  const xpResult = economyService.addXp(userId, safeXp, {
     source,
     ...meta,
   })
+  telemetry.incrementCounter("economy.xp.granted", safeXp, {
+    source: String(source || "unknown"),
+  })
+  telemetry.appendEvent("economy.xp.granted", {
+    userId,
+    source,
+    granted: safeXp,
+    level: Math.max(1, Math.floor(Number(xpResult?.level) || 1)),
+    levelsGained: Math.max(0, Math.floor(Number(xpResult?.levelsGained) || 0)),
+    redacted: true,
+  })
+  return xpResult
+}
+
+function getXpSnapshot(economyService, userId) {
+  const xp = typeof economyService?.getXpProfile === "function"
+    ? economyService.getXpProfile(userId)
+    : { level: 1, xp: 0, xpToNextLevel: 100, seasonPoints: 0 }
+  const globalPosition = typeof economyService?.getUserGlobalXpPosition === "function"
+    ? economyService.getUserGlobalXpPosition(userId)
+    : null
+  return {
+    level: Math.max(1, Math.floor(Number(xp?.level) || 1)),
+    xpNow: Math.max(0, Math.floor(Number(xp?.xp) || 0)),
+    xpToNext: Math.max(1, Math.floor(Number(xp?.xpToNextLevel) || 1)),
+    seasonPoints: Math.max(0, Math.floor(Number(xp?.seasonPoints) || 0)),
+    globalPosition,
+  }
 }
 
 function buildXpRewardText(xpResult, xpAmount) {
@@ -777,20 +814,15 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
   }
 
   if (cmdName === prefix + "xp") {
-    const xp = typeof economyService.getXpProfile === "function"
-      ? economyService.getXpProfile(sender)
-      : { level: 1, xp: 0, xpToNextLevel: 100, seasonPoints: 0 }
-    const globalXpPos = typeof economyService.getUserGlobalXpPosition === "function"
-      ? economyService.getUserGlobalXpPosition(sender)
-      : null
+    const xp = getXpSnapshot(economyService, sender)
     await sock.sendMessage(from, {
       text:
         `Progressão de @${sender.split("@")[0]}\n` +
         `Nível: *${xp.level}*\n` +
-        `XP atual: *${xp.xp}/${xp.xpToNextLevel}*\n` +
+        `XP atual: *${xp.xpNow}/${xp.xpToNext}*\n` +
         `Pontos de temporada: *${xp.seasonPoints}*\n` +
-        `Posição global XP: *${globalXpPos || "N/A"}*\n\n` +
-        `Use *${prefix}missao* para ver missões diárias.`,
+        `Posição global XP: *${xp.globalPosition || "N/A"}*\n\n` +
+        `Dica: esse bloco também aparece em *${prefix}perfil*.`,
       mentions: [sender],
     })
     return true
@@ -837,6 +869,10 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
             ? `\n🎉 Level up: +${claimed.xpResult.levelsGained} nível(is). Nível atual: *${claimed.xpResult.level}*.`
             : ""),
       })
+      telemetry.incrementCounter("economy.quest.claim", 1, {
+        questType: "daily",
+        questId: String(claimed.questId || questId || "-").toUpperCase(),
+      })
       return true
     }
 
@@ -856,6 +892,10 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
         `Missões diárias (${questState.dayKey || "hoje"})\n\n` +
         quests.map((quest) => formatQuestProgressLine(quest)).join("\n\n") +
         `\n\nResgate com: *${prefix}missao claim <Q1|Q2|Q3>*`,
+    })
+    telemetry.incrementCounter("economy.quest.view", 1, {
+      questType: "daily",
+      total: String(quests.length),
     })
     return true
   }
@@ -901,6 +941,10 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
             ? `\n🎉 Level up: +${claimed.xpResult.levelsGained} nível(is). Nível atual: *${claimed.xpResult.level}*.`
             : ""),
       })
+      telemetry.incrementCounter("economy.quest.claim", 1, {
+        questType: "weekly",
+        questId: String(claimed.questId || questId || "-").toUpperCase(),
+      })
       return true
     }
 
@@ -920,6 +964,10 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
         `Missões semanais (${questState.weekKey || "esta semana"})\n\n` +
         quests.map((quest) => formatQuestProgressLine(quest)).join("\n\n") +
         `\n\nResgate com: *${prefix}missaoweekly claim <W1|W2|W3|W4|W5>*`,
+    })
+    telemetry.incrementCounter("economy.quest.view", 1, {
+      questType: "weekly",
+      total: String(quests.length),
     })
     return true
   }
@@ -1007,7 +1055,6 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
       sacaritem: "retiraritem",
       retiraritem: "retiraritem",
       withdrawitem: "retiraritem",
-      emergencia: "emergencia",
     }
     const action = TEAM_ACTION_ALIASES[actionRaw] || actionRaw
 
@@ -1584,7 +1631,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       return true
     }
 
-    if (action === "retiraritem" || action === "withdrawitem" || action === "emergencia") {
+    if (action === "retiraritem" || action === "withdrawitem") {
       const userTeamId = storage.getUserTeamId(sender)
       if (!userTeamId) {
         await sock.sendMessage(from, { text: `Voce nao faz parte de um time.` })
@@ -1611,23 +1658,11 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         return true
       }
 
-      const isEmergency = action === "emergencia"
-      const targetUser = isEmergency ? mentioned[0] : sender
-      const itemArgIndex = isEmergency ? 3 : 2
-      const qtyArgIndex = isEmergency ? 4 : 3
+      const targetUser = sender
+      const itemArgIndex = 2
+      const qtyArgIndex = 3
       const itemKey = String(cmdParts[itemArgIndex] || "").trim()
       const quantity = parseQuantity(cmdParts[qtyArgIndex], 1)
-
-      if (isEmergency) {
-        if (!targetUser) {
-          await sock.sendMessage(from, { text: `Use: ${prefix}${cmdName} emergencia @user <item> [quantidade]` })
-          return true
-        }
-        if (!Array.isArray(team?.members) || !team.members.includes(targetUser)) {
-          await sock.sendMessage(from, { text: "O alvo da emergencia precisa ser membro do mesmo time." })
-          return true
-        }
-      }
 
       if (!itemKey || quantity <= 0) {
         await sock.sendMessage(from, { text: `Use: ${prefix}${cmdName} retiraritem <item> [quantidade]` })
@@ -1665,7 +1700,6 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         target,
         itemKey: normalizedItem,
         quantity: credited,
-        emergency: isEmergency,
         groupId: isGroup ? from : null,
       })
 
@@ -1674,10 +1708,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       }
 
       await sock.sendMessage(from, {
-        text: isEmergency
-          ? `🚑 Emergencia do time: @${sender.split("@")[0]} compartilhou *${credited}x ${normalizedItem}* para @${target.split("@")[0]}.`
-          : `✅ Retirada concluida: *${credited}x ${normalizedItem}* do pool para @${sender.split("@")[0]}.`,
-        mentions: isEmergency ? [sender, target] : [sender],
+        text: `✅ Retirada concluida: *${credited}x ${normalizedItem}* do pool para @${sender.split("@")[0]}.`,
+        mentions: [sender],
       })
       return true
     }
@@ -1729,9 +1761,10 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       }
 
       // If last member, delete team
+      let teamDeleted = false
       const remainingMembers = storage.getTeamMembers(userTeamId)
       if (remainingMembers.length === 0) {
-        storage.deleteTeam(userTeamId)
+        teamDeleted = Boolean(storage.deleteTeam(userTeamId))
       }
 
       await sock.sendMessage(from, {
@@ -1743,8 +1776,17 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         teamId: userTeamId,
         teamName: team.name,
         userId: sender,
+        teamDeleted,
         groupId: isGroup ? from : null,
       })
+      if (teamDeleted) {
+        telemetry.incrementCounter("team.deleted", 1)
+        telemetry.appendEvent("team.deleted", {
+          teamId: userTeamId,
+          teamName: team.name,
+          groupId: isGroup ? from : null,
+        })
+      }
       return true
     }
 
@@ -1962,8 +2004,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 │ ${prefix}missao
 │ ${prefix}missao claim <Q1|Q2|Q3>
 │ ${prefix}mentions <on|off>
-│ ${prefix}apelido *<nome público>
-│ (opt-out de menções exige apelido público)
+│ ${prefix}apelido <nome público>
+│ (para não ser mencionado pelo bot, você precisa de um apelido público)
 │ ${prefix}extrato *@user
 │ ${prefix}loja
 │ ${prefix}comprar <item|indice> *<quantidade>
@@ -1973,7 +2015,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 │ ${prefix}doaritem @user <item> *<quantidade>
 │ ${prefix}roubar @user
 │ ${prefix}daily
-│ ${prefix}carepackage
+│ ${prefix}cestabásica
 │ ${prefix}cassino / ${prefix}aposta <valor>
 │ ${prefix}lootbox <quantidade 1-10>
 │ ${prefix}falsificar <tipo 1-13> *<severidade> *<quantidade> *<S|N>
@@ -2505,12 +2547,26 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       setTradeState(storage, from, tradeState)
 
       telemetry.incrementCounter("economy.trade.settled", 1)
+      const initiatorValue = getOfferValue(trade.offers?.initiator || {}, economyService)
+      const counterpartyValue = getOfferValue(trade.offers?.counterparty || {}, economyService)
+      const grossValue = initiatorValue + counterpartyValue
+      const highestBracket = Math.max(
+        getTradeBracketForOffer(trade.offers?.initiator || {}, economyService),
+        getTradeBracketForOffer(trade.offers?.counterparty || {}, economyService)
+      )
+      telemetry.incrementCounter("economy.trade.value", grossValue, {
+        phase: "settled",
+        band: getValueBand(grossValue),
+      })
       telemetry.appendEvent("economy.trade.settled", {
         groupId: from,
         tradeId: trade.tradeId,
         initiator: trade.initiator,
         counterparty: trade.counterparty,
         fees: settled.fees,
+        grossValue,
+        bracket: highestBracket,
+        valueBand: getValueBand(grossValue),
       })
 
       await sock.sendMessage(from, {
@@ -2645,6 +2701,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       const existingIds = new Set(Object.keys(tradeState.trades || {}))
       const tradeId = buildTradeId(existingIds)
       const now = Date.now()
+      const offerValue = getOfferValue(parsedOffer.offer, economyService)
+      const offerBracket = getTradeBracketForOffer(parsedOffer.offer, economyService)
       const trade = {
         tradeId,
         groupId: from,
@@ -2668,11 +2726,18 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       setTradeState(storage, from, tradeState)
 
       telemetry.incrementCounter("economy.trade.create", 1)
+      telemetry.incrementCounter("economy.trade.value", offerValue, {
+        phase: "create",
+        band: getValueBand(offerValue),
+      })
       telemetry.appendEvent("economy.trade.create", {
         groupId: from,
         tradeId,
         initiator: sender,
         counterparty: target,
+        offerValue,
+        offerBracket,
+        offerBand: getValueBand(offerValue),
       })
 
       await sock.sendMessage(from, {
@@ -2692,6 +2757,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
   if (cmdName === prefix + "perfil" && cmdArg1 !== "stats") {
     const targetUser = mentioned[0] || sender
     const profile = economyService.getProfile(targetUser)
+    const xp = getXpSnapshot(economyService, targetUser)
     let kronosInfo = ""
     if (profile?.buffs?.kronosVerdadeiraActive) {
       kronosInfo = "\nCoroa Kronos Verdadeira: *ATIVA (permanente)*"
@@ -2703,8 +2769,21 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         `💳 Carteira global de @${targetUser.split("@")[0]}\n` +
         `${CURRENCY_LABEL}: *${profile.coins}*\n` +
         `Escudos: *${profile.shields}*\n` +
+        `Nível: *${xp.level}*\n` +
+        `XP: *${xp.xpNow}/${xp.xpToNext}*\n` +
+        `Pontos de temporada: *${xp.seasonPoints}*\n` +
+        `Posição global XP: *${xp.globalPosition || "N/A"}*\n` +
         `Inventário:\n${buildInventoryText(profile)}${kronosInfo}`,
       mentions: [targetUser],
+    })
+    telemetry.incrementCounter("economy.profile.view", 1, {
+      self: targetUser === sender ? "yes" : "no",
+    })
+    telemetry.appendEvent("economy.profile.view", {
+      userId: sender,
+      targetId: targetUser,
+      self: targetUser === sender,
+      groupId: from,
     })
     return true
   }
@@ -3108,7 +3187,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     return true
   }
 
-  if (cmdName === prefix + "carepackage") {
+  if (cmdName === prefix + "cestabásica") {
     const result = economyService.claimCarePackage(sender)
 
     if (!result.ok) {

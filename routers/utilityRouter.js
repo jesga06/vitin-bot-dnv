@@ -76,9 +76,9 @@ async function handleUtilityCommands(ctx) {
       ],
       economia: [
         { cmd: `${prefix}economia`, usage: `${prefix}economia`, effect: "menu de economia", badges: ["GERAL"] },
-        { cmd: `${prefix}perfil`, usage: `${prefix}perfil [@usuario]`, effect: "saldo, inventario e buffs", badges: ["GERAL"] },
+        { cmd: `${prefix}perfil`, usage: `${prefix}perfil [@usuario]`, effect: "saldo, inventario, buffs, nivel e XP", badges: ["GERAL"] },
         { cmd: `${prefix}perfil stats`, usage: `${prefix}perfil stats`, effect: "estatisticas economicas", badges: ["GERAL"] },
-        { cmd: `${prefix}xp`, usage: `${prefix}xp`, effect: "nivel e progresso", badges: ["GERAL"] },
+        { cmd: `${prefix}xp`, usage: `${prefix}xp`, effect: "atalho para visualizar progressao de XP", badges: ["GERAL"] },
         { cmd: `${prefix}missao`, usage: `${prefix}missao | ${prefix}missao claim <Q1|Q2|Q3>`, effect: "missoes diarias", badges: ["GERAL"] },
         { cmd: `${prefix}extrato`, usage: `${prefix}extrato [@usuario]`, effect: "ultimas transacoes", badges: ["GERAL"] },
         { cmd: `${prefix}coinsranking`, usage: `${prefix}coinsranking`, effect: "ranking de moedas", badges: ["GRUPO"] },
@@ -133,7 +133,7 @@ async function handleUtilityCommands(ctx) {
         { cmd: `${prefix}wipeeconomia`, aliases: [`${prefix}wipeeconomy`], usage: `${prefix}wipeeconomia`, effect: "wipe interativo total/perfis", badges: ["DM", "HARDCODED", "OCULTO"] },
         { cmd: `${prefix}nuke`, usage: `${prefix}nuke`, effect: "limpa punicoes do proprio override", badges: ["GRUPO", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}overridetest`, usage: `${prefix}overridetest`, effect: "teste de punicoes no proprio remetente", badges: ["GRUPO", "OVERRIDE", "OCULTO"] },
-        { cmd: `${prefix}criarcupom`, usage: `${prefix}criarcupom @usuario <1-100>`, effect: "comando mantido porem desativado", badges: ["OVERRIDE", "DESATIVADO", "OCULTO"] },
+        { cmd: `${prefix}criarcupom`, usage: `${prefix}criarcupom @usuario <1-100>`, effect: "gera cupom de desconto para usuario", badges: ["OVERRIDE", "OCULTO"] },
       ],
     }
 

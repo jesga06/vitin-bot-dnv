@@ -23,7 +23,7 @@ ffmpeg.setFfmpegPath(ffmpegPath)
 
 // IMPORTS: armazenamento e gerenciador de jogos
 const storage = require("./storage")
-const punishmentService = require("./punishmentService")
+const punishmentService = require("./services/punishmentService")
 const caraOuCoroa = require("./games/caraOuCoroa")
 const gameManager = require("./gameManager")
 const adivinhacao = require("./games/adivinhacao")
@@ -34,9 +34,9 @@ const reação = require("./games/reacao")
 const embaralhado = require("./games/embaralhado")
 const comando = require("./games/comando")
 const memória = require("./games/memoria")
-const economyService = require("./economyService")
-const registrationService = require("./registrationService")
-const telemetry = require("./telemetryService")
+const economyService = require("./services/economyService")
+const registrationService = require("./services/registrationService")
+const telemetry = require("./services/telemetryService")
 const { handleGameCommands, handleGameMessageFlow } = require("./routers/gamesRouter")
 const { handleUtilityCommands } = require("./routers/utilityRouter")
 const { handleModerationCommands } = require("./routers/moderationRouter")
@@ -335,6 +335,7 @@ const OVERRIDE_CONTROL_KEY = "overrideControl"
 const OVERRIDE_PROFILES_KEY = "overrideProfiles"
 const OVERRIDE_STATUS_KEY = "overrideStatus"
 const OVERRIDE_GROUP_MAPPINGS_KEY = "overrideGroupMappings"
+const MAINTENANCE_MODE_KEY = "maintenanceMode"
 function normalizeOverrideIdentity(value = "") {
   return String(value || "").trim().toLowerCase().split(":")[0]
 }
@@ -623,6 +624,29 @@ function setOverrideChecksEnabled(enabled) {
   })
 }
 
+function getMaintenanceModeState() {
+  const raw = storage.getGameState(OVERRIDE_CONTROL_SCOPE, MAINTENANCE_MODE_KEY)
+  const enabled = Boolean(raw?.enabled)
+  const allowedGroupId = String(raw?.allowedGroupId || "").trim().toLowerCase()
+  return {
+    enabled,
+    allowedGroupId: allowedGroupId.endsWith("@g.us") ? allowedGroupId : "",
+    updatedAt: Number(raw?.updatedAt) || 0,
+    updatedBy: String(raw?.updatedBy || "").trim(),
+  }
+}
+
+function setMaintenanceModeState(state = {}) {
+  const nextEnabled = Boolean(state?.enabled)
+  const nextAllowedGroupId = String(state?.allowedGroupId || "").trim().toLowerCase()
+  storage.setGameState(OVERRIDE_CONTROL_SCOPE, MAINTENANCE_MODE_KEY, {
+    enabled: nextEnabled,
+    allowedGroupId: nextEnabled && nextAllowedGroupId.endsWith("@g.us") ? nextAllowedGroupId : "",
+    updatedAt: Date.now(),
+    updatedBy: String(state?.updatedBy || "").trim(),
+  })
+}
+
 function isOverrideIdentity(identity = "", groupId = "", isGroupMessage = false) {
   if (!getOverrideChecksEnabled()) return false
   const known = isKnownOverrideIdentity(identity, { category: "positivo", includeDisabled: false })
@@ -679,10 +703,12 @@ function getBroadcastTitle(type = "aviso") {
   return "🚨⚠️ AVISO IMPORTANTE DO BOT ⚠️🚨"
 }
 
-function parseBroadcastMentionAllToken(value = "") {
+function parseBroadcastMentionModeToken(value = "") {
   const normalized = String(value || "").trim().toLowerCase()
-  if (normalized === "s") return true
-  if (normalized === "n") return false
+  if (normalized === "r") return "T"
+  if (normalized === "t") return "T"
+  if (normalized === "n") return "N"
+  if (normalized === "a") return "A"
   return null
 }
 
@@ -712,6 +738,7 @@ function isEconomyCommandName(cmdName = "", cmd = "") {
     prefix + "trabalho",
     prefix + "cupom",
     prefix + "loteria",
+    prefix + "usaritem",
     prefix + "usarpasse",
     prefix + "setcoins",
     prefix + "addcoins",
@@ -735,8 +762,6 @@ function isEconomyCommandName(cmdName = "", cmd = "") {
     prefix + "passa",
     prefix + "rolar",
     prefix + "atirar",
-    prefix + "coop",
-    prefix + "teamduelo",
   ])
   if (economyCommands.has(cmdName)) return true
   return economyCommands.has(cmd)
@@ -845,6 +870,11 @@ function getKnownGroupName(groupId = "") {
 function getKnownUserName(userId = "") {
   return userNameCache[userId] || userId.split("@")[0] || "Desconhecido"
 }
+
+telemetry.setIdentityResolvers({
+  getKnownUserName,
+  getKnownGroupName,
+})
 
 function sanitizeInlineText(value = "", maxLen = 42) {
   const raw = String(value || "").replace(/[\r\n\t]+/g, " ").trim()
@@ -1379,6 +1409,18 @@ async function startBot(){
     const mentioned = (msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []).map(jidNormalizedUser)
     let quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
     const overrideChecksEnabled = getOverrideChecksEnabled()
+    const isMaintenanceToggleCommand = cmdName === prefix + "manutencao" || cmdName === prefix + "manutenção"
+
+    if (isCommand && isGroup && !isMaintenanceToggleCommand) {
+      const maintenance = getMaintenanceModeState()
+      const normalizedGroupId = String(from || "").trim().toLowerCase()
+      if (maintenance.enabled && maintenance.allowedGroupId && normalizedGroupId !== maintenance.allowedGroupId) {
+        await sock.sendMessage(from, {
+          text: "Atualmente estou em modo de manutenção, não posso responder seu comando.",
+        })
+        return
+      }
+    }
 
     if (!isOverrideSender && isGroup) {
       const filters = storage.getGroupFilters(from)
@@ -1411,7 +1453,7 @@ async function startBot(){
         }
         if (isNoToken(text)) {
           pendingBroadcastBySender.delete(sender)
-          await sock.sendMessage(from, { text: `Seleção negada. Refaça com: *${OVERRIDE_BROADCAST_COMMAND} <aviso|update> <S|N>*` })
+          await sock.sendMessage(from, { text: `Seleção negada. Refaça com: *${OVERRIDE_BROADCAST_COMMAND} <aviso|update> <N|T|A>*` })
           return
         }
         if (!isYesToken(text)) {
@@ -1430,12 +1472,12 @@ async function startBot(){
         broadcastState.message = text
         broadcastState.phase = "confirm-message"
         pendingBroadcastBySender.set(sender, broadcastState)
-        const mentionAllLabel = broadcastState.mentionAllGroups ? "S" : "N"
+        const mentionModeLabel = broadcastState.mentionMode || "N"
         await sock.sendMessage(from, {
           text:
             `Confirma o envio abaixo? (Y/N/Q)\n` +
             `Tipo: *${broadcastState.type}*\n\n` +
-            `Marcar todos nos grupos: *${mentionAllLabel}*\n\n` +
+            `Modo de menção: *${mentionModeLabel}*\n\n` +
             `${text}`,
         })
         return
@@ -1461,54 +1503,77 @@ async function startBot(){
         const title = getBroadcastTitle(broadcastState.type)
         const finalText = `${title}\n\n${broadcastState.message}`
         const users = registrationService.getRegisteredUsersForNotifications()
+        const usersSet = new Set(users)
         const groups = collectKnownGroupsFromStorage()
-  const mentionAllGroups = Boolean(broadcastState.mentionAllGroups)
-  const botSelfIds = new Set(expandOverrideIdentityVariants(sock.user?.id || "").map(jidNormalizedUser).filter(Boolean))
+        const mentionMode = String(broadcastState.mentionMode || "N").toUpperCase()
+        const botSelfIds = new Set(expandOverrideIdentityVariants(sock.user?.id || "").map(jidNormalizedUser).filter(Boolean))
         let usersOk = 0
+        let usersFail = 0
         let groupsOk = 0
+        let groupsFail = 0
 
-        for (const userId of users) {
-          try {
-            await sock.sendMessage(userId, { text: finalText })
-            usersOk += 1
-          } catch (err) {
-            console.error("Falha ao enviar update para usuário registrado", userId, err)
-          }
-        }
-
-        for (const groupId of groups) {
-          try {
-            if (mentionAllGroups) {
+        if (mentionMode === "A") {
+          const adminUsers = new Set()
+          for (const groupId of groups) {
+            try {
               const metadata = await sock.groupMetadata(groupId)
               const participants = Array.isArray(metadata?.participants) ? metadata.participants : []
-              const mentions = [...new Set(
-                participants
-                  .map((entry) => jidNormalizedUser(entry?.id || ""))
-                  .filter((jid) => Boolean(jid) && !botSelfIds.has(jid))
-              )]
-              const mentionTokens = mentions.map((jid) => `@${jid.split("@")[0]}`)
-              const mentionLines = []
-              for (let i = 0; i < mentionTokens.length; i += 2) {
-                mentionLines.push(mentionTokens.slice(i, i + 2).join(" "))
+              for (const participant of participants) {
+                if (!participant?.admin) continue
+                const normalizedAdmin = jidNormalizedUser(participant?.id || "")
+                if (!normalizedAdmin || botSelfIds.has(normalizedAdmin)) continue
+                if (!usersSet.has(normalizedAdmin)) continue
+                adminUsers.add(normalizedAdmin)
               }
-              const mentionBlock = mentionLines.join("\n")
-              const groupText = mentionBlock ? `${finalText}\n\nMarcando todos os membros:\n${mentionBlock}` : finalText
-              await sock.sendMessage(groupId, { text: groupText, mentions })
-            } else {
-              await sock.sendMessage(groupId, { text: finalText })
+            } catch (err) {
+              console.error("Falha ao listar admins do grupo para !msg", groupId, err)
             }
-            groupsOk += 1
-          } catch (err) {
-            console.error("Falha ao enviar update para grupo", groupId, err)
+          }
+
+          for (const userId of adminUsers) {
+            try {
+              await sock.sendMessage(userId, { text: finalText })
+              usersOk += 1
+            } catch (err) {
+              usersFail += 1
+              console.error("Falha ao enviar !msg para admin via DM", userId, err)
+            }
+          }
+        } else {
+          for (const userId of users) {
+            try {
+              await sock.sendMessage(userId, { text: finalText })
+              usersOk += 1
+            } catch (err) {
+              usersFail += 1
+              console.error("Falha ao enviar update para usuário registrado", userId, err)
+            }
+          }
+
+          const sendGroups = mentionMode === "N"
+          if (!sendGroups) {
+            groupsOk = groups.length
+          }
+          for (const groupId of groups) {
+            if (!sendGroups) continue
+            try {
+              await sock.sendMessage(groupId, { text: finalText })
+              groupsOk += 1
+            } catch (err) {
+              groupsFail += 1
+              console.error("Falha ao enviar update para grupo", groupId, err)
+            }
           }
         }
 
         pendingBroadcastBySender.delete(sender)
-        const mentionStatus = mentionAllGroups ? "S" : "N"
+        const modeLabel = mentionMode
         await sock.sendMessage(from, {
           text:
-            `Envio finalizado. Registrados: *${usersOk}/${users.length}* | Grupos: *${groupsOk}/${groups.length}*.\n` +
-            `Marcar todos nos grupos: *${mentionStatus}*.`,
+            `Envio finalizado. DMs: *${usersOk}* sucesso | *${usersFail}* falhas.\n` +
+            `Grupos: *${groupsOk}* sucesso | *${groupsFail}* falhas.\n` +
+            `Modo de menção: *${modeLabel}*.` +
+            (modeLabel === "T" ? "\nℹ️ Modo T executado: nenhum grupo recebeu envio." : ""),
         })
         return
       }
@@ -1780,6 +1845,7 @@ async function startBot(){
     if (isCommand) {
       perfStats.lastCommand = cmdName
       telemetry.markCommand(cmdName, {
+        sender,
         group: isGroup,
         groupId: isGroup ? from : null,
       })
@@ -2073,6 +2139,46 @@ async function startBot(){
       return
     }
 
+    if (cmdName === prefix + "manutencao" || cmdName === prefix + "manutenção") {
+      if (!isGroup) {
+        await sock.sendMessage(from, {
+          text: "Use esse comando em um grupo.",
+        })
+        return
+      }
+      if (!isKnownOverrideIdentity(sender, { includeDisabled: false })) {
+        await sock.sendMessage(from, {
+          text: "⛔ Comando restrito a override.",
+        })
+        return
+      }
+
+      const current = getMaintenanceModeState()
+      if (current.enabled) {
+        setMaintenanceModeState({
+          enabled: false,
+          allowedGroupId: "",
+          updatedBy: sender,
+        })
+        await sock.sendMessage(from, {
+          text:
+            "Modo manutenção DESATIVADO.",
+        })
+        return
+      }
+
+      setMaintenanceModeState({
+        enabled: true,
+        allowedGroupId: from,
+        updatedBy: sender,
+      })
+      await sock.sendMessage(from, {
+        text:
+          "Modo manutenção ATIVADO.",
+      })
+      return
+    }
+
     if (cmdName === prefix + "register") {
       if (!isGroup) {
         await sock.sendMessage(from, {
@@ -2119,28 +2225,27 @@ async function startBot(){
     if (cmdName === OVERRIDE_BROADCAST_COMMAND) {
       if (!isKnownOverrideIdentity(sender)) return
       const msgType = String(cmdArg1 || "").toLowerCase().trim()
-      const mentionAllToken = parseBroadcastMentionAllToken(cmdArg2)
-      if (!["aviso", "update"].includes(msgType) || mentionAllToken === null) {
+      const mentionMode = parseBroadcastMentionModeToken(cmdArg2)
+      if (!["aviso", "update"].includes(msgType) || mentionMode === null) {
         await sock.sendMessage(from, {
-          text: `Use: ${OVERRIDE_BROADCAST_COMMAND} <aviso|update> <S|N>`,
+          text: `Use: ${OVERRIDE_BROADCAST_COMMAND} <aviso|update> <N|T|A>\nN=grupo sem ping | T=DM registrados | A=DM admins registrados`,
         })
         return
       }
       const users = registrationService.getRegisteredUsersForNotifications().length
       const groups = collectKnownGroupsFromStorage().length
-      const mentionAllLabel = mentionAllToken ? "S" : "N"
       pendingBroadcastBySender.set(sender, {
         phase: "confirm-type",
         type: msgType,
-        mentionAllGroups: mentionAllToken,
+        mentionMode,
         message: "",
       })
       await sock.sendMessage(from, {
         text:
           `Confirma a seleção? (Y/N/Q)\n` +
           `Tipo: *${msgType}*\n` +
-          `Marcar todos nos grupos: *${mentionAllLabel}*\n` +
-          `Destinos previstos: *${users}* usuários registrados (prioridade) + *${groups}* grupos.`,
+          `Modo de menção: *${mentionMode}*\n` +
+          `Destinos previstos: *${users}* usuários registrados + *${groups}* grupos (somente no modo N).`,
       })
       return
     }
@@ -2189,6 +2294,27 @@ async function startBot(){
       senderIsNativeAdmin = delegatedAdmin || admins.includes(sender)
     }
     senderIsAdmin = senderIsNativeAdmin || isOverrideSender
+
+    // Phase 11 kickoff: warn broken Kronos crown expiration at <=1h (once per hour key).
+    try {
+      const profile = economyService.getProfile(sender)
+      const hasPermanentCrown = Boolean(profile?.buffs?.kronosVerdadeiraActive)
+      const kronosExpiresAt = Math.max(0, Math.floor(Number(profile?.buffs?.kronosExpiresAt) || 0))
+      const remainingMs = kronosExpiresAt - Date.now()
+      if (!hasPermanentCrown && kronosExpiresAt > 0 && remainingMs > 0 && remainingMs <= (60 * 60 * 1000)) {
+        const warnState = storage.getGameState("__system__", "kronosExpiryWarn") || {}
+        const warnKey = `${sender}:${Math.floor(kronosExpiresAt / (60 * 1000))}`
+        if (!warnState[warnKey]) {
+          warnState[warnKey] = Date.now()
+          storage.setGameState("__system__", "kronosExpiryWarn", warnState)
+          await sock.sendMessage(sender, {
+            text: "⏰ Sua coroa Kronos expira em 1 hora. Use seus benefícios antes do término.",
+          })
+        }
+      }
+    } catch (_) {
+      // Best effort warning; never block message processing.
+    }
 
     const botAdminWarningShown = new Map()
     if (isGroup && !botIsAdmin && !botAdminWarningShown.has(from)) {

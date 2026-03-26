@@ -1,5 +1,5 @@
 const crypto = require("crypto")
-const telemetry = require("./telemetryService")
+const telemetry = require("./services/telemetryService")
 
 const LOBBY_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 const LOBBY_ID_LENGTH = 2

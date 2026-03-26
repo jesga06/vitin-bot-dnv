@@ -1,6 +1,6 @@
 const crypto = require("crypto")
 const { downloadMediaMessage } = require("@whiskeysockets/baileys")
-const storage = require("./storage")
+const storage = require("../storage")
 const economyService = require("./economyService")
 const telemetry = require("./telemetryService")
 
@@ -28,6 +28,8 @@ const WORD_LIST_POOL = [
   "esporte",
 ]
 const REPOST_REACTION_EMOJIS = ["🍆", "🔥", "🔞", "🤤", "😈"]
+const LETTER_DUMP_STATE_KEY = "letterDumpDetector"
+const LETTER_DUMP_WHITELIST = new Set(["a", "i", "k", "q"])
 
 function getPunishmentChoiceFromText(text = "") {
   const cleaned = text.toLowerCase().trim()
@@ -219,6 +221,15 @@ function containsWordListTerms(text = "", words = [], minRequired = 1) {
 
 function hasLetters(text = "") {
   return /[a-z]/i.test(String(text || ""))
+}
+
+function isSingleLetterMessage(text = "") {
+  const normalized = String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+  return /^[a-z]$/.test(normalized) ? normalized : ""
 }
 
 function matchesUrgentPrefix(text = "", requiredPrefix = "🚨URGENTE:") {
@@ -525,6 +536,10 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
     const msRemaining = Math.max(0, punishmentState.endsAt - now)
     const timerId = setTimeout(() => {
       clearPunishment(groupId, userId)
+      sock.sendMessage(groupId, {
+        text: `@${userId.split("@")[0]}, sua punição expirou.`,
+        mentions: [userId],
+      }).catch(() => {})
     }, msRemaining)
     activePunishments[groupId][userId].timerId = timerId
   }
@@ -559,6 +574,69 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
 async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGroup, skipForCommand = false) {
   if (!isGroup) return false
   if (skipForCommand) return false
+
+  // Phase 8 kickoff: anti letter-dump detection (4-5 sequential single-letter attempts)
+  const singleLetter = isSingleLetterMessage(text)
+  if (singleLetter && !LETTER_DUMP_WHITELIST.has(singleLetter)) {
+    const dumpState = storage.getGameState(from, LETTER_DUMP_STATE_KEY) || {}
+    const current = dumpState[sender] && typeof dumpState[sender] === "object"
+      ? dumpState[sender]
+      : { sequence: [], offenseCount: 0, lastOffenseAt: 0 }
+    const now = Date.now()
+    current.sequence = (Array.isArray(current.sequence) ? current.sequence : []).filter((ts) => now - ts <= 30_000)
+    current.sequence.push(now)
+
+    if (current.sequence.length >= 4) {
+      if (now - (Number(current.lastOffenseAt) || 0) > 60 * 60 * 1000) {
+        current.offenseCount = 0
+      }
+      current.offenseCount += 1
+      current.lastOffenseAt = now
+      current.sequence = []
+
+      const activePunishments = storage.getActivePunishments()
+      if (!activePunishments[from]) activePunishments[from] = {}
+
+      if (current.offenseCount >= 3) {
+        activePunishments[from][sender] = {
+          type: "mute5m",
+          endsAt: now + (5 * 60 * 1000),
+        }
+        economyService.debitCoinsFlexible(sender, 50, {
+          type: "anti-letter-dump-fine",
+          details: "Multa por spam de letras",
+          meta: { groupId: from },
+        })
+        await sock.sendMessage(from, {
+          text: `❌ Spam detectado @${sender.split("@")[0]}. 3ª ocorrência: mute de 5 minutos + multa de 50 moedas.`,
+          mentions: [sender],
+        })
+      } else if (current.offenseCount >= 2) {
+        activePunishments[from][sender] = {
+          type: "mute5m",
+          endsAt: now + 60_000,
+        }
+        await sock.sendMessage(from, {
+          text: `❌ Spam detectado @${sender.split("@")[0]}. 2ª ocorrência: mute temporário de 1 minuto.`,
+          mentions: [sender],
+        })
+      } else {
+        await sock.sendMessage(from, {
+          text: `❌ Spam detectado @${sender.split("@")[0]}. Evite flood de letras isoladas.`,
+          mentions: [sender],
+        })
+      }
+
+      storage.setActivePunishments(activePunishments)
+      dumpState[sender] = current
+      storage.setGameState(from, LETTER_DUMP_STATE_KEY, dumpState)
+      return true
+    }
+
+    dumpState[sender] = current
+    storage.setGameState(from, LETTER_DUMP_STATE_KEY, dumpState)
+  }
+
   const activePunishments = storage.getActivePunishments()
   const punishment = activePunishments[from]?.[sender]
   if (!punishment) return false
@@ -566,6 +644,10 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
   const now = Date.now()
   if (punishment.endsAt && now >= punishment.endsAt) {
     clearPunishment(from, sender)
+    await sock.sendMessage(from, {
+      text: `@${sender.split("@")[0]}, sua punição expirou.`,
+      mentions: [sender],
+    })
     return false
   }
 

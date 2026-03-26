@@ -1,4 +1,4 @@
-const telemetry = require("../telemetryService")
+const telemetry = require("../services/telemetryService")
 
 async function handleModerationCommands(ctx) {
   const {
@@ -9,6 +9,7 @@ async function handleModerationCommands(ctx) {
     text,
     cmd,
     cmdName,
+    cmdArg1,
     prefix,
     isGroup,
     senderIsAdmin,

@@ -1,8 +1,38 @@
 const fs = require("fs")
 const path = require("path")
 const telemetry = require("./telemetryService")
+const {
+  openLootboxEngine,
+} = require("./lootboxService")
+const {
+  applyCooldownReducerEngine,
+  isXpBoosterActiveEngine,
+  consumeQuestRewardMultiplierEngine,
+  consumeClaimMultiplierEngine,
+  getTeamContributionMultiplierEngine,
+  consumeStreakSaverEngine,
+  applySalvageInsuranceEngine,
+  useItemEngine,
+} = require("./itemEffectsService")
+const {
+  getDailyQuestStateEngine,
+  addXpEngine,
+  getXpProfileEngine,
+  claimDailyQuestEngine,
+  getWeeklyQuestStateEngine,
+  claimWeeklyQuestEngine,
+} = require("./progressionService")
+const {
+  getStealSuccessChanceEngine,
+  canAttemptStealEngine,
+  attemptStealEngine,
+} = require("./stealService")
+const {
+  forgePunishmentPassEngine,
+  applyForgedPassTypeChoiceEngine,
+} = require("./forgeService")
 
-const DATA_DIR = path.join(__dirname, ".data")
+const DATA_DIR = path.join(__dirname, "..", ".data")
 const ECONOMY_FILE = path.join(DATA_DIR, "economy.json")
 const DEFAULT_COINS = 0
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -14,134 +44,14 @@ const MAX_LOOTBOX_OPEN_PER_CALL = 10
 const MAX_FORGE_QUANTITY = 1_000
 const DAILY_QUEST_COUNT = 3
 const WEEKLY_QUEST_COUNT = 5
-const BASE_XP_TO_LEVEL = 95
-const XP_GROWTH_MIN = 0.15
-const XP_GROWTH_MAX = 0.5
-const XP_BASE_GROWTH_CEILING = 0.43
+const BASE_XP_TO_LEVEL = 80
+const XP_GROWTH_MIN = 0.10
+const XP_GROWTH_MAX = 0.30
+const XP_BASE_GROWTH_CEILING = 0.26
 const LEVEL_MILESTONE_INTERVAL = 5
 const MAX_LEVEL = 100
 const SEASON_DURATION_MS = 42 * DAY_MS
-
-// 50 daily quest options (randomly selected 3 per player per day)
-const DAILY_QUEST_POOL = [
-  // Work & Income (6)
-  { key: "works", title: "Concluir trabalhos", targetMin: 2, targetMax: 5, rewardXp: 120, rewardCoins: 220 },
-  { key: "worksCompleted", title: "Completar 3+ trabalhos", targetMin: 3, targetMax: 6, rewardXp: 140, rewardCoins: 260 },
-  { key: "stealSuccessCount", title: "Roubos bem sucedidos", targetMin: 1, targetMax: 3, rewardXp: 110, rewardCoins: 200 },
-  { key: "stealAttempts", title: "Tentar roubos", targetMin: 2, targetMax: 3, rewardXp: 115, rewardCoins: 170 },
-  { key: "coinsLifetimeEarned", title: "Ganhar moedas totais", targetMin: 500, targetMax: 2000, rewardXp: 130, rewardCoins: 240 },
-  { key: "dailyClaimCount", title: "Resgatar o daily", targetMin: 1, targetMax: 1, rewardXp: 90, rewardCoins: 130 },
-  
-  // Casino & Games (8)
-  { key: "casinoPlays", title: "Jogar no cassino", targetMin: 2, targetMax: 4, rewardXp: 100, rewardCoins: 180 },
-  { key: "gameCoinWin", title: "Vencer Cara ou Coroa", targetMin: 1, targetMax: 3, rewardXp: 125, rewardCoins: 160 },
-  { key: "gameGuessingWin", title: "Vencer Adivinhação", targetMin: 1, targetMax: 2, rewardXp: 135, rewardCoins: 190 },
-  { key: "gameDadosWin", title: "Vencer Duelo de Dados", targetMin: 1, targetMax: 2, rewardXp: 120, rewardCoins: 175 },
-  { key: "gamesPlayed", title: "Jogar qualquer jogo", targetMin: 5, targetMax: 10, rewardXp: 140, rewardCoins: 210 },
-  { key: "coinStreakMax", title: "Streak de Cara ou Coroa", targetMin: 3, targetMax: 5, rewardXp: 150, rewardCoins: 230 },
-  { key: "gameRRWin", title: "Ganhar Roleta Russa", targetMin: 1, targetMax: 2, rewardXp: 160, rewardCoins: 250 },
-  { key: "duelWins", title: "Vencer duelos", targetMin: 2, targetMax: 4, rewardXp: 125, rewardCoins: 185 },
-  
-  // Items & Inventory (6)
-  { key: "lootboxesOpened", title: "Abrir lootboxes", targetMin: 1, targetMax: 3, rewardXp: 140, rewardCoins: 210 },
-  { key: "itemsBought", title: "Comprar itens na loja", targetMin: 2, targetMax: 4, rewardXp: 145, rewardCoins: 225 },
-  { key: "itemsSold", title: "Vender itens", targetMin: 1, targetMax: 3, rewardXp: 110, rewardCoins: 165 },
-  { key: "shieldsUsed", title: "Usar escudos", targetMin: 1, targetMax: 2, rewardXp: 100, rewardCoins: 155 },
-  { key: "tradeCompleted", title: "Completar trocas", targetMin: 1, targetMax: 2, rewardXp: 135, rewardCoins: 195 },
-  { key: "punishmentPassesUsed", title: "Usar passes de punição", targetMin: 1, targetMax: 2, rewardXp: 120, rewardCoins: 180 },
-  
-  // Social & Teams (5)
-  { key: "groupInteractions", title: "Interagir no grupo", targetMin: 10, targetMax: 30, rewardXp: 100, rewardCoins: 140 },
-  { key: "mentionsReceived", title: "Ser mencionado", targetMin: 3, targetMax: 8, rewardXp: 95, rewardCoins: 135 },
-  { key: "teamContributions", title: "Contribuir para equipe", targetMin: 3, targetMax: 6, rewardXp: 150, rewardCoins: 240 },
-  { key: "tradingVolume", title: "Volume em trocas", targetMin: 500, targetMax: 2000, rewardXp: 140, rewardCoins: 220 },
-  { key: "coopcompletes", title: "Completar co-op", targetMin: 1, targetMax: 3, rewardXp: 160, rewardCoins: 260 },
-  
-  // Punishment & Moderation (4)
-  { key: "punishmentsReceived", title: "Receber punições", targetMin: 2, targetMax: 5, rewardXp: 80, rewardCoins: 100 },
-  { key: "violationsFlagged", title: "Violações detectadas", targetMin: 1, targetMax: 3, rewardXp: 90, rewardCoins: 120 },
-  { key: "timesPunished", title: "Ser punido", targetMin: 1, targetMax: 2, rewardXp: 70, rewardCoins: 90 },
-  { key: "mutesBypass", title: "Violar restrições", targetMin: 1, targetMax: 3, rewardXp: 60, rewardCoins: 80 },
-  
-  // XP & Leveling (5)
-  { key: "xpGained", title: "Ganhar XP", targetMin: 400, targetMax: 1000, rewardXp: 150, rewardCoins: 180 },
-  { key: "levelUps", title: "Subir de nível", targetMin: 1, targetMax: 2, rewardXp: 200, rewardCoins: 300 },
-  { key: "milestoneReached", title: "Atingir milestone", targetMin: 1, targetMax: 1, rewardXp: 180, rewardCoins: 280 },
-  { key: "seasonProgress", title: "Progressão de season", targetMin: 500, targetMax: 1500, rewardXp: 140, rewardCoins: 210 },
-  { key: "questsClaimed", title: "Resgatar missões", targetMin: 1, targetMax: 2, rewardXp: 130, rewardCoins: 195 },
-  
-  // Challenges & Achievements (7)
-  { key: "winStreak", title: "Ganhar sequência", targetMin: 3, targetMax: 7, rewardXp: 155, rewardCoins: 235 },
-  { key: "highRiskWins", title: "Vencer com grande aposta", targetMin: 2, targetMax: 4, rewardXp: 165, rewardCoins: 270 },
-  { key: "lootboxJackpots", title: "Ganhar jackpot em lootbox", targetMin: 1, targetMax: 2, rewardXp: 180, rewardCoins: 290 },
-  { key: "tradingProfits", title: "Lucrar em trocas", targetMin: 200, targetMax: 800, rewardXp: 135, rewardCoins: 200 },
-  { key: "timesMuted", title: "Ser silenciado", targetMin: 1, targetMax: 3, rewardXp: 75, rewardCoins: 105 },
-  { key: "escapeSecrets", title: "Encontrar segredos", targetMin: 1, targetMax: 2, rewardXp: 200, rewardCoins: 320 },
-  { key: "experimentalGames", title: "Jogar jogos experimentais", targetMin: 1, targetMax: 3, rewardXp: 140, rewardCoins: 215 },
-]
-
-// 50 weekly quest options (5 selected per player per week)
-const WEEKLY_QUEST_POOL = [
-  // Weekly Grinds (10)
-  { key: "weeklyWorks", title: "50+ trabalhos na semana", targetMin: 50, targetMax: 100, rewardXp: 500, rewardCoins: 1200 },
-  { key: "weeklyGameWins", title: "Vencer 15+ jogos", targetMin: 15, targetMax: 30, rewardXp: 600, rewardCoins: 1400 },
-  { key: "weeklyCoinWins", title: "Vencer 10+ Cara ou Coroas", targetMin: 10, targetMax: 20, rewardXp: 550, rewardCoins: 1300 },
-  { key: "weeklyXpEarned", title: "Ganhar 3000+ XP", targetMin: 3000, targetMax: 7000, rewardXp: 700, rewardCoins: 1600 },
-  { key: "weeklyCoinsEarned", title: "Ganhar 5000+ moedas", targetMin: 5000, targetMax: 15000, rewardXp: 650, rewardCoins: 1500 },
-  { key: "weeklyStealAttempts", title: "Tentar 20+ roubos", targetMin: 20, targetMax: 40, rewardXp: 520, rewardCoins: 1250 },
-  { key: "weeklyLootboxes", title: "Abrir 10+ lootboxes", targetMin: 10, targetMax: 25, rewardXp: 580, rewardCoins: 1350 },
-  { key: "weeklyTrades", title: "Completar 8+ trocas", targetMin: 8, targetMax: 15, rewardXp: 620, rewardCoins: 1450 },
-  { key: "weeklyShields", title: "Usar 5+ escudos", targetMin: 5, targetMax: 12, rewardXp: 480, rewardCoins: 1100 },
-  { key: "weeklySocialScore", title: "Alcançar 200 score social", targetMin: 200, targetMax: 500, rewardXp: 540, rewardCoins: 1280 },
-  
-  // Weekly Social (8)
-  { key: "teamCoopComplete", title: "5+ co-ops com equipe", targetMin: 5, targetMax: 15, rewardXp: 700, rewardCoins: 1700 },
-  { key: "teamContrib", title: "Empresa equipe 3000+ moedas", targetMin: 3000, targetMax: 8000, rewardXp: 650, rewardCoins: 1550 },
-  { key: "groupParticipation", title: "Participar em 30+ eventos", targetMin: 30, targetMax: 70, rewardXp: 560, rewardCoins: 1320 },
-  { key: "mentionedByOthers", title: "Ser mencionado 15+ vezes", targetMin: 15, targetMax: 40, rewardXp: 500, rewardCoins: 1200 },
-  { key: "duelWithDifferent", title: "Duelar com 8+ jogadores", targetMin: 8, targetMax: 20, rewardXp: 620, rewardCoins: 1480 },
-  { key: "tradingWithTeam", title: "Trocar com 5  + membros", targetMin: 5, targetMax: 15, rewardXp: 580, rewardCoins: 1380 },
-  { key: "leaderboardTopTen", title: "Top 10 em ranking", targetMin: 1, targetMax: 1, rewardXp: 1000, rewardCoins: 2500 },
-  { key: "seasonParticipation", title: "80% season points progresso", targetMin: 1, targetMax: 1, rewardXp: 800, rewardCoins: 1900 },
-  
-  // Weekly Challenges (10)
-  { key: "riskWinStreak", title: "3+ vitórias em apostas altas", targetMin: 3, targetMax: 8, rewardXp: 750, rewardCoins: 1800 },
-  { key: "jackpotHunt", title: "Ganhar 2+ jackpots", targetMin: 2, targetMax: 5, rewardXp: 850, rewardCoins: 2100 },
-  { key: "survivalChallenge", title: "Sobreviver 10+ rodadas RR", targetMin: 10, targetMax: 25, rewardXp: 700, rewardCoins: 1700 },
-  { key: "tradeProfitMilestone", title: "Lucrar 2000+ em trocas", targetMin: 2000, targetMax: 6000, rewardXp: 750, rewardCoins: 1850 },
-  { key: "noMutesWeek", title: "Semana sem silenciar", targetMin: 1, targetMax: 1, rewardXp: 600, rewardCoins: 1400 },
-  { key: "perfectAttendance", title: "Daily todos os dias", targetMin: 7, targetMax: 7, rewardXp: 650, rewardCoins: 1550 },
-  { key: "questMaster", title: "Resgatar 15+ missões", targetMin: 15, targetMax: 30, rewardXp: 580, rewardCoins: 1380 },
-  { key: "itemCollector", title: "Coletar 10+ itens diferentes", targetMin: 10, targetMax: 25, rewardXp: 520, rewardCoins: 1250 },
-  { key: "levelSpike", title: "Subir 3+ níveis", targetMin: 3, targetMax: 8, rewardXp: 800, rewardCoins: 1950 },
-  { key: "secretsUnlocked", title: "Desbloquear 3+ segredos", targetMin: 3, targetMax: 6, rewardXp: 900, rewardCoins: 2200 },
-  
-  // Weekly Milestones (14)
-  { key: "crownMilestone", title: "Adquirir coroa", targetMin: 1, targetMax: 1, rewardXp: 400, rewardCoins: 1000 },
-  { key: "treasureDiscovery", title: "Descobrir tesouro", targetMin: 1, targetMax: 1, rewardXp: 450, rewardCoins: 1150 },
-  { key: "masterTheft", title: "Roubo master (5000+ moedas)", targetMin: 1, targetMax: 3, rewardXp: 650, rewardCoins: 1550 },
-  { key: "vastWealthMilestone", title: "100k+ moedas totais", targetMin: 1, targetMax: 1, rewardXp: 900, rewardCoins: 2200 },
-  { key: "xpMilestone", title: "10k+ XP na semana", targetMin: 1, targetMax: 1, rewardXp: 1000, rewardCoins: 2400 },
-  { key: "teamRichdom", title: "Equipe 50k+ pool", targetMin: 1, targetMax: 1, rewardXp: 850, rewardCoins: 2050 },
-  { key: "legendaryItem", title: "Adquirir item lendário", targetMin: 1, targetMax: 1, rewardXp: 950, rewardCoins: 2300 },
-  { key: "redemptionWeek", title: "Semana de redenção", targetMin: 1, targetMax: 1, rewardXp: 500, rewardCoins: 1200 },
-  { key: "communityHero", title: "100+ membros mencionam", targetMin: 100, targetMax: 200, rewardXp: 700, rewardCoins: 1700 },
-  { key: "tradingTycoon", title: "1M volume em trocas", targetMin: 1000000, targetMax: 5000000, rewardXp: 1200, rewardCoins: 2900 },
-  { key: "undefeated", title: "Semana invicta (10+ jogos)", targetMin: 10, targetMax: 25, rewardXp: 800, rewardCoins: 1950 },
-  { key: "immortal", title: "Sobreviver tudo", targetMin: 1, targetMax: 1, rewardXp: 1500, rewardCoins: 3600 },
-  { key: "forgemaster", title: "Fabricar 5+ passes", targetMin: 5, targetMax: 10, rewardXp: 700, rewardCoins: 1700 },
-  { key: "chronicler", title: "Completar jogo/semana changelog", targetMin: 1, targetMax: 1, rewardXp: 600, rewardCoins: 1450 },
-  
-  // Weekly Community (8)
-  { key: "votingParticipant", title: "Participar em 10+ votações", targetMin: 10, targetMax: 25, rewardXp: 450, rewardCoins: 1050 },
-  { key: "eventAttendee", title: "Participar em 3+ events", targetMin: 3, targetMax: 8, rewardXp: 550, rewardCoins: 1300 },
-  { key: "giverOfHelp", title: "Ajudar 5+ novatos", targetMin: 5, targetMax: 15, rewardXp: 600, rewardCoins: 1450 },
-  { key: "novelExplorer", title: "Experimentar feature nova", targetMin: 3, targetMax: 10, rewardXp: 500, rewardCoins: 1200 },
-  { key: "bugReporter", title: "Reportar bug/issue", targetMin: 1, targetMax: 3, rewardXp: 400, rewardCoins: 950 },
-  { key: "communityFeedback", title: "Dar feedback útil", targetMin: 3, targetMax: 8, rewardXp: 450, rewardCoins: 1100 },
-  { key: "eventUnlocker", title: "Desbloquear evento especial", targetMin: 1, targetMax: 3, rewardXp: 700, rewardCoins: 1700 },
-  { key: "badgeCollector", title: "Coletar 5+ badges", targetMin: 5, targetMax: 10, rewardXp: 550, rewardCoins: 1320 },
-]
+const { DAILY_QUEST_POOL, WEEKLY_QUEST_POOL } = require("./questPools")
 
 const PUNISHMENT_TYPE_NAMES = {
   1: "max. 5 caracteres",
@@ -240,7 +150,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "Protege automaticamente contra 1 punição não administrativa.",
+    description: "[PASSIVO] Protege automaticamente contra 1 punição não administrativa.",
   },
   escudoReforcado: {
     key: "escudoReforcado",
@@ -250,211 +160,308 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.8,
     stackable: true,
     rarity: 3,
-    description: "Protege automaticamente contra 3 punições não administrativas.",
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (efeito reforçado ainda não implementado).",
   },
   // Risk Protection
   antiRouboCharm: {
-    key: "pingenteAntiRoubo",
-    aliases: ["pingenteantiroubo", "pingentear"],
+    key: "antiRouboCharm",
+    aliases: ["pingenteantiroubo", "pingentear", "pingenteantiroubo", "pingenteAntiRoubo"],
     name: "Pingente Anti-Roubo",
     price: 1200,
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "Para 1 tentativa de roubo bem sucedida contra você.",
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (bloqueio por pingente ainda não implementado).",
   },
   casinoInsurance: {
-    key: "seguroCassino",
-    aliases: ["tokensegurocassino"],
+    key: "casinoInsurance",
+    aliases: ["tokensegurocassino", "seguroCassino"],
     name: "Token de Seguro no Cassino",
     price: 1800,
     sellRate: 0.8,
     stackable: true,
     rarity: 3,
-    description: "Para você de perder moedas em uma rodada de cassino.",
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (seguro de cassino ainda não implementado).",
   },
   // Utility
   workSafetyToken: {
-    key: "seguroTrabalho",
-    aliases: ["tokentrabalhoseguro"],
+    key: "workSafetyToken",
+    aliases: ["tokentrabalhoseguro", "seguroTrabalho"],
     name: "Token de Seguro no Trabalho",
     price: 600,
     sellRate: 0.8,
     stackable: true,
     rarity: 1,
-    description: "Garante sucesso em um trabalho (!trabalho).",
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (seguro de trabalho ainda não implementado).",
   },
   rrFocusToken: {
-    key: "tokenSorteRR",
-    aliases: ["tokensorterr"],
+    key: "rrFocusToken",
+    aliases: ["tokensorterr", "tokenSorteRR"],
     name: "Token de Sorte na RR",
     price: 1400,
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "Melhora sua sorte na Roleta Russa. +20% chance de sobreviver próxima puxada de gatilho.",
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (foco de RR ainda não implementado).",
   },
   cooldownReducer: {
     key: "redutorCooldowns1",
-    aliases: ["redutor"],
-    name: "Redutor de Cooldowns Leve",
+    aliases: ["redutor", "redutorCooldowns"],
+    name: "Redutor de Cooldowns",
     price: 1100,
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "Reduz cooldowns de economia por 30 minutos.",
+    description: "[MANUAL via !usaritem] Reduz 10 minutos fixos dos cooldowns de economia.",
   },
   questRerollToken: {
     key: "questRerollToken",
-    aliases: ["rerollmissao"],
+    aliases: ["rerollmissao", "tokenRerolagem"],
     name: "Token de Re-rolagem",
     price: 800,
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "Troca uma missão diária por outra aleatória.",
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (reroll de missão ainda não implementado).",
   },
   streakSaver: {
     key: "streakSaver",
-    aliases: ["salvadorstreak"],
-    name: "Salva-guarda de Streak",
+    aliases: ["salvadorstreak", "salvaStreak"],
+    name: "Salva-streak",
     price: 1300,
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "Salva sua sequência de vitórias quando perde uma rodada.",
+    description: "[PASSIVO] Consumo automático no !moeda (dobro ou nada) ao perder uma rodada.",
   },
   salvageToken: {
     key: "salvageToken",
-    aliases: ["salvagem"],
-    name: "Salvage Token",
+    aliases: ["seguro", "seguroGeral"],
+    name: "Seguro Geral",
     price: 2000,
     sellRate: 0.75,
     stackable: true,
     rarity: 3,
-    description: "Recupera moedas de uma perda em jogo de alto risco.",
+    description: "[PASSIVO] Consumo automático em apostas >= 4: devolve 40% da perda.",
   },
   // Boosters
   xpBooster: {
     key: "xpBooster",
-    aliases: ["boosterxp"],
-    name: "XP Booster Light",
+    aliases: ["boosterxp", "boosterXp"],
+    name: "Booster de XP",
     price: 700,
     sellRate: 0.8,
     stackable: true,
     rarity: 1,
-    description: "+15% XP para próximas 3 atividades.",
+    description: "[MANUAL via !usaritem] +15% XP por 24h reais.",
+  },
+  moedaDaSorte: {
+    key: "moedaDaSorte",
+    aliases: ["moedadasorte"],
+    name: "Moeda da Sorte",
+    price: 450,
+    sellRate: 0.75,
+    stackable: true,
+    rarity: 1,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+  },
+  espelhoDeLuz: {
+    key: "espelhoDeLuz",
+    aliases: ["espelhol"],
+    name: "Espelho de Luz",
+    price: 500,
+    sellRate: 0.75,
+    stackable: true,
+    rarity: 1,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+  },
+  boosterDeMoedas: {
+    key: "boosterDeMoedas",
+    aliases: ["boostermoedas"],
+    name: "Booster de Moedas",
+    price: 550,
+    sellRate: 0.8,
+    stackable: true,
+    rarity: 1,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
   },
   questPointBooster: {
     key: "questPointBooster",
-    aliases: ["boostermissao"],
-    name: "Quest Point Booster",
+    aliases: ["boostermissao", "boosterMissao"],
+    name: "Multiplicador de Recompensas (Quests)",
     price: 950,
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "+25% recompensas de missões por 24 horas.",
+    description: "[MANUAL via !usaritem] +25% de recompensas em missões por 3 resgates.",
   },
   claimMultiplier: {
     key: "claimMultiplier",
-    aliases: ["multiplicador"],
-    name: "Claim Multiplier Token",
+    aliases: ["multiplicador", "multiplicadorRotina"],
+    name: "Multiplicador de Rotina (!daily/!trabalho)",
     price: 1500,
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "Dobra recompensa do !daily e !trabalho próxima vez.",
+    description: "[MANUAL via !usaritem] Consome no próximo !daily ou !trabalho, dobrando a recompensa de coins.",
+  },
+  cristalDeAmplificacao: {
+    key: "cristalDeAmplificacao",
+    aliases: ["cristal"],
+    name: "Cristal de Amplificação",
+    price: 2200,
+    sellRate: 0.78,
+    stackable: true,
+    rarity: 3,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+  },
+  joiaDeProtecao: {
+    key: "joiaDeProtecao",
+    aliases: ["joiaprotecao"],
+    name: "Joia de Proteção",
+    price: 2400,
+    sellRate: 0.78,
+    stackable: true,
+    rarity: 3,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
   },
   // Social
   teamContribBooster: {
     key: "teamContribBooster",
-    aliases: ["boostertime"],
-    name: "Team Contribution Booster",
+    aliases: ["boostertime", "multiplicadorTime"],
+    name: "Multiplicador de Contribuições",
     price: 1600,
     sellRate: 0.75,
     stackable: true,
     rarity: 3,
-    description: "+50% contribuição para pool de equipe por 7 dias.",
-  },
-  coopLuckCharm: {
-    key: "coopLuckCharm",
-    aliases: ["charmcoop"],
-    name: "Co-op Luck Charm",
-    price: 1100,
-    sellRate: 0.8,
-    stackable: true,
-    rarity: 2,
-    description: "+30% chance de ganhar em co-op games.",
+    description: "[MANUAL via !usaritem] 2x contribuição em times por 24h.",
   },
 
-  // ===== DISCOUNT COUPONS (buyable and earnable) =====
-  coupon5pct: {
-    key: "coupon5pct",
-    aliases: ["cupom5"],
-    name: "Discount Coupon (5%)",
-    price: 0,
-    sellRate: 1.0,
+  // ===== RARE ITEMS (Rarity 4) =====
+  artefatoAntigo: {
+    key: "artefatoAntigo",
+    aliases: ["artefato"],
+    name: "Artefato Antigo",
+    price: 3500,
+    sellRate: 0.75,
     stackable: true,
-    rarity: 1,
-    buyable: false,
-    description: "5% desconto em uma compra de itens. Use: !usarcupom 5",
+    rarity: 4,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
   },
-  coupon10pct: {
-    key: "coupon10pct",
-    aliases: ["cupom10"],
-    name: "Discount Coupon (10%)",
-    price: 0,
-    sellRate: 1.0,
+  joiaDeAssalto: {
+    key: "joiaDeAssalto",
+    aliases: ["joiaroubo", "joiaassalto"],
+    name: "Joia de Assalto",
+    price: 4000,
+    sellRate: 0.75,
     stackable: true,
-    rarity: 1,
-    buyable: false,
-    description: "10% desconto em uma compra de itens. Use: !usarcupom 10",
+    rarity: 4,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
   },
-  coupon25pct: {
-    key: "coupon25pct",
-    aliases: ["cupom25"],
-    name: "Discount Coupon (25%)",
-    price: 0,
-    sellRate: 1.0,
+  reliquiaEsquecida: {
+    key: "reliquiaEsquecida",
+    aliases: ["reliquia"],
+    name: "Charme do Kronos",
+    price: 4500,
+    sellRate: 0.75,
     stackable: true,
-    rarity: 2,
-    buyable: false,
-    description: "25% desconto em uma compra de itens. Use: !usarcupom 25",
+    rarity: 4,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
   },
-  coupon40pct: {
-    key: "coupon40pct",
-    aliases: ["cupom40"],
-    name: "Discount Coupon (40%)",
-    price: 0,
-    sellRate: 1.0,
+  tesouroClassico: {
+    key: "tesouroClassico",
+    aliases: ["tesouro"],
+    name: "Tesouro Clássico",
+    price: 5000,
+    sellRate: 0.75,
     stackable: true,
-    rarity: 3,
-    buyable: false,
-    description: "40% desconto máximo em uma compra de itens. Use: !usarcupom 40",
+    rarity: 4,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+  },
+  coracaoOssiificado: {
+    key: "coracaoOssificado",
+    aliases: ["coracao"],
+    name: "Amuleto de Defesa",
+    price: 3800,
+    sellRate: 0.74,
+    stackable: true,
+    rarity: 4,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+  },
+  seloLendario: {
+    key: "seloLendario",
+    aliases: ["selo"],
+    name: "Selo de Bônus Global",
+    price: 4200,
+    sellRate: 0.75,
+    stackable: true,
+    rarity: 4,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
   },
 
-  // ===== KRONOS CROWNS (Special) =====
+  // ===== KRONOS CROWNS (Special, Rarity 5) =====
   kronosQuebrada: {
     key: "kronosQuebrada",
     aliases: ["coroakronosquebrada"],
     name: "Coroa Kronos (Quebrada)",
-    price: 18000,
+    price: 24000,
     sellRate: 0.8,
     stackable: true,
     rarity: 5,
     durationMs: 10 * DAY_MS,
-    description: "+30% ganhos (cassino, roubo, trabalhos), +10% daily, -10% chance de ser roubado, +10% chance ao roubar e 2 escudos temporarios por dia.",
+    description: "[PASSIVO] +30% ganhos (cassino, roubo, trabalhos), +10% daily, -10% chance de ser roubado, +10% chance ao roubar e 2 escudos temporarios por dia.",
   },
   kronosVerdadeira: {
     key: "kronosVerdadeira",
     aliases: ["coroakronosverdadeira"],
     name: "Coroa Kronos Verdadeira",
-    price: 70000,
+    price: 120000,
     sellRate: 0.8,
     stackable: false,
     rarity: 5,
     permanent: true,
-    description: "+30% ganhos (cassino, roubo, trabalhos), +10% daily, -10% chance de ser roubado, +10% chance ao roubar e 2 escudos temporarios por dia. PERMANENTE!",
+    description: "[PASSIVO] +30% ganhos (cassino, roubo, trabalhos), +10% daily, -10% chance de ser roubado, +10% chance ao roubar e 2 escudos temporarios por dia. PERMANENTE!",
+  },
+  tesouroLendario: {
+    key: "tesouroLendario",
+    aliases: ["tesouro"],
+    name: "Tesouro Lendário",
+    price: 150000,
+    sellRate: 0.76,
+    stackable: true,
+    rarity: 5,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+  },
+  pedraClimatica: {
+    key: "pedraClimatica",
+    aliases: ["pedra"],
+    name: "Token de Pico Semanal",
+    price: 100000,
+    sellRate: 0.76,
+    stackable: true,
+    rarity: 5,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+  },
+  coracaoDoUniverso: {
+    key: "coracaoDoUniverso",
+    aliases: ["coracao"],
+    name: "Renda Diária Suprema",
+    price: 180000,
+    sellRate: 0.76,
+    stackable: true,
+    rarity: 5,
+    permanent: true,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+  },
+  marcaEterna: {
+    key: "marcaEterna",
+    aliases: ["marca"],
+    name: "Marca de Crescimento",
+    price: 160000,
+    sellRate: 0.76,
+    stackable: true,
+    rarity: 5,
+    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
   },
 
   // ===== LOOTBOX & REGULAR ITEMS =====
@@ -466,135 +473,73 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "Use !lootbox <quantidade> para abrir (máx. 10 por comando). Cada lootbox contém efeitos aleatórios incríveis!",
+    description: "[MANUAL via !lootbox] Abra para receber efeitos e itens aleatórios (máx. 10 por comando).",
   },
 
-  // ===== SECRET ITEMS (non-tradable, non-shop) =====
-  milestoneRelic: {
-    key: "milestoneRelic",
-    aliases: ["relicmilestone"],
-    name: "Milestone Relic",
+  // ===== DISCOUNT COUPONS (buyable and earnable, not in shop) =====
+  coupon5pct: {
+    key: "coupon5pct",
+    aliases: ["cupom5"],
+    name: "Discount Coupon (5%)",
     price: 0,
-    sellRate: 500,
+    sellRate: 1.0,
     stackable: true,
-    rarity: 4,
+    rarity: 1,
     buyable: false,
-    tradable: false,
-    description: "Item raro obtido ao atingir milestones de nível. Símbolo de dedicação.",
+    description: "[MANUAL via !usarcupom] 5% de desconto em uma compra de itens.",
   },
-  teamLegacyBadge: {
-    key: "teamLegacyBadge",
-    aliases: ["badgeheranca"],
-    name: "Team Legacy Badge",
+  coupon10pct: {
+    key: "coupon10pct",
+    aliases: ["cupom10"],
+    name: "Discount Coupon (10%)",
     price: 0,
-    sellRate: 600,
+    sellRate: 1.0,
     stackable: true,
-    rarity: 4,
+    rarity: 1,
     buyable: false,
-    tradable: false,
-    description: "Conquistado por membros de equipe bem-sucedidas. Não pode ser trocado.",
+    description: "[MANUAL via !usarcupom] 10% de desconto em uma compra de itens.",
   },
-  jackpotArtifact: {
-    key: "jackpotArtifact",
-    aliases: ["artefatojackpot"],
-    name: "Jackpot Artifact",
+  coupon25pct: {
+    key: "coupon25pct",
+    aliases: ["cupom25"],
+    name: "Discount Coupon (25%)",
     price: 0,
-    sellRate: 1200,
+    sellRate: 1.0,
     stackable: true,
-    rarity: 5,
+    rarity: 2,
     buyable: false,
-    tradable: false,
-    description: "Artefato legendário raro, obtido ao ganhar jackpots. Símbolo de sorte.",
+    description: "[MANUAL via !usarcupom] 25% de desconto em uma compra de itens.",
   },
-  eventTrophy: {
-    key: "eventTrophy",
-    aliases: ["trofeuevento"],
-    name: "Event Trophy",
+  coupon40pct: {
+    key: "coupon40pct",
+    aliases: ["cupom40"],
+    name: "Discount Coupon (40%)",
     price: 0,
-    sellRate: 400,
+    sellRate: 1.0,
     stackable: true,
     rarity: 3,
     buyable: false,
-    tradable: false,
-    description: "Troféu de evento exclusivo. Marcador de participação histórica.",
-  },
-  adminCommemorative: {
-    key: "adminCommemorative",
-    aliases: ["lembrancinhaadmin"],
-    name: "Admin Commemorative",
-    price: 0,
-    sellRate: 2000,
-    stackable: false,
-    rarity: 5,
-    buyable: false,
-    tradable: false,
-    description: "Item exclusivo concedido por administradores. Um privilégio especial.",
+    description: "[MANUAL via !usarcupom] 40% de desconto máximo em uma compra de itens.",
   },
 
-  // ===== COLLECTIBLE SETS =====
-  collectibleSetA1: {
-    key: "collectibleSetA1",
-    aliases: ["colecionavel-a-1"],
-    name: "Collectible Set A (Piece 1)",
-    price: 2000,
-    sellRate: 1.5,
-    stackable: false,
-    rarity: 3,
-    description: "Primeira peça da coleção A. Completa o set para bonus.",
-  },
-  collectibleSetA2: {
-    key: "collectibleSetA2",
-    aliases: ["colecionavel-a-2"],
-    name: "Collectible Set A (Piece 2)",
-    price: 2200,
-    sellRate: 1.5,
-    stackable: false,
-    rarity: 3,
-    description: "Segunda peça da coleção A. Completa o set para bonus.",
-  },
-  collectibleSetA3: {
-    key: "collectibleSetA3",
-    aliases: ["colecionavel-a-3"],
-    name: "Collectible Set A (Piece 3)",
-    price: 2400,
-    sellRate: 1.5,
-    stackable: false,
-    rarity: 3,
-    description: "Terceira peça da coleção A. Completa o set para bonus +50% XP",
-  },
-  collectibleSetB1: {
-    key: "collectibleSetB1",
-    aliases: ["colecionavel-b-1"],
-    name: "Collectible Set B (Piece 1)",
-    price: 3000,
-    sellRate: 2.0,
-    stackable: false,
-    rarity: 4,
-    description: "Primeira peça da coleção B rara. Completa o set para bonus.",
-  },
-  collectibleSetB2: {
-    key: "collectibleSetB2",
-    aliases: ["colecionavel-b-2"],
-    name: "Collectible Set B (Piece 2)",
-    price: 3200,
-    sellRate: 2.0,
-    stackable: false,
-    rarity: 4,
-    description: "Segunda peça da coleção B rara. Completa o set para bonus.",
-  },
-  collectibleSetB3: {
-    key: "collectibleSetB3",
-    aliases: ["colecionavel-b-3"],
-    name: "Collectible Set B (Piece 3)",
-    price: 3500,
-    sellRate: 2.0,
-    stackable: false,
-    rarity: 4,
-    description: "Terceira peça da coleção B rara. Completa o set para +100% moedas ganhadas",
-  },
 }
 
 const SHIELD_PRICE = ITEM_DEFINITIONS.escudo.price
+
+const REMOVED_ITEM_KEYS = new Set([
+  "coopLuckCharm",
+  "milestoneRelic",
+  "teamLegacyBadge",
+  "jackpotArtifact",
+  "eventTrophy",
+  "adminCommemorative",
+  "collectibleSetA1",
+  "collectibleSetA2",
+  "collectibleSetA3",
+  "collectibleSetB1",
+  "collectibleSetB2",
+  "collectibleSetB3",
+])
 
 // Punishment pass pricing by type (following masterplan brackets)
 const PUNISHMENT_PASS_PRICING = {
@@ -900,10 +845,18 @@ function getXpGrowthRateForLevel(level = 1, maxLevel = MAX_LEVEL) {
   const baseGrowth = XP_GROWTH_MIN + ((XP_BASE_GROWTH_CEILING - XP_GROWTH_MIN) * eased)
 
   let milestoneBonus = 0
-  if (safeLevel % 10 === 0) {
-    milestoneBonus = 0.07
-  } else if (safeLevel % LEVEL_MILESTONE_INTERVAL === 0) {
-    milestoneBonus = 0.04
+  if (safeLevel <= 70) {
+    if (safeLevel % 10 === 0) {
+      milestoneBonus = 0.04
+    } else if (safeLevel % LEVEL_MILESTONE_INTERVAL === 0) {
+      milestoneBonus = 0.02
+    }
+  } else {
+    if (safeLevel % 10 === 0) {
+      milestoneBonus = 0.08
+    } else if (safeLevel % LEVEL_MILESTONE_INTERVAL === 0) {
+      milestoneBonus = 0.05
+    }
   }
 
   return Math.max(XP_GROWTH_MIN, Math.min(XP_GROWTH_MAX, baseGrowth + milestoneBonus))
@@ -995,6 +948,12 @@ function saveEconomy(immediate = false) {
 function migrateUserShape(user) {
   if (!user || typeof user !== "object") return
   if (!user.items || typeof user.items !== "object") user.items = {}
+
+  for (const removedKey of REMOVED_ITEM_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(user.items, removedKey)) {
+      delete user.items[removedKey]
+    }
+  }
   
   // Migrar dados antigos de "kronos" para "kronosQuebrada"
   if (user.items.kronos && user.items.kronos > 0) {
@@ -1008,6 +967,29 @@ function migrateUserShape(user) {
     user.items[passKey] = (Number(user.items[passKey]) || 0) + Number(user.items.mute)
     delete user.items.mute
   }
+
+  // Migrar chaves antigas/temporárias de itens para as chaves canônicas atuais
+  const ITEM_KEY_MIGRATIONS = {
+    pingenteAntiRoubo: "antiRouboCharm",
+    seguroCassino: "casinoInsurance",
+    seguroTrabalho: "workSafetyToken",
+    tokenSorteRR: "rrFocusToken",
+    redutorCooldowns: "redutorCooldowns1",
+    tokenRerolagem: "questRerollToken",
+    salvaStreak: "streakSaver",
+    seguroGeral: "salvageToken",
+    boosterXp: "xpBooster",
+    boosterMissao: "questPointBooster",
+    multiplicadorRotina: "claimMultiplier",
+    multiplicadorTime: "teamContribBooster",
+  }
+  for (const [legacyKey, canonicalKey] of Object.entries(ITEM_KEY_MIGRATIONS)) {
+    const qty = Math.max(0, Math.floor(Number(user.items[legacyKey]) || 0))
+    if (qty > 0) {
+      user.items[canonicalKey] = Math.max(0, Math.floor(Number(user.items[canonicalKey]) || 0)) + qty
+      delete user.items[legacyKey]
+    }
+  }
   
   if (!user.buffs || typeof user.buffs !== "object") {
     user.buffs = {
@@ -1015,6 +997,10 @@ function migrateUserShape(user) {
       kronosTempShieldDayKey: null,
       kronosTempShields: 0,
       kronosVerdadeiraActive: false,
+      xpBoosterExpiresAt: 0,
+      questRewardMultiplierCharges: 0,
+      claimMultiplierCharges: 0,
+      teamContribExpiresAt: 0,
     }
   }
   if (!Number.isFinite(user.buffs.kronosExpiresAt)) user.buffs.kronosExpiresAt = 0
@@ -1023,6 +1009,10 @@ function migrateUserShape(user) {
   }
   if (!Number.isFinite(user.buffs.kronosTempShields)) user.buffs.kronosTempShields = 0
   if (typeof user.buffs.kronosVerdadeiraActive !== "boolean") user.buffs.kronosVerdadeiraActive = false
+  if (!Number.isFinite(user.buffs.xpBoosterExpiresAt) || user.buffs.xpBoosterExpiresAt < 0) user.buffs.xpBoosterExpiresAt = 0
+  if (!Number.isFinite(user.buffs.questRewardMultiplierCharges) || user.buffs.questRewardMultiplierCharges < 0) user.buffs.questRewardMultiplierCharges = 0
+  if (!Number.isFinite(user.buffs.claimMultiplierCharges) || user.buffs.claimMultiplierCharges < 0) user.buffs.claimMultiplierCharges = 0
+  if (!Number.isFinite(user.buffs.teamContribExpiresAt) || user.buffs.teamContribExpiresAt < 0) user.buffs.teamContribExpiresAt = 0
   if (!user.cooldowns || typeof user.cooldowns !== "object") {
     user.cooldowns = {
       dailyClaimKey: null,
@@ -1063,12 +1053,12 @@ function migrateUserShape(user) {
   if (!Array.isArray(user.transactions)) user.transactions = []
   if (!user.preferences || typeof user.preferences !== "object") {
     user.preferences = {
-      mentionOptIn: false,
+      mentionOptIn: true,
       publicLabel: "",
     }
   }
   if (typeof user.preferences.mentionOptIn !== "boolean") {
-    user.preferences.mentionOptIn = false
+    user.preferences.mentionOptIn = true
   }
   if (typeof user.preferences.publicLabel !== "string") {
     user.preferences.publicLabel = ""
@@ -1076,20 +1066,13 @@ function migrateUserShape(user) {
   if (!user.progression || typeof user.progression !== "object") {
     user.progression = buildDefaultProgression()
   }
-  if (!Number.isFinite(user.progression.level) || user.progression.level <= 0) {
-    user.progression.level = DEFAULT_PROGRESSION.level
-  }
-  if (!Number.isFinite(user.progression.xp) || user.progression.xp < 0) {
-    user.progression.xp = DEFAULT_PROGRESSION.xp
-  }
-  if (!Number.isFinite(user.progression.seasonPoints) || user.progression.seasonPoints < 0) {
-    user.progression.seasonPoints = DEFAULT_PROGRESSION.seasonPoints
-  }
+  if (!Array.isArray(user.progression.dailyQuests)) user.progression.dailyQuests = []
   if (typeof user.progression.lastQuestDayKey !== "string" && user.progression.lastQuestDayKey !== null) {
     user.progression.lastQuestDayKey = null
   }
-  if (!Array.isArray(user.progression.dailyQuests)) {
-    user.progression.dailyQuests = []
+  if (!Array.isArray(user.progression.weeklyQuests)) user.progression.weeklyQuests = []
+  if (typeof user.progression.lastQuestWeekKey !== "string" && user.progression.lastQuestWeekKey !== null) {
+    user.progression.lastQuestWeekKey = null
   }
   if (typeof user.progression.teamId !== "string" && user.progression.teamId !== null) {
     user.progression.teamId = null
@@ -1100,10 +1083,6 @@ function migrateUserShape(user) {
   if (!user.progression.lastTradeByBracket || typeof user.progression.lastTradeByBracket !== "object") {
     user.progression.lastTradeByBracket = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
   }
-  for (const bracket of [1, 2, 3, 4, 5]) {
-    const current = Number(user.progression.lastTradeByBracket[bracket])
-    user.progression.lastTradeByBracket[bracket] = Number.isFinite(current) && current > 0 ? Math.floor(current) : 0
-  }
   if (!user.progression.season || typeof user.progression.season !== "object") {
     user.progression.season = {
       startDate: 0,
@@ -1113,32 +1092,8 @@ function migrateUserShape(user) {
       xpAtReset: 0,
     }
   }
-  if (!Number.isFinite(user.progression.season.startDate) || user.progression.season.startDate < 0) {
-    user.progression.season.startDate = 0
-  }
-  if (!Number.isFinite(user.progression.season.endDate) || user.progression.season.endDate < 0) {
-    user.progression.season.endDate = 0
-  }
-  if (!Number.isFinite(user.progression.season.coinsAtReset) || user.progression.season.coinsAtReset < 0) {
-    user.progression.season.coinsAtReset = 0
-  }
-  if (!user.progression.season.itemsAtReset || typeof user.progression.season.itemsAtReset !== "object") {
-    user.progression.season.itemsAtReset = {}
-  }
-  if (!Number.isFinite(user.progression.season.xpAtReset) || user.progression.season.xpAtReset < 0) {
-    user.progression.season.xpAtReset = 0
-  }
   if (typeof user.progression.permanentCrown !== "boolean") {
     user.progression.permanentCrown = false
-  }
-  if (user.items.kronosVerdadeira && user.items.kronosVerdadeira > 0) {
-    user.progression.permanentCrown = true
-  }
-
-  // retroompatibilidade com sistema antigo (caso eu volte algum commit).
-  if (Number.isFinite(user.shields) && user.shields > 0) {
-    user.items.escudo = (Number(user.items.escudo) || 0) + Math.floor(user.shields)
-    delete user.shields
   }
 }
 
@@ -1147,7 +1102,6 @@ function ensureUser(userId) {
   if (!normalized) return null
 
   if (!economyCache.users[normalized]) {
-    const now = Date.now()
     economyCache.users[normalized] = {
       coins: DEFAULT_COINS,
       items: {},
@@ -1156,6 +1110,10 @@ function ensureUser(userId) {
         kronosTempShieldDayKey: null,
         kronosTempShields: 0,
         kronosVerdadeiraActive: false,
+        xpBoosterExpiresAt: 0,
+        questRewardMultiplierCharges: 0,
+        claimMultiplierCharges: 0,
+        teamContribExpiresAt: 0,
       },
       cooldowns: {
         dailyClaimKey: null,
@@ -1170,93 +1128,91 @@ function ensureUser(userId) {
         ...DEFAULT_USER_STATS,
       },
       preferences: {
-        mentionOptIn: false,
+        mentionOptIn: true,
         publicLabel: "",
       },
-      progression: {
-        ...buildDefaultProgression(),
-      },
-      createdAt: now,
-      updatedAt: now,
+      progression: buildDefaultProgression(),
+      transactions: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     }
     saveEconomy()
   }
 
-  migrateUserShape(economyCache.users[normalized])
-  return economyCache.users[normalized]
+  const user = economyCache.users[normalized]
+  migrateUserShape(user)
+  return user
 }
 
 function deleteUserProfile(userId) {
   const normalized = normalizeUserId(userId)
-  if (!normalized) return false
-  if (!economyCache.users[normalized]) return false
+  if (!normalized || !economyCache.users[normalized]) return false
   delete economyCache.users[normalized]
-  saveEconomy()
+  saveEconomy(true)
   return true
 }
 
 function touchUser(user) {
+  if (!user || typeof user !== "object") return
   user.updatedAt = Date.now()
 }
 
 function pushTransaction(userId, entry = {}) {
   const user = ensureUser(userId)
-  if (!user) return
-  const next = {
+  if (!user) return null
+  const tx = {
     at: Date.now(),
-    type: String(entry.type || "system"),
+    type: String(entry.type || "event"),
     deltaCoins: Math.floor(Number(entry.deltaCoins) || 0),
-    balanceAfter: getCoins(userId),
-    details: entry.details || "",
-    meta: entry.meta || null,
+    details: String(entry.details || ""),
+    meta: entry.meta && typeof entry.meta === "object" ? entry.meta : {},
   }
-  user.transactions.push(next)
-  if (user.transactions.length > 200) {
-    user.transactions = user.transactions.slice(-200)
+  user.transactions.push(tx)
+  if (user.transactions.length > 100) {
+    user.transactions = user.transactions.slice(-100)
   }
   touchUser(user)
   saveEconomy()
+  return tx
 }
 
 function getCoins(userId) {
   const user = ensureUser(userId)
   if (!user) return 0
-  return Number.isFinite(user.coins) ? user.coins : DEFAULT_COINS
+  return Math.max(0, Math.floor(Number(user.coins) || 0))
 }
 
 function setCoins(userId, amount, transaction = null) {
   const user = ensureUser(userId)
-  if (!user) return { ok: false, balance: 0, delta: 0 }
+  if (!user) return 0
 
-  const previous = getCoins(userId)
-  const next = Math.min(MAX_COINS_BALANCE, Math.max(0, Math.floor(Number(amount) || 0)))
+  const next = Math.max(0, Math.min(MAX_COINS_BALANCE, Math.floor(Number(amount) || 0)))
+  const prev = getCoins(userId)
   user.coins = next
   touchUser(user)
   saveEconomy()
 
-  const delta = next - previous
-  if (transaction) {
+  const delta = next - prev
+  if (transaction && delta !== 0) {
     pushTransaction(userId, {
       ...transaction,
       deltaCoins: delta,
     })
   }
-
-  return { ok: true, previous, balance: next, delta }
+  return next
 }
 
 function creditCoins(userId, amount, transaction = null) {
   const user = ensureUser(userId)
-  const parsedAmount = capPositiveInt(amount, MAX_COIN_OPERATION, 0)
+  const parsedAmount = Math.floor(Number(amount) || 0)
   if (!user || parsedAmount <= 0) return 0
 
   const current = getCoins(userId)
   const room = Math.max(0, MAX_COINS_BALANCE - current)
-  const applied = Math.min(parsedAmount, room)
+  const applied = Math.min(parsedAmount, room, MAX_COIN_OPERATION)
   if (applied <= 0) return 0
 
-  user.coins = Math.max(0, current + applied)
-  user.stats.coinsLifetimeEarned = Math.max(0, Math.floor(Number(user.stats.coinsLifetimeEarned) || 0) + applied)
+  user.coins = current + applied
   touchUser(user)
   saveEconomy()
   if (transaction) {
@@ -1273,6 +1229,48 @@ function creditCoins(userId, amount, transaction = null) {
     source: txType,
   })
   return applied
+}
+
+function buildProgressionDeps() {
+  return {
+    ensureUser,
+    touchUser,
+    saveEconomy,
+    normalizeUserId,
+    getDayKey,
+    getWeekKey,
+    stableHash,
+    dailyQuestPool: DAILY_QUEST_POOL,
+    weeklyQuestPool: WEEKLY_QUEST_POOL,
+    dailyQuestCount: DAILY_QUEST_COUNT,
+    weeklyQuestCount: WEEKLY_QUEST_COUNT,
+    isXpBoosterActive,
+    getXpRequiredForLevel,
+    getLevelMilestoneReward,
+    consumeQuestRewardMultiplier,
+    creditCoins,
+    incrementStat,
+    telemetry,
+    addItem,
+    getItemQuantity,
+    normalizeItemKey,
+    capPositiveInt,
+    maxItemOperation: MAX_ITEM_OPERATION,
+    maxLevel: MAX_LEVEL,
+    addXp,
+  }
+}
+
+function getDailyQuestState(userId, dayKey = getDayKey()) {
+  return getDailyQuestStateEngine(buildProgressionDeps(), userId, dayKey)
+}
+
+function addXp(userId, amount = 0, meta = {}) {
+  return addXpEngine(buildProgressionDeps(), userId, amount, meta)
+}
+
+function getXpProfile(userId) {
+  return getXpProfileEngine(buildProgressionDeps(), userId)
 }
 
 function debitCoins(userId, amount, transaction = null) {
@@ -1365,7 +1363,9 @@ function getItemDefinition(itemKey = "") {
   if (passParsed) {
     return getPunishmentPassDefinition(passParsed.type, passParsed.severity)
   }
-  return ITEM_DEFINITIONS[key] || null
+  if (ITEM_DEFINITIONS[key]) return ITEM_DEFINITIONS[key]
+  const fallback = Object.values(ITEM_DEFINITIONS).find((item) => String(item?.key || "") === key)
+  return fallback || null
 }
 
 function getItemQuantity(userId, itemKey) {
@@ -1390,6 +1390,51 @@ function setItemQuantity(userId, itemKey, quantity) {
   return next
 }
 
+function buildItemEffectsDeps() {
+  return {
+    ensureUser,
+    touchUser,
+    saveEconomy,
+    getItemQuantity,
+    removeItem,
+    creditCoins,
+    normalizeItemKey,
+    getItemDefinition,
+  }
+}
+
+function applyCooldownReducer(userId, reductionMs) {
+  return applyCooldownReducerEngine(buildItemEffectsDeps(), userId, reductionMs)
+}
+
+function isXpBoosterActive(userId) {
+  return isXpBoosterActiveEngine(buildItemEffectsDeps(), userId)
+}
+
+function consumeQuestRewardMultiplier(userId) {
+  return consumeQuestRewardMultiplierEngine(buildItemEffectsDeps(), userId)
+}
+
+function consumeClaimMultiplier(userId, source = "") {
+  return consumeClaimMultiplierEngine(buildItemEffectsDeps(), userId, source)
+}
+
+function getTeamContributionMultiplier(userId) {
+  return getTeamContributionMultiplierEngine(buildItemEffectsDeps(), userId)
+}
+
+function consumeStreakSaver(userId) {
+  return consumeStreakSaverEngine(buildItemEffectsDeps(), userId)
+}
+
+function applySalvageInsurance(userId, lostAmount = 0, options = {}) {
+  return applySalvageInsuranceEngine(buildItemEffectsDeps(), userId, lostAmount, options)
+}
+
+function useItem(userId, itemKey) {
+  return useItemEngine(buildItemEffectsDeps(), userId, itemKey)
+}
+
 function grantKronosBenefits(userId, itemKey = "kronosQuebrada", quantity = 1) {
   const user = ensureUser(userId)
   const qty = Math.max(1, Math.floor(Number(quantity) || 1))
@@ -1410,6 +1455,34 @@ function grantKronosBenefits(userId, itemKey = "kronosQuebrada", quantity = 1) {
     touchUser(user)
     saveEconomy()
   }
+}
+
+function syncKronosStateFromInventory(userId) {
+  const user = ensureUser(userId)
+  if (!user) return
+
+  const hasPermanentCrown = getItemQuantity(userId, "kronosVerdadeira") > 0
+  if (!hasPermanentCrown) {
+    user.buffs.kronosVerdadeiraActive = false
+    user.progression.permanentCrown = false
+  } else {
+    user.buffs.kronosVerdadeiraActive = true
+    user.progression.permanentCrown = true
+  }
+
+  const now = Date.now()
+  const hasBrokenCrown = getItemQuantity(userId, "kronosQuebrada") > 0
+  if (!hasBrokenCrown && (Number(user.buffs.kronosExpiresAt) || 0) > now) {
+    user.buffs.kronosExpiresAt = now
+  }
+
+  if (!hasPermanentCrown && (Number(user.buffs.kronosExpiresAt) || 0) <= now) {
+    user.buffs.kronosTempShields = 0
+    user.buffs.kronosTempShieldDayKey = null
+  }
+
+  touchUser(user)
+  saveEconomy()
 }
 
 function removeKronosDuration(userId, itemKey = "kronosQuebrada", quantity = 1) {
@@ -1456,7 +1529,10 @@ function removeItem(userId, itemKey, quantity = 1) {
   if (key === "kronosQuebrada") {
     removeKronosDuration(userId, "kronosQuebrada", Math.min(current, qty))
   } else if (key === "kronosVerdadeira") {
-    // Não pode remover Coroa Kronos Verdadeira
+    syncKronosStateFromInventory(userId)
+  }
+  if (key === "kronosQuebrada") {
+    syncKronosStateFromInventory(userId)
   }
   return next
 }
@@ -1550,51 +1626,28 @@ function applyKronosGainMultiplier(userId, amount, type = "generic") {
 }
 
 function getStealSuccessChance(victimId, thiefId = "") {
-  const baseChance = 0.3
-  const protection = hasActiveKronos(victimId) ? 0.1 : 0
-  const thiefBuff = hasActiveKronos(thiefId) ? 0.1 : 0
-  return Math.max(0.05, Math.min(0.95, baseChance - protection + thiefBuff))
+  return getStealSuccessChanceEngine(buildStealDeps(), victimId, thiefId)
 }
 
 function canAttemptSteal(thiefId, victimId) {
-  const user = ensureUser(thiefId)
-  if (!user) return { ok: false, reason: "invalid-user" }
-
-  const dayKey = getDayKey()
-  if (user.cooldowns.stealDailyKey !== dayKey) {
-    user.cooldowns.stealDailyKey = dayKey
-    user.cooldowns.stealTargets = {}
-    user.cooldowns.stealAttemptsToday = 0
-    touchUser(user)
-    saveEconomy()
-  }
-
-  const victim = normalizeUserId(victimId)
-  if (user.cooldowns.stealTargets[victim]) {
-    return { ok: false, reason: "same-target-today" }
-  }
-
-  if ((user.cooldowns.stealAttemptsToday || 0) >= 3) {
-    return { ok: false, reason: "daily-limit-reached" }
-  }
-
-  return { ok: true }
+  return canAttemptStealEngine(buildStealDeps(), thiefId, victimId)
 }
 
-function registerStealAttempt(thiefId, victimId) {
-  const user = ensureUser(thiefId)
-  if (!user) return
-  const dayKey = getDayKey()
-  if (user.cooldowns.stealDailyKey !== dayKey) {
-    user.cooldowns.stealDailyKey = dayKey
-    user.cooldowns.stealTargets = {}
-    user.cooldowns.stealAttemptsToday = 0
+function buildStealDeps() {
+  return {
+    ensureUser,
+    getDayKey,
+    normalizeUserId,
+    touchUser,
+    saveEconomy,
+    hasActiveKronos,
+    getCoins,
+    consumeShield,
+    debitCoinsFlexible,
+    creditCoins,
+    incrementStat,
+    applyKronosGainMultiplier,
   }
-  const victim = normalizeUserId(victimId)
-  user.cooldowns.stealTargets[victim] = true
-  user.cooldowns.stealAttemptsToday = (Math.floor(Number(user.cooldowns.stealAttemptsToday) || 0) + 1)
-  touchUser(user)
-  saveEconomy()
 }
 
 function buyItem(buyerId, itemKey, quantity = 1, recipientId = buyerId) {
@@ -1627,7 +1680,8 @@ function buyItem(buyerId, itemKey, quantity = 1, recipientId = buyerId) {
   let appliedCoupon = null
 
   // Check for active coupon in buyer's progression
-  const user = storage.economyCache?.users?.[buyerId]
+  const normalizedBuyerId = normalizeUserId(buyerId)
+  const user = normalizedBuyerId ? economyCache.users?.[normalizedBuyerId] : null
   if (user?.progression?.activeCoupon) {
     const coupon = user.progression.activeCoupon
     couponDiscount = Math.floor(totalCost * (coupon.percentage / 100))
@@ -1795,91 +1849,7 @@ function transferItem(fromUserId, toUserId, itemKey, quantity = 1) {
 }
 
 function attemptSteal(thiefId, victimId, requestedAmount = 0, options = {}) {
-  if (normalizeUserId(thiefId) === normalizeUserId(victimId)) {
-    return { ok: false, reason: "same-user" }
-  }
-
-  const canSteal = canAttemptSteal(thiefId, victimId)
-  if (!canSteal.ok) {
-    return { ok: false, reason: canSteal.reason }
-  }
-
-  registerStealAttempt(thiefId, victimId)
-  incrementStat(thiefId, "stealAttempts", 1)
-
-  const victimCoins = getCoins(victimId)
-  if (victimCoins <= 0) {
-    return { ok: false, reason: "victim-empty" }
-  }
-
-  const baseChance = getStealSuccessChance(victimId, thiefId)
-  const modifierRaw = Number(options?.successChanceDelta)
-  const modifier = Number.isFinite(modifierRaw)
-    ? Math.max(-0.2, Math.min(0.2, modifierRaw))
-    : 0
-  const chance = Math.max(0.01, Math.min(0.99, baseChance + modifier))
-  const roll = Math.random()
-  const success = roll <= chance
-
-  if (!success) {
-    const penalty = Math.max(20, Math.floor(Math.min(getCoins(thiefId), 50 + Math.random() * 100)))
-    const lost = debitCoinsFlexible(thiefId, penalty, {
-      type: "steal-failed",
-      details: `Falhou ao roubar ${normalizeUserId(victimId)}`,
-      meta: { victim: normalizeUserId(victimId) },
-    })
-    incrementStat(thiefId, "stealFailedCount", 1)
-    return {
-      ok: true,
-      success: false,
-      lost,
-      baseSuccessChance: baseChance,
-      successChanceDelta: modifier,
-      successChance: chance,
-      rolled: roll,
-    }
-  }
-
-  const requested = Math.max(0, Math.floor(Number(requestedAmount) || 0))
-  const randomBase = Math.floor(50 + Math.random() * 151)
-  const baseAmount = requested > 0 ? requested : randomBase
-  const stealBase = Math.min(victimCoins, baseAmount)
-
-  if (stealBase <= 0) {
-    return { ok: false, reason: "invalid-amount" }
-  }
-
-  const gained = applyKronosGainMultiplier(thiefId, stealBase, "steal")
-  const removed = debitCoinsFlexible(victimId, stealBase, {
-    type: "stolen-from",
-    details: `Roubado por ${normalizeUserId(thiefId)}`,
-    meta: { thief: normalizeUserId(thiefId) },
-  })
-  creditCoins(thiefId, gained, {
-    type: "steal-success",
-    details: `Roubo em ${normalizeUserId(victimId)}`,
-    meta: { victim: normalizeUserId(victimId), base: stealBase },
-  })
-
-  if (removed > 0) {
-    incrementStat(victimId, "stealVictimCount", 1)
-    incrementStat(victimId, "stealVictimCoinsLost", removed)
-  }
-  if (gained > 0) {
-    incrementStat(thiefId, "stealSuccessCount", 1)
-    incrementStat(thiefId, "stealSuccessCoins", gained)
-  }
-
-  return {
-    ok: true,
-    success: true,
-    baseSuccessChance: baseChance,
-    successChanceDelta: modifier,
-    successChance: chance,
-    rolled: roll,
-    stolenFromVictim: removed,
-    gained,
-  }
+  return attemptStealEngine(buildStealDeps(), thiefId, victimId, requestedAmount, options)
 }
 
 function claimDaily(userId, baseAmount = 100) {
@@ -2193,7 +2163,10 @@ function getDailyQuestState(userId, dayKey = getDayKey()) {
 
 function addXp(userId, amount = 0, meta = {}) {
   const user = ensureUser(userId)
-  const parsedAmount = Math.max(0, Math.floor(Number(amount) || 0))
+  const baseAmount = Math.max(0, Math.floor(Number(amount) || 0))
+  const parsedAmount = isXpBoosterActive(userId)
+    ? Math.max(0, Math.floor(baseAmount * 1.15))
+    : baseAmount
   if (!user || parsedAmount <= 0) {
     return {
       ok: false,
@@ -2249,6 +2222,21 @@ function addXp(userId, amount = 0, meta = {}) {
         coins: grantedCoins,
         items: grantedItems,
       })
+    }
+
+    if (user.progression.level >= MAX_LEVEL) {
+      // Always grant a permanent Kronos Crown at level 100 (doesn't stack effects due to stackable: false flag)
+      const before = getItemQuantity(userId, "kronosVerdadeira")
+      const after = addItem(userId, "kronosVerdadeira", 1)
+      const granted = Math.max(0, after - before)
+      if (granted > 0) {
+        levelRewards.push({
+          level: user.progression.level,
+          coins: 0,
+          items: [{ key: "kronosVerdadeira", quantity: granted }],
+          isLevelMilestone: true,
+        })
+      }
     }
 
     required = getXpRequiredForLevel(user.progression.level)
@@ -2327,177 +2315,15 @@ function getLevelThresholds() {
 }
 
 function claimDailyQuest(userId, questId = "") {
-  const user = ensureUser(userId)
-  if (!user) return { ok: false, reason: "invalid-user" }
-  const dayKey = getDayKey()
-  const quests = ensureDailyQuestsForUser(userId, dayKey)
-  const normalizedQuestId = String(questId || "").trim().toUpperCase()
-  const quest = quests.find((entry) => String(entry.id || "").toUpperCase() === normalizedQuestId)
-  if (!quest) {
-    return { ok: false, reason: "invalid-quest" }
-  }
-  if (quest.claimed) {
-    return { ok: false, reason: "already-claimed", questId: quest.id }
-  }
-
-  const snapshot = buildQuestProgress(user, quest)
-  if (!snapshot.completed) {
-    return {
-      ok: false,
-      reason: "not-completed",
-      questId: quest.id,
-      progress: snapshot.progress,
-      target: snapshot.target,
-    }
-  }
-
-  quest.claimed = true
-  touchUser(user)
-  saveEconomy()
-
-  const userLevel = Math.max(1, Math.floor(Number(user.progression?.level) || 1))
-  const levelMultiplier = 1 + 0.02 * (userLevel - 1)
-  const scaledXp = Math.floor(quest.rewardXp * levelMultiplier)
-  const scaledCoins = Math.floor(quest.rewardCoins * levelMultiplier)
-
-  const xpResult = addXp(userId, scaledXp, {
-    source: "daily-quest",
-    questId: quest.id,
-    key: quest.key,
-  })
-  const coinGain = creditCoins(userId, scaledCoins, {
-    type: "quest-claim",
-    details: `Missão diária ${quest.id}`,
-    meta: { questId: quest.id, key: quest.key, dayKey },
-  })
-  incrementStat(userId, "questsCompleted", 1)
-
-  telemetry.incrementCounter("economy.quest.claim", 1, {
-    questKey: String(quest.key || "unknown"),
-  })
-
-  return {
-    ok: true,
-    questId: quest.id,
-    key: quest.key,
-    title: quest.title,
-    rewardXp: quest.rewardXp,
-    rewardCoins: coinGain,
-    xpResult,
-  }
-}
-
-function ensureWeeklyQuestsForUser(userId, weekKey = getWeekKey()) {
-  const user = ensureUser(userId)
-  if (!user) return []
-
-  const currentWeekKey = String(weekKey || getWeekKey())
-  if (user.progression.lastQuestWeekKey === currentWeekKey && Array.isArray(user.progression.weeklyQuests) && user.progression.weeklyQuests.length > 0) {
-    return user.progression.weeklyQuests
-  }
-
-  const seed = `${normalizeUserId(userId)}:${currentWeekKey}`
-  const used = new Set()
-  const quests = []
-  for (let i = 0; i < WEEKLY_QUEST_COUNT; i++) {
-    let pickIndex = stableHash(`${seed}:pick:${i}`) % WEEKLY_QUEST_POOL.length
-    while (used.has(pickIndex)) {
-      pickIndex = (pickIndex + 1) % WEEKLY_QUEST_POOL.length
-    }
-    used.add(pickIndex)
-
-    const template = WEEKLY_QUEST_POOL[pickIndex]
-    const targetRange = Math.max(1, template.targetMax - template.targetMin + 1)
-    const target = template.targetMin + (stableHash(`${seed}:target:${i}`) % targetRange)
-    quests.push({
-      id: `W${i + 1}`,
-      key: template.key,
-      title: template.title,
-      target,
-      rewardXp: template.rewardXp,
-      rewardCoins: template.rewardCoins,
-      baseline: getStatValue(user, template.key),
-      claimed: false,
-    })
-  }
-
-  user.progression.lastQuestWeekKey = currentWeekKey
-  user.progression.weeklyQuests = quests
-  touchUser(user)
-  saveEconomy()
-  return quests
+  return claimDailyQuestEngine(buildProgressionDeps(), userId, questId)
 }
 
 function getWeeklyQuestState(userId, weekKey = getWeekKey()) {
-  const user = ensureUser(userId)
-  if (!user) return { weekKey, quests: [] }
-  const quests = ensureWeeklyQuestsForUser(userId, weekKey)
-  return {
-    weekKey,
-    quests: quests.map((quest) => buildQuestProgress(user, quest)),
-  }
+  return getWeeklyQuestStateEngine(buildProgressionDeps(), userId, weekKey)
 }
 
 function claimWeeklyQuest(userId, questId = "") {
-  const user = ensureUser(userId)
-  if (!user) return { ok: false, reason: "invalid-user" }
-  const weekKey = getWeekKey()
-  const quests = ensureWeeklyQuestsForUser(userId, weekKey)
-  const normalizedQuestId = String(questId || "").trim().toUpperCase()
-  const quest = quests.find((entry) => String(entry.id || "").toUpperCase() === normalizedQuestId)
-  if (!quest) {
-    return { ok: false, reason: "invalid-quest" }
-  }
-  if (quest.claimed) {
-    return { ok: false, reason: "already-claimed", questId: quest.id }
-  }
-
-  const snapshot = buildQuestProgress(user, quest)
-  if (!snapshot.completed) {
-    return {
-      ok: false,
-      reason: "not-completed",
-      questId: quest.id,
-      progress: snapshot.progress,
-      target: snapshot.target,
-    }
-  }
-
-  quest.claimed = true
-  touchUser(user)
-  saveEconomy()
-
-  const userLevel = Math.max(1, Math.floor(Number(user.progression?.level) || 1))
-  const levelMultiplier = 1 + 0.02 * (userLevel - 1)
-  const scaledXp = Math.floor(quest.rewardXp * levelMultiplier)
-  const scaledCoins = Math.floor(quest.rewardCoins * levelMultiplier)
-
-  const xpResult = addXp(userId, scaledXp, {
-    source: "weekly-quest",
-    questId: quest.id,
-    key: quest.key,
-  })
-  const coinGain = creditCoins(userId, scaledCoins, {
-    type: "quest-claim",
-    details: `Missão semanal ${quest.id}`,
-    meta: { questId: quest.id, key: quest.key, weekKey },
-  })
-  incrementStat(userId, "questsCompleted", 1)
-
-  telemetry.incrementCounter("economy.quest.claim", 1, {
-    questKey: String(quest.key || "unknown"),
-    type: "weekly",
-  })
-
-  return {
-    ok: true,
-    questId: quest.id,
-    key: quest.key,
-    title: quest.title,
-    rewardXp: quest.rewardXp,
-    rewardCoins: coinGain,
-    xpResult,
-  }
+  return claimWeeklyQuestEngine(buildProgressionDeps(), userId, questId)
 }
 
 function getStablePublicLabel(userId = "") {
@@ -2551,205 +2377,30 @@ function getStatement(userId, limit = 10) {
   return (user.transactions || []).slice(-safeLimit).reverse()
 }
 
-// Sistema de Lootbox
-const LOOTBOX_EFFECTS = [
-  { id: "daily_reset", name: "Resetar cooldown !daily", weight: 30, description: "Reseta !daily" },
-  { id: "work_reset", name: "Resetar cooldown !trabalho", weight: 30, description: "Reseta !trabalho" },
-  { id: "coins_1000_gain", name: "Ganhar 1000 coins", weight: 6, description: "+1000 moedas" },
-  { id: "coins_1000_loss", name: "Perder 1000 coins", weight: 5, description: "-1000 moedas" },
-  { id: "coins_2500_gain", name: "Ganhar 2500 coins", weight: 4, description: "+2500 moedas" },
-  { id: "coins_2500_loss", name: "Perder 2500 coins", weight: 3, description: "-2500 moedas" },
-  { id: "shield_1_gain", name: "Ganhar 1 escudo", weight: 4, description: "+1 escudo" },
-  { id: "shield_1_loss", name: "Perder 1 escudo", weight: 3, description: "-1 escudo" },
-  { id: "shield_3_gain", name: "Ganhar 3 escudos", weight: 3, description: "+3 escudos" },
-  { id: "shield_3_loss", name: "Perder 3 escudos", weight: 2, description: "-3 escudos" },
-  { id: "kronos_quebrada", name: "Ganhar Coroa Kronos (Quebrada)", weight: 1, description: "+1 Coroa Kronos (Quebrada)" },
-  { id: "punishment_pass_1x", name: "Passe de Punição (1x)", weight: 2, description: "+1 Passe de Punição (1x)" },
-  { id: "punishment_1x", name: "Punição (1x)", weight: 4, description: "Punição aleatória (1x)" },
-  { id: "punishment_pass_5x", name: "Passe de Punição (5x)", weight: 1, description: "+1 Passe de Punição (5x)" },
-  { id: "punishment_5x", name: "Punição (5x)", weight: 3, description: "Punição aleatória (5x)" },
-]
-
-function selectRandomEffect() {
-  const totalWeight = LOOTBOX_EFFECTS.reduce((sum, effect) => sum + effect.weight, 0)
-  let random = Math.random() * totalWeight
-  
-  for (const effect of LOOTBOX_EFFECTS) {
-    random -= effect.weight
-    if (random <= 0) {
-      return effect
-    }
-  }
-  
-  return LOOTBOX_EFFECTS[0]
-}
-
 function openLootbox(userId, quantity = 1, groupMembers = []) {
-  const qty = Math.max(1, Math.floor(Number(quantity) || 1))
-  const user = ensureUser(userId)
-  if (!user) return { ok: false, reason: "invalid-user" }
-
-  if (qty > MAX_LOOTBOX_OPEN_PER_CALL) {
-    return {
-      ok: false,
-      reason: "quantity-too-large",
-      maxQuantity: MAX_LOOTBOX_OPEN_PER_CALL,
-    }
-  }
-  
-  const available = getItemQuantity(userId, "lootbox")
-  if (available < qty) {
-    return { ok: false, reason: "insufficient-items", available }
-  }
-  
-  removeItem(userId, "lootbox", qty)
-  incrementStat(userId, "lootboxesOpened", qty)
-  
-  const results = []
-  const ownerNormalized = normalizeUserId(userId)
-  const eligibleMembers = Array.from(new Set(groupMembers || []))
-    .filter((memberId) => {
-      const normalized = normalizeUserId(memberId)
-      if (!normalized || normalized === ownerNormalized) return false
-      const existing = economyCache.users[normalized]
-      return Boolean(existing && Number.isFinite(existing.coins) && existing.coins >= 100)
-    })
-
-  for (let i = 0; i < qty; i++) {
-    const effect = selectRandomEffect()
-    
-    // Decide se o efeito vai para o usuário ou para outro membro
-    let targetUser = userId
-    const isNegativeEffect = effect.id.includes("loss") || effect.id.includes("punishment")
-    incrementStat(userId, isNegativeEffect ? "lootboxNegativeRolls" : "lootboxPositiveRolls", 1)
-    
-    if (!isNegativeEffect && eligibleMembers.length > 0) {
-      // 25% chance para efeitos positivos irem para outro jogador
-      if (Math.random() < 0.25) {
-        if (eligibleMembers.length > 0) {
-          targetUser = eligibleMembers[Math.floor(Math.random() * eligibleMembers.length)]
-        }
-      }
-    } else if (isNegativeEffect && eligibleMembers.length > 0) {
-      // Efeitos negativos tem chance menor (20%) de ir para outro jogador
-      if (Math.random() < 0.2) {
-        if (eligibleMembers.length > 0) {
-          targetUser = eligibleMembers[Math.floor(Math.random() * eligibleMembers.length)]
-        }
-      }
-    }
-    
-    let resultText = ""
-    const targetIsOther = normalizeUserId(targetUser) !== normalizeUserId(userId)
-    const targetPrefix = targetIsOther ? `@${targetUser.split("@")[0]}: ` : "Você: "
-    let punishment = null
-    
-    // Aplica o efeito
-    switch (effect.id) {
-      case "coins_1000_gain":
-        creditCoins(targetUser, 1000, { type: "lootbox", details: "Efeito: +1000 coins" })
-        resultText = `${targetPrefix}+1000 moedas`
-        break
-      case "coins_1000_loss":
-        debitCoinsFlexible(targetUser, 1000, { type: "lootbox", details: "Efeito: -1000 coins" })
-        resultText = `${targetPrefix}-1000 moedas`
-        break
-      case "coins_2500_gain":
-        creditCoins(targetUser, 2500, { type: "lootbox", details: "Efeito: +2500 coins" })
-        resultText = `${targetPrefix}+2500 moedas`
-        break
-      case "coins_2500_loss":
-        debitCoinsFlexible(targetUser, 2500, { type: "lootbox", details: "Efeito: -2500 coins" })
-        resultText = `${targetPrefix}-2500 moedas`
-        break
-      case "shield_1_gain":
-        addShields(targetUser, 1)
-        resultText = `${targetPrefix}+1 escudo`
-        break
-      case "shield_1_loss":
-        removeItem(targetUser, "escudo", 1)
-        resultText = `${targetPrefix}-1 escudo`
-        break
-      case "shield_3_gain":
-        addShields(targetUser, 3)
-        resultText = `${targetPrefix}+3 escudos`
-        break
-      case "shield_3_loss":
-        removeItem(targetUser, "escudo", 3)
-        resultText = `${targetPrefix}-3 escudos`
-        break
-      case "kronos_quebrada":
-        addItem(targetUser, "kronosQuebrada", 1)
-        resultText = `${targetPrefix}+1 Coroa Kronos (Quebrada)`
-        break
-      case "punishment_pass_1x":
-        {
-          const passType = pickRandomPunishmentType()
-          const passKey = buildPunishmentPassKey(passType, 1)
-          addItem(targetUser, passKey, 1)
-          resultText = `${targetPrefix}+1 Passe de Punição ${passType} (1x)`
-        }
-        break
-      case "punishment_1x":
-        {
-          const punishmentType = pickRandomPunishmentType()
-          punishment = {
-            type: punishmentType,
-            severity: 1,
-          }
-          resultText = `${targetPrefix}Punição sorteada ${punishmentType} (1x)`
-        }
-        break
-      case "punishment_pass_5x":
-        {
-          const passType = pickRandomPunishmentType()
-          const passKey = buildPunishmentPassKey(passType, 5)
-          addItem(targetUser, passKey, 1)
-          resultText = `${targetPrefix}+1 Passe de Punição ${passType} (5x)`
-        }
-        break
-      case "punishment_5x":
-        {
-          const punishmentType = pickRandomPunishmentType()
-          punishment = {
-            type: punishmentType,
-            severity: 5,
-          }
-          resultText = `${targetPrefix}Punição sorteada ${punishmentType} (5x)`
-        }
-        break
-      case "daily_reset":
-        {
-          const targetProfile = ensureUser(targetUser)
-          if (targetProfile) {
-            targetProfile.cooldowns.dailyClaimKey = null
-            touchUser(targetProfile)
-            saveEconomy()
-          }
-        }
-        resultText = `${targetPrefix}Cooldown de !daily resetado`
-        break
-      case "work_reset":
-        setWorkCooldown(targetUser, 0)
-        resultText = `${targetPrefix}Cooldown de !trabalho resetado`
-        break
-    }
-    
-    results.push({
-      effect: effect.name,
-      description: effect.description,
-      result: resultText,
-      targetUser,
-      targetIsOther,
-      punishment,
-    })
-  }
-  
-  return {
-    ok: true,
-    quantity: qty,
-    results,
-  }
+  return openLootboxEngine({
+    userId,
+    quantity,
+    groupMembers,
+    maxLootboxOpenPerCall: MAX_LOOTBOX_OPEN_PER_CALL,
+    itemDefinitions: ITEM_DEFINITIONS,
+    ensureUser,
+    normalizeUserId,
+    economyUsers: economyCache.users,
+    getItemQuantity,
+    removeItem,
+    incrementStat,
+    addShields,
+    addItem,
+    buildPunishmentPassKey,
+    pickRandomPunishmentType,
+    creditCoins,
+    debitCoinsFlexible,
+    setWorkCooldown,
+    touchUser,
+    saveEconomy,
+    getItemDefinition,
+  })
 }
 
 function setWorkCooldown(userId, timestamp = Date.now()) {
@@ -2786,136 +2437,26 @@ function getStealCooldown(userId) {
   return Math.floor(Number(user.cooldowns.stealAt) || 0)
 }
 
-function forgePunishmentPass(userId, punishmentType, severity = 1, quantity = 1, options = {}) {
-  if (!isValidPunishmentType(punishmentType)) {
-    return { ok: false, reason: "invalid-type" }
-  }
-
-  const safeSeverity = normalizePassSeverity(severity, 1)
-  const qty = Math.floor(Number(quantity) || 0)
-  if (qty <= 0) return { ok: false, reason: "invalid-quantity" }
-  if (qty > MAX_FORGE_QUANTITY) {
-    return { ok: false, reason: "quantity-too-large", maxQuantity: MAX_FORGE_QUANTITY }
-  }
-
-  const selectedKey = buildPunishmentPassKey(punishmentType, safeSeverity)
-  const available = getItemQuantity(userId, selectedKey)
-  if (available < qty) {
-    return { ok: false, reason: "insufficient-items", available, selectedKey }
-  }
-
-  const boostedOdds = Boolean(options?.boostedOdds)
-  const deferTypeSelection = Boolean(options?.deferTypeSelection)
-  const forgeCostMultiplier = boostedOdds ? 2 : 1
-  const forgeCost = 100 * qty * forgeCostMultiplier
-  if (!debitCoins(userId, forgeCost, {
-    type: "forge-fee",
-    details: `Taxa de falsificacao de ${qty}x ${selectedKey}`,
-    meta: { punishmentType, severity: safeSeverity, quantity: qty, boostedOdds },
-  })) {
-    return { ok: false, reason: "insufficient-funds", forgeCost }
-  }
-
-  const roll = Math.random()
-  const multiplyThreshold = boostedOdds ? 0.20 : 0.10
-  const upgradeThreshold = boostedOdds ? 0.40 : 0.20
-  const changeTypeThreshold = boostedOdds ? 0.80 : 0.40
-
-  if (roll < multiplyThreshold) {
-    const bonus = Math.ceil(qty * 0.5)
-    addItem(userId, selectedKey, bonus)
-    return {
-      ok: true,
-      outcome: "multiply",
-      forgeCost,
-      boostedOdds,
-      selectedKey,
-      quantity: qty,
-      bonus,
-      finalQuantity: getItemQuantity(userId, selectedKey),
-    }
-  }
-
-  if (roll < upgradeThreshold) {
-    const upgradedSeverity = safeSeverity + 1
-    const upgradedKey = buildPunishmentPassKey(punishmentType, upgradedSeverity)
-    removeItem(userId, selectedKey, qty)
-    addItem(userId, upgradedKey, qty)
-    return {
-      ok: true,
-      outcome: "upgrade-severity",
-      forgeCost,
-      boostedOdds,
-      selectedKey,
-      quantity: qty,
-      upgradedSeverity,
-      upgradedKey,
-    }
-  }
-
-  if (roll < changeTypeThreshold) {
-    removeItem(userId, selectedKey, qty)
-
-    if (deferTypeSelection) {
-      return {
-        ok: true,
-        outcome: "change-type-pending",
-        forgeCost,
-        boostedOdds,
-        selectedKey,
-        quantity: qty,
-        fromType: punishmentType,
-        severity: safeSeverity,
-      }
-    }
-
-    const nextType = pickRandomPunishmentType(Math.floor(Number(punishmentType) || 0))
-    const convertedKey = buildPunishmentPassKey(nextType, safeSeverity)
-    addItem(userId, convertedKey, qty)
-    return {
-      ok: true,
-      outcome: "change-type",
-      forgeCost,
-      boostedOdds,
-      selectedKey,
-      quantity: qty,
-      fromType: punishmentType,
-      toType: nextType,
-      convertedKey,
-    }
-  }
-
-  const lost = Math.ceil(qty / 2)
-  removeItem(userId, selectedKey, lost)
+function buildForgeDeps() {
   return {
-    ok: true,
-    outcome: "lose-half",
-    forgeCost,
-    boostedOdds,
-    selectedKey,
-    quantity: qty,
-    lost,
-    remaining: getItemQuantity(userId, selectedKey),
+    isValidPunishmentType,
+    normalizePassSeverity,
+    maxForgeQuantity: MAX_FORGE_QUANTITY,
+    buildPunishmentPassKey,
+    getItemQuantity,
+    debitCoins,
+    addItem,
+    removeItem,
+    pickRandomPunishmentType,
   }
 }
 
+function forgePunishmentPass(userId, punishmentType, severity = 1, quantity = 1, options = {}) {
+  return forgePunishmentPassEngine(buildForgeDeps(), userId, punishmentType, severity, quantity, options)
+}
+
 function applyForgedPassTypeChoice(userId, fromType, toType, severity = 1, quantity = 1) {
-  if (!isValidPunishmentType(fromType) || !isValidPunishmentType(toType)) {
-    return { ok: false, reason: "invalid-type" }
-  }
-  const safeSeverity = normalizePassSeverity(severity, 1)
-  const qty = Math.floor(Number(quantity) || 0)
-  if (qty <= 0) return { ok: false, reason: "invalid-quantity" }
-  const chosenType = Math.floor(Number(toType) || 0)
-  const convertedKey = buildPunishmentPassKey(chosenType, safeSeverity)
-  addItem(userId, convertedKey, qty)
-  return {
-    ok: true,
-    toType: chosenType,
-    convertedKey,
-    quantity: qty,
-    severity: safeSeverity,
-  }
+  return applyForgedPassTypeChoiceEngine(buildForgeDeps(), userId, fromType, toType, severity, quantity)
 }
 
 function createPunishmentPassKey(punishmentType, severity = 1) {
@@ -3004,6 +2545,7 @@ module.exports = {
   getItemQuantity,
   addItem,
   removeItem,
+  useItem,
   getShields,
   addShields,
   consumeShield,
@@ -3014,8 +2556,14 @@ module.exports = {
   transferItem,
   attemptSteal,
   claimDaily,
+  consumeClaimMultiplier,
+  getTeamContributionMultiplier,
+  consumeStreakSaver,
+  applySalvageInsurance,
+  applyCooldownReducer,
   claimCarePackage,
   hasActiveKronos,
+  isXpBoosterActive,
   applyKronosGainMultiplier,
   getStealSuccessChance,
   canAttemptSteal,

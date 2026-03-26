@@ -32,11 +32,11 @@ npm test
 - routers/economyRouter.js: comandos de economia e administração econômica.
 - routers/moderationRouter.js: comandos de moderação/punições.
 - routers/utilityRouter.js: utilitários e diversão.
-- economyService.js: motor de economia persistente (moedas, itens, estatísticas, cooldowns e extrato).
-- punishmentService.js: seleção, aplicação e validação de punições.
+- services/economyService.js: motor de economia persistente (moedas, itens, estatísticas, cooldowns e extrato).
+- sercices/punishmentService.js: seleção, aplicação e validação de punições.
 - gameManager.js: ciclo de lobbies e gatilhos periódicos.
 - storage.js: cache e persistência de estado para jogos e moderação.
-- telemetryService.js: coleta de eventos e métricas para balanceamento e observabilidade (e curiosidade).
+- services/telemetryService.js: coleta de eventos e métricas para balanceamento e observabilidade (e curiosidade).
 - games/: módulos dos jogos.
 - tests/: testes de fumaça dos módulos.
 
@@ -90,8 +90,6 @@ npm test
 - !começar <embaralhado|memória|reação|comando> / !comecar <embaralhado|memoria|reacao|comando>
 - !resposta / !passa / !rolar / !atirar
 - !moeda [1-10] / !moeda dobroounada
-- !coop <dificuldade 1-10>
-- !teamduelo @usuario <dificuldade 1-10>
 - !streak / !streakranking
 
 Observações de lobby:
@@ -145,7 +143,7 @@ Observações de economia:
 - Missões diárias renovam por dia e concedem XP + moedas ao usar !missao claim.
 - !guia envia no privado um resumo em 2 partes com loops, riscos e estratégia de progressão.
 - A cada 5 níveis, o jogador recebe recompensas automáticas de progressão (moedas e, em marcos maiores, itens).
-- Times permitem jogar cooperativamente e compartilhar um pool de moedas e itens.
+- Times permitem organizar e compartilhar um pool de moedas e itens.
 - !team create cria um novo time (max 1 por usuário).
 - !team invite convida um jogador para o time (requer estar em um time).
 - !team accept aceita um convite pendente de entrada.
@@ -155,6 +153,57 @@ Observações de economia:
 - !team list mostra times disponíveis para entrar.
 - !team join está temporariamente desativado para evitar entrada sem convite.
 - !usarcupom e !criarcupom estão temporariamente desativados para manutenção.
+
+### Missões (pool completo)
+
+Regras gerais:
+- O sistema sorteia 3 missões diárias por usuário e por dia a partir do pool diário.
+- O sistema sorteia 5 missões semanais por usuário e por semana a partir do pool semanal.
+- Progresso de cada missão é calculado por incremento de estatísticas rastreadas no perfil.
+
+Pool diário:
+- works | Concluir trabalhos | alvo 2-5 | recompensa 120 XP + 220 moedas
+- stealSuccessCount | Roubos bem sucedidos | alvo 1-3 | recompensa 110 XP + 200 moedas
+- stealAttempts | Tentar roubos | alvo 2-3 | recompensa 115 XP + 170 moedas
+- coinsLifetimeEarned | Ganhar moedas totais | alvo 500-2000 | recompensa 130 XP + 240 moedas
+- dailyClaimCount | Resgatar o daily | alvo 1-1 | recompensa 90 XP + 130 moedas
+- casinoPlays | Jogar no cassino | alvo 2-4 | recompensa 100 XP + 180 moedas
+- gameCoinWin | Vencer Cara ou Coroa | alvo 1-3 | recompensa 125 XP + 160 moedas
+- gameGuessExact | Acertar na Adivinhação | alvo 1-2 | recompensa 135 XP + 190 moedas
+- gameDadosWin | Vencer Duelo de Dados | alvo 1-2 | recompensa 120 XP + 175 moedas
+- gameBatataWin | Vencer Batata Quente | alvo 1-2 | recompensa 130 XP + 185 moedas
+- gameRrWin | Ganhar Roleta Russa | alvo 1-2 | recompensa 160 XP + 250 moedas
+- lootboxesOpened | Abrir lootboxes | alvo 1-3 | recompensa 140 XP + 210 moedas
+- itemsBought | Comprar itens na loja | alvo 2-4 | recompensa 145 XP + 225 moedas
+- shieldsUsed | Usar escudos | alvo 1-2 | recompensa 100 XP + 155 moedas
+- moneyGameWon | Ganhar moedas em jogos | alvo 300-1500 | recompensa 145 XP + 220 moedas
+- moneyCasinoWon | Ganhar moedas no cassino | alvo 200-1200 | recompensa 140 XP + 210 moedas
+- questsCompleted | Resgatar missões | alvo 1-2 | recompensa 130 XP + 195 moedas
+- gameComandoWin | Vencer Último a Obedecer | alvo 1-2 | recompensa 135 XP + 200 moedas
+- gameMemoriaWin | Vencer jogo da Memória | alvo 1-2 | recompensa 130 XP + 190 moedas
+- gameReacaoWin | Vencer teste de Reação | alvo 1-2 | recompensa 130 XP + 190 moedas
+
+Pool semanal:
+- works | Concluir trabalhos | alvo 20-45 | recompensa 520 XP + 1250 moedas
+- stealAttempts | Tentar roubos | alvo 15-30 | recompensa 500 XP + 1200 moedas
+- stealSuccessCount | Roubos bem sucedidos | alvo 5-15 | recompensa 560 XP + 1320 moedas
+- coinsLifetimeEarned | Ganhar moedas totais | alvo 8000-25000 | recompensa 650 XP + 1500 moedas
+- dailyClaimCount | Resgatar daily na semana | alvo 4-7 | recompensa 580 XP + 1380 moedas
+- casinoPlays | Jogar no cassino | alvo 10-25 | recompensa 530 XP + 1260 moedas
+- gameCoinWin | Vitórias em Cara ou Coroa | alvo 5-15 | recompensa 560 XP + 1320 moedas
+- gameDadosWin | Vitórias em Duelo de Dados | alvo 4-12 | recompensa 560 XP + 1320 moedas
+- gameBatataWin | Vitórias em Batata Quente | alvo 4-12 | recompensa 560 XP + 1320 moedas
+- gameRrWin | Vitórias em Roleta Russa | alvo 2-8 | recompensa 620 XP + 1450 moedas
+- lootboxesOpened | Abrir lootboxes | alvo 6-18 | recompensa 540 XP + 1280 moedas
+- itemsBought | Comprar itens | alvo 10-30 | recompensa 520 XP + 1240 moedas
+- shieldsUsed | Usar escudos | alvo 4-12 | recompensa 500 XP + 1180 moedas
+- moneyGameWon | Ganhar moedas em jogos | alvo 4000-15000 | recompensa 700 XP + 1650 moedas
+- moneyCasinoWon | Ganhar moedas no cassino | alvo 3000-12000 | recompensa 680 XP + 1600 moedas
+- questsCompleted | Resgatar missões | alvo 6-15 | recompensa 600 XP + 1420 moedas
+- lobbiesStarted | Iniciar lobbies | alvo 5-12 | recompensa 520 XP + 1250 moedas
+- gameComandoWin | Vitórias em Último a Obedecer | alvo 3-10 | recompensa 560 XP + 1320 moedas
+- gameMemoriaWin | Vitórias no jogo da Memória | alvo 3-10 | recompensa 560 XP + 1320 moedas
+- gameReacaoWin | Vitórias no teste de Reação | alvo 3-10 | recompensa 560 XP + 1320 moedas
 
 
 ### Moderação

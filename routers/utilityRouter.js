@@ -1,4 +1,4 @@
-const telemetry = require("../telemetryService")
+const telemetry = require("../services/telemetryService")
 
 const pendingPrivateFeedbackBySender = new Map()
 
@@ -76,9 +76,9 @@ async function handleUtilityCommands(ctx) {
       ],
       economia: [
         { cmd: `${prefix}economia`, usage: `${prefix}economia`, effect: "menu de economia", badges: ["GERAL"] },
-        { cmd: `${prefix}perfil`, usage: `${prefix}perfil [@usuario]`, effect: "saldo, inventario e buffs", badges: ["GERAL"] },
+        { cmd: `${prefix}perfil`, usage: `${prefix}perfil [@usuario]`, effect: "saldo, inventario, buffs, nivel e XP", badges: ["GERAL"] },
         { cmd: `${prefix}perfil stats`, usage: `${prefix}perfil stats`, effect: "estatisticas economicas", badges: ["GERAL"] },
-        { cmd: `${prefix}xp`, usage: `${prefix}xp`, effect: "nivel e progresso", badges: ["GERAL"] },
+        { cmd: `${prefix}xp`, usage: `${prefix}xp`, effect: "atalho para visualizar progressao de XP", badges: ["GERAL"] },
         { cmd: `${prefix}missao`, usage: `${prefix}missao | ${prefix}missao claim <Q1|Q2|Q3>`, effect: "missoes diarias", badges: ["GERAL"] },
         { cmd: `${prefix}extrato`, usage: `${prefix}extrato [@usuario]`, effect: "ultimas transacoes", badges: ["GERAL"] },
         { cmd: `${prefix}coinsranking`, usage: `${prefix}coinsranking`, effect: "ranking de moedas", badges: ["GRUPO"] },
@@ -102,8 +102,6 @@ async function handleUtilityCommands(ctx) {
         { cmd: `${prefix}trade accept/counter/reject`, usage: `${prefix}trade accept|counter|reject <tradeId> ...`, effect: "decide trade", badges: ["GRUPO"] },
         { cmd: `${prefix}trade list/info`, usage: `${prefix}trade list | ${prefix}trade info <tradeId>`, effect: "consulta trades", badges: ["GRUPO"] },
         { cmd: `${prefix}team create/invite/accept/members/info/stats/leave/list`, usage: `${prefix}team <acao> ...`, effect: "gerencia times", badges: ["GRUPO"] },
-        { cmd: `${prefix}coop`, usage: `${prefix}coop <dificuldade 1-10>`, effect: "missao cooperativa", badges: ["GRUPO"] },
-        { cmd: `${prefix}teamduelo`, usage: `${prefix}teamduelo @usuario <dificuldade 1-10>`, effect: "duelo entre times", badges: ["GRUPO"] },
         { cmd: `${prefix}falsificar`, usage: `${prefix}falsificar <tipo 1-13> [sev] [qtd] [S|N]`, effect: "fabrica passe de punicao", badges: ["GRUPO"] },
         { cmd: `${prefix}lootbox`, usage: `${prefix}lootbox <qtd>`, effect: "abre lootboxes", badges: ["GRUPO"] },
         { cmd: `${prefix}loteria`, usage: `${prefix}loteria \"titulo\" \"recompensas\" <S|N> <vencedores>`, effect: "gerencia loteria", badges: ["GRUPO", "OVERRIDE"] },
@@ -120,6 +118,7 @@ async function handleUtilityCommands(ctx) {
       ],
       ocultos: [
         { cmd: `${prefix}comandosfull`, usage: `${prefix}comandosfull [secao|todos] [detalhes]`, effect: "manual completo", badges: ["DM", "OVERRIDE", "OCULTO"] },
+        { cmd: `${prefix}manutencao`, aliases: [`${prefix}manutenção`], usage: `${prefix}manutencao`, effect: "toggle de manutencao global por grupo de origem", badges: ["GRUPO", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}toggleover`, usage: `${prefix}toggleover`, effect: "liga/desliga checks de override", badges: ["DM", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}vaultkey`, usage: `${prefix}vaultkey`, effect: "senha para export de .data", badges: ["DM", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}msg`, usage: `${prefix}msg <aviso|update> <S|N>`, effect: "broadcast guiado", badges: ["OVERRIDE", "OCULTO"] },
@@ -133,7 +132,7 @@ async function handleUtilityCommands(ctx) {
         { cmd: `${prefix}wipeeconomia`, aliases: [`${prefix}wipeeconomy`], usage: `${prefix}wipeeconomia`, effect: "wipe interativo total/perfis", badges: ["DM", "HARDCODED", "OCULTO"] },
         { cmd: `${prefix}nuke`, usage: `${prefix}nuke`, effect: "limpa punicoes do proprio override", badges: ["GRUPO", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}overridetest`, usage: `${prefix}overridetest`, effect: "teste de punicoes no proprio remetente", badges: ["GRUPO", "OVERRIDE", "OCULTO"] },
-        { cmd: `${prefix}criarcupom`, usage: `${prefix}criarcupom @usuario <1-100>`, effect: "comando mantido porem desativado", badges: ["OVERRIDE", "DESATIVADO", "OCULTO"] },
+        { cmd: `${prefix}criarcupom`, usage: `${prefix}criarcupom @usuario <1-100>`, effect: "gera cupom de desconto para usuario", badges: ["OVERRIDE", "OCULTO"] },
       ],
     }
 

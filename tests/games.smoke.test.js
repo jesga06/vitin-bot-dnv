@@ -5,7 +5,7 @@ const adivinhacao = require("../games/adivinhacao")
 const dueloDados = require("../games/dueloDados")
 const roletaRussa = require("../games/roletaRussa")
 const caraOuCoroa = require("../games/caraOuCoroa")
-const punishmentService = require("../punishmentService")
+const punishmentService = require("../services/punishmentService")
 const storage = require("../storage")
 
 function createSockCapture() {
@@ -33,7 +33,7 @@ function setCoinRound(groupId, senderId, resultado, betMultiplier = 1) {
 }
 
 test("startCoinRound accepts explicit !moeda bet multiplier", async () => {
-  const economyService = require("../economyService")
+  const economyService = require("../services/economyService")
   const groupId = `__coin_round_bet_${Date.now()}@g.us`
   const sender = "bettor@s.whatsapp.net"
   const { sock, sent } = createSockCapture()
@@ -57,7 +57,7 @@ test("startCoinRound accepts explicit !moeda bet multiplier", async () => {
 })
 
 test("startCoinRound rejects bet when player has insufficient coins", async () => {
-  const economyService = require("../economyService")
+  const economyService = require("../services/economyService")
   const groupId = `__coin_round_insufficient_${Date.now()}@g.us`
   const sender = "broke@s.whatsapp.net"
   const { sock, sent } = createSockCapture()
@@ -79,8 +79,8 @@ test("startCoinRound rejects bet when player has insufficient coins", async () =
   assert.ok(sent.some((m) => /precisa de pelo menos/.test(String(m.payload?.text || ""))))
 })
 
-test("startCoinRound rejects bet below minimum of 2", async () => {
-  const economyService = require("../economyService")
+test("startCoinRound accepts minimum bet of 1", async () => {
+  const economyService = require("../services/economyService")
   const groupId = `__coin_round_minimum_${Date.now()}@g.us`
   const sender = "lowballer@s.whatsapp.net"
   const { sock, sent } = createSockCapture()
@@ -95,11 +95,12 @@ test("startCoinRound rejects bet below minimum of 2", async () => {
   })
 
   assert.equal(handled, true)
-  assert.ok(sent.some((m) => /Use: !moeda \[2-10\]/.test(String(m.payload?.text || ""))))
+  assert.ok(sent.length >= 1)
+  assert.ok(!sent.some((m) => /Use: !moeda \[2-10\]/.test(String(m.payload?.text || ""))))
 })
 
 test("startCoinRound enforces rate limit of 5 plays per 30 minutes", async () => {
-  const economyService = require("../economyService")
+  const economyService = require("../services/economyService")
   const groupId = `__coin_rate_limit_${Date.now()}@g.us`
   const sender = "spammer@s.whatsapp.net"
   const { sock, sent } = createSockCapture()

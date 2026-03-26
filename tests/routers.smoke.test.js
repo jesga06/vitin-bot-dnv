@@ -554,7 +554,7 @@ test("economy router handles !team depositarcoins", async () => {
   assert.match(String(sent[0].payload?.text || ""), /depositou/i)
 })
 
-test("economy router handles !team emergencia item share", async () => {
+test("economy router handles !team retiraritem", async () => {
   const { sock, sent } = createSockCapture()
   let removedFromPool = false
 
@@ -562,12 +562,12 @@ test("economy router handles !team emergencia item share", async () => {
     sock,
     from: "group@g.us",
     sender: "leader@s.whatsapp.net",
-    cmd: "!team emergencia @user2 escudo 2",
+    cmd: "!team retiraritem escudo 2",
     cmdName: "!team",
-    cmdArg1: "emergencia",
-    cmdArg2: "@user2",
-    cmdParts: ["!team", "emergencia", "@user2", "escudo", "2"],
-    mentioned: ["user2@s.whatsapp.net"],
+    cmdArg1: "retiraritem",
+    cmdArg2: "escudo",
+    cmdParts: ["!team", "retiraritem", "escudo", "2"],
+    mentioned: [],
     prefix: "!",
     isGroup: true,
     senderIsAdmin: false,
@@ -598,7 +598,51 @@ test("economy router handles !team emergencia item share", async () => {
 
   assert.equal(handled, true)
   assert.equal(removedFromPool, true)
-  assert.match(String(sent[0].payload?.text || ""), /Emergencia do time/i)
+  assert.match(String(sent[0].payload?.text || ""), /Retirada concluida/i)
+})
+
+test("economy router includes XP block in !perfil", async () => {
+  const { sock, sent } = createSockCapture()
+
+  const handled = await handleEconomyCommands({
+    sock,
+    from: "group@g.us",
+    sender: "autor@s.whatsapp.net",
+    cmd: "!perfil",
+    cmdName: "!perfil",
+    cmdArg1: "",
+    cmdArg2: "",
+    cmdParts: ["!perfil"],
+    mentioned: [],
+    prefix: "!",
+    isGroup: true,
+    senderIsAdmin: false,
+    jidNormalizedUser: (id) => id,
+    storage: {
+      getMutedUsers: () => ({}),
+      setMutedUsers: () => {},
+    },
+    economyService: {
+      getProfile: () => ({ coins: 900, shields: 2, buffs: {}, inventory: {} }),
+      getXpProfile: () => ({ level: 6, xp: 45, xpToNextLevel: 120, seasonPoints: 88 }),
+      getUserGlobalXpPosition: () => 5,
+      getStatement: () => [],
+      getGroupRanking: () => [],
+      getShopIndexText: () => "shop",
+    },
+    parseQuantity: () => 0,
+    formatDuration: () => "0m",
+    buildGameStatsText: () => "",
+    buildEconomyStatsText: () => "",
+    buildInventoryText: () => "vazio",
+    incrementUserStat: () => {},
+  })
+
+  assert.equal(handled, true)
+  assert.equal(sent.length, 1)
+  assert.match(String(sent[0].payload?.text || ""), /Nível: \*6\*/)
+  assert.match(String(sent[0].payload?.text || ""), /XP: \*45\/120\*/)
+  assert.match(String(sent[0].payload?.text || ""), /Posição global XP: \*5\*/)
 })
 
 test("economy router handles !missao list and claim", async () => {
@@ -1787,265 +1831,6 @@ test("games router handles !jogos submenu", async () => {
   assert.equal(handled, true)
   assert.equal(sent.length, 1)
   assert.match(sent[0].payload.text, /SUBMENU: JOGOS/)
-})
-
-test("games router handles !coop for team participants", async () => {
-  const { sock, sent } = createSockCapture()
-  sock.groupMetadata = async () => ({
-    participants: [
-      { id: "leader@s.whatsapp.net" },
-      { id: "mate@s.whatsapp.net" },
-      { id: "other@s.whatsapp.net" },
-      { id: "bot@s.whatsapp.net" },
-    ],
-  })
-
-  const credits = []
-  const debits = []
-  const oldRandom = Math.random
-  Math.random = () => 0.05
-
-  try {
-    const handled = await handleGameCommands({
-      sock,
-      from: "group@g.us",
-      sender: "leader@s.whatsapp.net",
-      cmd: "!coop 4",
-      cmdName: "!coop",
-      cmdArg1: "4",
-      cmdArg2: "",
-      mentioned: [],
-      prefix: "!",
-      isGroup: true,
-      text: "!coop 4",
-      msg: { message: {} },
-      storage: {
-        getGameState: () => null,
-        setGameState: () => {},
-        clearGameState: () => {},
-        getUserTeamId: () => "T1",
-        getTeam: () => ({ teamId: "T1", name: "Alpha", members: ["leader@s.whatsapp.net", "mate@s.whatsapp.net"] }),
-        addTeamPoolCoins: () => true,
-      },
-      gameManager: {
-        createOptInSession: () => "ABCD",
-        getOptInSession: () => null,
-        addPlayerToOptIn: () => false,
-        clearOptInSession: () => {},
-        optInSessions: {},
-      },
-      economyService: {
-        getProfile: () => ({ progression: { level: 10 }, stats: {} }),
-        getCoins: () => 9999,
-        debitCoins: (userId, amount) => {
-          debits.push({ userId, amount })
-          return true
-        },
-        creditCoins: (userId, amount) => {
-          credits.push({ userId, amount })
-          return amount
-        },
-        addXp: () => ({ levelsGained: 0 }),
-        debitCoinsFlexible: () => 0,
-      },
-      caraOuCoroa: {
-        toggleDobroOuNada: () => ({ enabled: false }),
-        formatDobroStatus: () => "",
-      },
-      adivinhacao: {
-        start: () => ({}),
-        recordGuess: () => ({ valid: false, error: "" }),
-        getResults: () => ({}),
-        formatResults: () => "",
-      },
-      batataquente: {
-        start: () => ({}),
-        formatStatus: () => "",
-        getLoser: () => "",
-        recordPass: () => ({ valid: false, error: "" }),
-      },
-      dueloDados: {
-        start: () => ({}),
-        recordRoll: () => ({ valid: false, error: "" }),
-        getResults: () => ({}),
-        formatResults: () => "",
-      },
-      roletaRussa: {
-        start: () => ({}),
-        getCurrentPlayer: () => "",
-        takeShotAt: () => ({ hit: false }),
-        formatStatus: () => "",
-      },
-      startPeriodicGame: async () => ({ ok: true }),
-      GAME_REWARDS: {
-        ADIVINHACAO_EXACT: 60,
-        ADIVINHACAO_CLOSEST: 30,
-        DADOS_WIN: 35,
-        BATATA_WIN: 20,
-        ROLETA_WIN: 45,
-        ROLETA_WIN_GUARANTEED: 30,
-      },
-      BASE_GAME_REWARD: 30,
-      normalizeUnifiedGameType: () => null,
-      normalizeLobbyId: () => "",
-      activeGameKey: () => "",
-      resolveActiveLobbyForPlayer: () => ({ ok: false, reason: "not-found" }),
-      getLobbyCreateBlockMessage: () => null,
-      getGameBuyIn: () => 0,
-      collectLobbyBuyIn: () => ({ ok: true, pool: 0 }),
-      distributeLobbyBuyInPool: async () => {},
-      parsePositiveInt: (value, fallback = 1) => {
-        const n = Number.parseInt(String(value ?? ""), 10)
-        return Number.isFinite(n) && n > 0 ? n : fallback
-      },
-      isResenhaModeEnabled: () => false,
-      rewardPlayer: async () => {},
-      rewardPlayers: async () => {},
-      incrementUserStat: () => {},
-      applyRandomGamePunishment: async () => {},
-      createPendingTargetForWinner: async () => {},
-      jidNormalizedUser: (id) => id,
-      createLobbyWarningCallback: () => {},
-      createLobbyTimeoutCallback: () => {},
-      buildGameStatsText: () => "",
-    })
-
-    assert.equal(handled, true)
-    assert.ok(debits.length >= 2)
-    assert.ok(credits.length >= 2)
-    assert.ok(sent.some((entry) => /MISSÃO COOP/i.test(String(entry.payload?.text || ""))))
-  } finally {
-    Math.random = oldRandom
-  }
-})
-
-test("games router handles !teamduelo between different teams", async () => {
-  const { sock, sent } = createSockCapture()
-  sock.groupMetadata = async () => ({
-    participants: [
-      { id: "leader@s.whatsapp.net" },
-      { id: "mate@s.whatsapp.net" },
-      { id: "enemy@s.whatsapp.net" },
-      { id: "enemy2@s.whatsapp.net" },
-      { id: "bot@s.whatsapp.net" },
-    ],
-  })
-
-  const oldRandom = Math.random
-  Math.random = () => 0.2
-
-  try {
-    const handled = await handleGameCommands({
-      sock,
-      from: "group@g.us",
-      sender: "leader@s.whatsapp.net",
-      cmd: "!teamduelo @enemy 3",
-      cmdName: "!teamduelo",
-      cmdArg1: "@enemy",
-      cmdArg2: "3",
-      mentioned: ["enemy@s.whatsapp.net"],
-      prefix: "!",
-      isGroup: true,
-      text: "!teamduelo @enemy 3",
-      msg: { message: {} },
-      storage: {
-        getGameState: () => null,
-        setGameState: () => {},
-        clearGameState: () => {},
-        getUserTeamId: (userId) => {
-          if (userId.startsWith("leader") || userId.startsWith("mate")) return "TA"
-          return "TB"
-        },
-        getTeam: (teamId) => {
-          if (teamId === "TA") {
-            return { teamId: "TA", name: "Alpha", members: ["leader@s.whatsapp.net", "mate@s.whatsapp.net"] }
-          }
-          return { teamId: "TB", name: "Beta", members: ["enemy@s.whatsapp.net", "enemy2@s.whatsapp.net"] }
-        },
-        addTeamPoolCoins: () => true,
-      },
-      gameManager: {
-        createOptInSession: () => "ABCD",
-        getOptInSession: () => null,
-        addPlayerToOptIn: () => false,
-        clearOptInSession: () => {},
-        optInSessions: {},
-      },
-      economyService: {
-        getProfile: () => ({ progression: { level: 8 }, stats: {} }),
-        getCoins: () => 9999,
-        debitCoins: () => true,
-        creditCoins: () => true,
-        addXp: () => ({ levelsGained: 0 }),
-        debitCoinsFlexible: () => 0,
-      },
-      caraOuCoroa: {
-        toggleDobroOuNada: () => ({ enabled: false }),
-        formatDobroStatus: () => "",
-      },
-      adivinhacao: {
-        start: () => ({}),
-        recordGuess: () => ({ valid: false, error: "" }),
-        getResults: () => ({}),
-        formatResults: () => "",
-      },
-      batataquente: {
-        start: () => ({}),
-        formatStatus: () => "",
-        getLoser: () => "",
-        recordPass: () => ({ valid: false, error: "" }),
-      },
-      dueloDados: {
-        start: () => ({}),
-        recordRoll: () => ({ valid: false, error: "" }),
-        getResults: () => ({}),
-        formatResults: () => "",
-      },
-      roletaRussa: {
-        start: () => ({}),
-        getCurrentPlayer: () => "",
-        takeShotAt: () => ({ hit: false }),
-        formatStatus: () => "",
-      },
-      startPeriodicGame: async () => ({ ok: true }),
-      GAME_REWARDS: {
-        ADIVINHACAO_EXACT: 60,
-        ADIVINHACAO_CLOSEST: 30,
-        DADOS_WIN: 35,
-        BATATA_WIN: 20,
-        ROLETA_WIN: 45,
-        ROLETA_WIN_GUARANTEED: 30,
-      },
-      BASE_GAME_REWARD: 30,
-      normalizeUnifiedGameType: () => null,
-      normalizeLobbyId: () => "",
-      activeGameKey: () => "",
-      resolveActiveLobbyForPlayer: () => ({ ok: false, reason: "not-found" }),
-      getLobbyCreateBlockMessage: () => null,
-      getGameBuyIn: () => 0,
-      collectLobbyBuyIn: () => ({ ok: true, pool: 0 }),
-      distributeLobbyBuyInPool: async () => {},
-      parsePositiveInt: (value, fallback = 1) => {
-        const n = Number.parseInt(String(value ?? ""), 10)
-        return Number.isFinite(n) && n > 0 ? n : fallback
-      },
-      isResenhaModeEnabled: () => false,
-      rewardPlayer: async () => {},
-      rewardPlayers: async () => {},
-      incrementUserStat: () => {},
-      applyRandomGamePunishment: async () => {},
-      createPendingTargetForWinner: async () => {},
-      jidNormalizedUser: (id) => id,
-      createLobbyWarningCallback: () => {},
-      createLobbyTimeoutCallback: () => {},
-      buildGameStatsText: () => "",
-    })
-
-    assert.equal(handled, true)
-    assert.ok(sent.some((entry) => /TEAMDUELO/i.test(String(entry.payload?.text || ""))))
-  } finally {
-    Math.random = oldRandom
-  }
 })
 
 test("games router blocks !começar reação with fewer than 3 participants", async () => {

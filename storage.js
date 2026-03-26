@@ -33,7 +33,7 @@ let stateCache = {
     endDate: Date.now() + (42 * 24 * 60 * 60 * 1000),
     resetPolicy: "soft",
   },
-  teams: {}, // [teamId]: { name, createdBy, members: [userId], createdAt, poolCoins, poolItems: {} }
+  teams: {}, // [teamId]: { name, createdBy, lieutenants:[userId], members: [userId], createdAt, poolCoins, poolItems: {}, lastWithdrawAtByUser:{} }
   teamMembers: {}, // [userId]: teamId (for quick lookup)
   teamInvites: {}, // [teamId]: { [userId]: inviteStatus }
 }
@@ -444,10 +444,12 @@ const storage = {
       teamId,
       name: String(name || "").slice(0, 50) || "Sem Nome",
       createdBy: String(createdBy || ""),
+      lieutenants: [],
       members: [String(createdBy || "")],
       createdAt: Date.now(),
       poolCoins: 0,
       poolItems: {},
+      lastWithdrawAtByUser: {},
     }
     stateCache.teamMembers[createdBy] = teamId
     stateCache.teamInvites[teamId] = {}
@@ -468,6 +470,10 @@ const storage = {
     if (stateCache.teamInvites[teamId]) {
       delete stateCache.teamInvites[teamId][normalizedUserId]
     }
+    if (!Array.isArray(team.lieutenants)) team.lieutenants = []
+    if (!team.lastWithdrawAtByUser || typeof team.lastWithdrawAtByUser !== "object") {
+      team.lastWithdrawAtByUser = {}
+    }
     saveState()
     return true
   },
@@ -478,9 +484,63 @@ const storage = {
     const idx = team.members.indexOf(normalizedUserId)
     if (idx < 0) return false
     team.members.splice(idx, 1)
+    if (Array.isArray(team.lieutenants)) {
+      team.lieutenants = team.lieutenants.filter((id) => id !== normalizedUserId)
+    }
+    if (team.lastWithdrawAtByUser && typeof team.lastWithdrawAtByUser === "object") {
+      delete team.lastWithdrawAtByUser[normalizedUserId]
+    }
     if (stateCache.teamMembers[normalizedUserId] === teamId) {
       delete stateCache.teamMembers[normalizedUserId]
     }
+    saveState()
+    return true
+  },
+  promoteTeamLieutenant: (teamId, userId) => {
+    const team = stateCache.teams[teamId]
+    if (!team) return false
+    const normalizedUserId = String(userId || "")
+    if (!Array.isArray(team.members) || !team.members.includes(normalizedUserId)) return false
+    if (team.createdBy === normalizedUserId) return false
+    if (!Array.isArray(team.lieutenants)) team.lieutenants = []
+    if (team.lieutenants.includes(normalizedUserId)) return false
+    team.lieutenants.push(normalizedUserId)
+    saveState()
+    return true
+  },
+  demoteTeamLieutenant: (teamId, userId) => {
+    const team = stateCache.teams[teamId]
+    if (!team) return false
+    const normalizedUserId = String(userId || "")
+    if (!Array.isArray(team.lieutenants) || !team.lieutenants.includes(normalizedUserId)) return false
+    team.lieutenants = team.lieutenants.filter((id) => id !== normalizedUserId)
+    saveState()
+    return true
+  },
+  getTeamLieutenants: (teamId) => {
+    const team = stateCache.teams[teamId]
+    return team && Array.isArray(team.lieutenants) ? [...team.lieutenants] : []
+  },
+  isTeamOwnerOrLieutenant: (teamId, userId) => {
+    const team = stateCache.teams[teamId]
+    if (!team) return false
+    const normalizedUserId = String(userId || "")
+    if (team.createdBy === normalizedUserId) return true
+    if (!Array.isArray(team.lieutenants)) return false
+    return team.lieutenants.includes(normalizedUserId)
+  },
+  getTeamLastWithdrawAt: (teamId, userId) => {
+    const team = stateCache.teams[teamId]
+    if (!team || !team.lastWithdrawAtByUser || typeof team.lastWithdrawAtByUser !== "object") return 0
+    return Math.max(0, Number(team.lastWithdrawAtByUser[String(userId || "")]) || 0)
+  },
+  setTeamLastWithdrawAt: (teamId, userId, timestamp = Date.now()) => {
+    const team = stateCache.teams[teamId]
+    if (!team) return false
+    if (!team.lastWithdrawAtByUser || typeof team.lastWithdrawAtByUser !== "object") {
+      team.lastWithdrawAtByUser = {}
+    }
+    team.lastWithdrawAtByUser[String(userId || "")] = Math.max(0, Math.floor(Number(timestamp) || Date.now()))
     saveState()
     return true
   },

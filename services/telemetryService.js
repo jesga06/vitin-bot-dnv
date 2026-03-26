@@ -15,6 +15,9 @@ let metricsCache = {
   updatedAt: Date.now(),
 }
 
+let userNameResolver = null
+let groupNameResolver = null
+
 function safeString(value) {
   if (value === null || value === undefined) return ""
   return String(value)
@@ -97,10 +100,11 @@ function saveMetrics(immediate = false) {
 function appendEvent(type, payload = {}) {
   try {
     const now = Date.now()
+    const normalizedPayload = enrichTelemetryPayload(payload)
     const evt = {
       at: now,
       type: safeString(type).trim() || "unknown",
-      payload: payload || {},
+      payload: normalizedPayload,
     }
     fs.appendFileSync(getEventsFilePath(now), `${JSON.stringify(evt)}\n`, "utf8")
   } catch (err) {
@@ -108,10 +112,147 @@ function appendEvent(type, payload = {}) {
   }
 }
 
+function normalizeJid(value) {
+  return safeString(value).trim().toLowerCase()
+}
+
+function getPhoneFromJid(jid) {
+  const normalized = normalizeJid(jid)
+  if (!normalized || !normalized.includes("@")) return ""
+  const local = normalized.split("@")[0]
+  return local.replace(/\D+/g, "")
+}
+
+function getKnownUserNameForTelemetry(jid) {
+  const normalized = normalizeJid(jid)
+  if (!normalized) return ""
+  if (typeof userNameResolver === "function") {
+    try {
+      return safeString(userNameResolver(normalized)).trim()
+    } catch {
+      return normalized.split("@")[0] || normalized
+    }
+  }
+  return normalized.split("@")[0] || normalized
+}
+
+function getKnownGroupNameForTelemetry(groupJid) {
+  const normalized = normalizeJid(groupJid)
+  if (!normalized) return ""
+  if (typeof groupNameResolver === "function") {
+    try {
+      return safeString(groupNameResolver(normalized)).trim()
+    } catch {
+      return ""
+    }
+  }
+  return ""
+}
+
+function collectUserJids(payload = {}) {
+  const userKeyHints = ["userId", "sender", "by", "targetId", "winnerId", "loserId"]
+  const userArrayHints = ["players", "mentions", "userIds", "targets"]
+  const found = new Set()
+
+  for (const key of userKeyHints) {
+    const value = payload?.[key]
+    const jid = normalizeJid(value)
+    if (jid.includes("@") && !jid.endsWith("@g.us")) {
+      found.add(jid)
+    }
+  }
+
+  for (const key of userArrayHints) {
+    const values = Array.isArray(payload?.[key]) ? payload[key] : []
+    for (const item of values) {
+      const jid = normalizeJid(item)
+      if (jid.includes("@") && !jid.endsWith("@g.us")) {
+        found.add(jid)
+      }
+    }
+  }
+
+  return [...found]
+}
+
+function collectGroupJids(payload = {}) {
+  const groupKeyHints = ["groupId", "from", "chatId"]
+  const groupArrayHints = ["groups", "groupIds"]
+  const found = new Set()
+
+  for (const key of groupKeyHints) {
+    const value = payload?.[key]
+    const jid = normalizeJid(value)
+    if (jid.endsWith("@g.us")) {
+      found.add(jid)
+    }
+  }
+
+  for (const key of groupArrayHints) {
+    const values = Array.isArray(payload?.[key]) ? payload[key] : []
+    for (const item of values) {
+      const jid = normalizeJid(item)
+      if (jid.endsWith("@g.us")) {
+        found.add(jid)
+      }
+    }
+  }
+
+  return [...found]
+}
+
+function enrichTelemetryPayload(payload = {}) {
+  const basePayload = payload && typeof payload === "object" ? { ...payload } : { value: payload }
+  const users = collectUserJids(basePayload).map((jid) => ({
+    jid,
+    phone: getPhoneFromJid(jid),
+    knownUserName: getKnownUserNameForTelemetry(jid),
+  }))
+  const groups = collectGroupJids(basePayload).map((jid) => ({
+    jid,
+    knownGroupName: getKnownGroupNameForTelemetry(jid),
+  }))
+
+  return {
+    ...basePayload,
+    telemetryUsers: users,
+    telemetryGroups: groups,
+  }
+}
+
+function enrichTelemetryTags(tags = {}) {
+  const baseTags = tags && typeof tags === "object" ? { ...tags } : {}
+  const users = collectUserJids(baseTags)
+  const groups = collectGroupJids(baseTags)
+  const primaryUserJid = users[0] || ""
+  const primaryGroupJid = groups[0] || ""
+
+  if (primaryUserJid) {
+    baseTags.userJid = primaryUserJid
+    baseTags.userPhone = getPhoneFromJid(primaryUserJid)
+    baseTags.userKnownName = getKnownUserNameForTelemetry(primaryUserJid)
+  }
+  if (primaryGroupJid) {
+    baseTags.groupJid = primaryGroupJid
+    baseTags.groupKnownName = getKnownGroupNameForTelemetry(primaryGroupJid)
+  }
+
+  return baseTags
+}
+
+function setIdentityResolvers(options = {}) {
+  userNameResolver = typeof options.getKnownUserName === "function"
+    ? options.getKnownUserName
+    : null
+  groupNameResolver = typeof options.getKnownGroupName === "function"
+    ? options.getKnownGroupName
+    : null
+}
+
 function incrementCounter(name, value = 1, tags = {}) {
   const amount = Number(value)
   if (!Number.isFinite(amount)) return
-  const seriesKey = buildSeriesKey(name, tags)
+  const seriesKey = buildSeriesKey(name, enrichTelemetryTags(tags))
   if (!seriesKey) return
   const current = Number(metricsCache.counters[seriesKey] || 0)
   metricsCache.counters[seriesKey] = current + amount
@@ -121,7 +262,7 @@ function incrementCounter(name, value = 1, tags = {}) {
 function observeDuration(name, ms, tags = {}) {
   const value = Number(ms)
   if (!Number.isFinite(value) || value < 0) return
-  const seriesKey = buildSeriesKey(name, tags)
+  const seriesKey = buildSeriesKey(name, enrichTelemetryTags(tags))
   if (!seriesKey) return
   if (!metricsCache.durations[seriesKey]) {
     metricsCache.durations[seriesKey] = {
@@ -164,6 +305,7 @@ module.exports = {
   incrementCounter,
   observeDuration,
   markCommand,
+  setIdentityResolvers,
   getMetricsSnapshot,
   saveMetrics,
 }

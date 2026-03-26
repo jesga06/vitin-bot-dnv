@@ -3,7 +3,7 @@ const path = require("path")
 const test = require("node:test")
 const assert = require("node:assert/strict")
 
-const economy = require("../economyService")
+const economy = require("../services/economyService")
 
 const ECONOMY_FILE = path.join(__dirname, "..", ".data", "economy.json")
 const TEST_USERS = [
@@ -78,11 +78,23 @@ test("kronos increases steal success chance by 10 percent", () => {
   const victim = TEST_USERS[1]
 
   const baseChance = economy.getStealSuccessChance(victim, thief)
-  assert.equal(baseChance, 0.3)
 
   economy.addItem(thief, "kronosQuebrada", 1)
   const buffedChance = economy.getStealSuccessChance(victim, thief)
-  assert.equal(buffedChance, 0.4)
+  assert.equal(Number((buffedChance - baseChance).toFixed(2)), 0.1)
+})
+
+test("selling true kronos crown removes active kronos buff", () => {
+  cleanupTestUsers()
+  const a = TEST_USERS[0]
+
+  economy.addItem(a, "kronosVerdadeira", 1)
+  assert.equal(economy.hasActiveKronos(a), true)
+
+  const sold = economy.sellItem(a, "kronosVerdadeira", 1)
+  assert.equal(sold.ok, true)
+  assert.equal(economy.getItemQuantity(a, "kronosVerdadeira"), 0)
+  assert.equal(economy.hasActiveKronos(a), false)
 })
 
 test("work cooldown can be reset to zero", () => {
@@ -149,19 +161,19 @@ test("addXp grants milestone reward at level 5", () => {
   assert.equal(updatedCoins > initialCoins, true)
 })
 
-test("xp curve keeps per-level growth between 15 and 50 percent", () => {
+test("xp curve keeps per-level growth between 10 and 30 percent", () => {
   const reqLevel1 = economy.getXpRequiredForLevel(1)
   const reqLevel2 = economy.getXpRequiredForLevel(2)
 
   const growth12 = (reqLevel2 - reqLevel1) / reqLevel1
 
-  assert.ok(growth12 >= 0.15 && growth12 <= 0.5)
+  assert.ok(growth12 >= 0.10 && growth12 <= 0.30)
 
   for (let level = 2; level <= 25; level++) {
     const current = economy.getXpRequiredForLevel(level)
     const previous = economy.getXpRequiredForLevel(level - 1)
     const growth = (current - previous) / previous
-    assert.ok(growth >= 0.15 && growth <= 0.5)
+    assert.ok(growth >= 0.10 && growth <= 0.30)
   }
 })
 

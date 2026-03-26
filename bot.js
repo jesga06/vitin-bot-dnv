@@ -2230,8 +2230,8 @@ async function startBot(){
         await sock.sendMessage(from, {
           text:
             `⚠️ Confirme para remover seu registro com *${prefix}unregister confirmar* em até 2 minutos.\n` +
-            `Para abortar, use *${prefix}unregister cancelar*.\n\n` +
-            `Obs: para apagar também os dados de economia, use *${prefix}deleteconta* separadamente.`,
+            `Para abortar, use *${prefix}unregister cancelar*.\n` +
+            `Obs: Isso também irá apagar seus dados de economia, junto com suas estatísticas.`,
         })
         return
       }

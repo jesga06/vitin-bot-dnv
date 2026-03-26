@@ -672,8 +672,61 @@ let economyCache = {
   seasonState: buildDefaultSeasonState(),
 }
 
+function splitDeviceSuffix(value = "") {
+  return String(value || "").split(":")[0]
+}
+
+function parseUserParts(value = "") {
+  const base = splitDeviceSuffix(String(value || "").trim().toLowerCase())
+  const atIndex = base.indexOf("@")
+  if (atIndex < 0) return { base, userPart: base, domain: "" }
+  return {
+    base,
+    userPart: base.slice(0, atIndex),
+    domain: base.slice(atIndex + 1),
+  }
+}
+
+function canonicalUserHandle(userPart = "") {
+  const cleaned = String(userPart || "").trim().toLowerCase()
+  if (!cleaned) return ""
+  const digits = cleaned.replace(/\D+/g, "")
+  return digits || cleaned
+}
+
 function normalizeUserId(userId = "") {
-  return String(userId || "").trim().toLowerCase()
+  const { base, userPart, domain } = parseUserParts(userId)
+  if (!base || !userPart) return ""
+  if (domain === "s.whatsapp.net" || domain === "lid") {
+    return `${canonicalUserHandle(userPart)}@s.whatsapp.net`
+  }
+  return base
+}
+
+function getUserIdAliases(userId = "") {
+  const aliases = new Set()
+  const { base, userPart, domain } = parseUserParts(userId)
+  const normalized = normalizeUserId(userId)
+  if (normalized) aliases.add(normalized)
+  if (base) aliases.add(base)
+
+  if ((domain === "s.whatsapp.net" || domain === "lid") && userPart) {
+    const canonical = canonicalUserHandle(userPart)
+    if (canonical) {
+      aliases.add(`${canonical}@s.whatsapp.net`)
+      aliases.add(`${canonical}@lid`)
+    }
+  }
+
+  return Array.from(aliases).filter(Boolean)
+}
+
+function pickPreferredUserRecord(current = null, incoming = null) {
+  if (!current) return incoming
+  if (!incoming) return current
+  const currentUpdated = Math.floor(Number(current.updatedAt) || 0)
+  const incomingUpdated = Math.floor(Number(incoming.updatedAt) || 0)
+  return incomingUpdated > currentUpdated ? incoming : current
 }
 
 function capPositiveInt(value, cap, fallback = 0) {
@@ -767,6 +820,22 @@ function loadEconomy() {
     if (!economyCache.users || typeof economyCache.users !== "object") {
       economyCache.users = {}
     }
+
+    const migratedUsers = {}
+    let hasUserIdMigration = false
+    for (const [rawUserId, payload] of Object.entries(economyCache.users)) {
+      const normalized = normalizeUserId(rawUserId)
+      if (!normalized) {
+        hasUserIdMigration = true
+        continue
+      }
+      if (normalized !== rawUserId) {
+        hasUserIdMigration = true
+      }
+      migratedUsers[normalized] = pickPreferredUserRecord(migratedUsers[normalized], payload)
+    }
+    economyCache.users = migratedUsers
+
     if (!economyCache.seasonState || typeof economyCache.seasonState !== "object") {
       economyCache.seasonState = buildDefaultSeasonState(now)
     }
@@ -780,6 +849,9 @@ function loadEconomy() {
       ? Math.floor(economyCache.seasonState.endDate)
       : (economyCache.seasonState.startDate + SEASON_DURATION_MS)
     economyCache.seasonState.resetPolicy = economyCache.seasonState.resetPolicy === "hard" ? "hard" : "soft"
+    if (hasUserIdMigration) {
+      saveEconomy(true)
+    }
     recordDailyEconomyHealthSnapshot("load")
   } catch (err) {
     console.error("Erro ao carregar economia:", err)
@@ -1101,6 +1173,17 @@ function ensureUser(userId) {
   const normalized = normalizeUserId(userId)
   if (!normalized) return null
 
+  let migratedAlias = false
+  const aliases = getUserIdAliases(userId)
+  for (const alias of aliases) {
+    if (!alias || alias === normalized) continue
+    const aliasRecord = economyCache.users[alias]
+    if (!aliasRecord) continue
+    economyCache.users[normalized] = pickPreferredUserRecord(economyCache.users[normalized], aliasRecord)
+    delete economyCache.users[alias]
+    migratedAlias = true
+  }
+
   if (!economyCache.users[normalized]) {
     economyCache.users[normalized] = {
       coins: DEFAULT_COINS,
@@ -1137,6 +1220,8 @@ function ensureUser(userId) {
       updatedAt: Date.now(),
     }
     saveEconomy()
+  } else if (migratedAlias) {
+    saveEconomy()
   }
 
   const user = economyCache.users[normalized]
@@ -1145,9 +1230,15 @@ function ensureUser(userId) {
 }
 
 function deleteUserProfile(userId) {
-  const normalized = normalizeUserId(userId)
-  if (!normalized || !economyCache.users[normalized]) return false
-  delete economyCache.users[normalized]
+  const aliases = getUserIdAliases(userId)
+  let removed = false
+  for (const alias of aliases) {
+    if (economyCache.users[alias]) {
+      delete economyCache.users[alias]
+      removed = true
+    }
+  }
+  if (!removed) return false
   saveEconomy(true)
   return true
 }

@@ -1,7 +1,7 @@
 const fs = require("fs")
 const path = require("path")
 
-const DATA_DIR = path.join(__dirname, ".data")
+const DATA_DIR = path.join(__dirname, "..", ".data")
 const REGISTRATION_FILE = path.join(DATA_DIR, "registrations.json")
 const ECONOMY_FILE = path.join(DATA_DIR, "economy.json")
 
@@ -15,10 +15,104 @@ let cache = {
 
 let saveTimeout = null
 
+function splitDeviceSuffix(value = "") {
+  return String(value || "").split(":")[0]
+}
+
+function parseUserParts(value = "") {
+  const base = splitDeviceSuffix(String(value || "").trim().toLowerCase())
+  const atIndex = base.indexOf("@")
+  if (atIndex < 0) return { base, userPart: base, domain: "" }
+  return {
+    base,
+    userPart: base.slice(0, atIndex),
+    domain: base.slice(atIndex + 1),
+  }
+}
+
+function canonicalUserHandle(userPart = "") {
+  const cleaned = String(userPart || "").trim().toLowerCase()
+  if (!cleaned) return ""
+  const digits = cleaned.replace(/\D+/g, "")
+  return digits || cleaned
+}
+
 function normalizeUserId(value = "") {
-  const raw = String(value || "").trim().toLowerCase()
-  if (!raw) return ""
-  return raw.split(":")[0]
+  const { base, userPart, domain } = parseUserParts(value)
+  if (!base || !userPart) return ""
+  if (domain === "s.whatsapp.net" || domain === "lid") {
+    return `${canonicalUserHandle(userPart)}@s.whatsapp.net`
+  }
+  return base
+}
+
+function getUserIdAliases(value = "") {
+  const aliases = new Set()
+  const { base, userPart, domain } = parseUserParts(value)
+  const normalized = normalizeUserId(value)
+  if (normalized) aliases.add(normalized)
+  if (base) aliases.add(base)
+
+  if ((domain === "s.whatsapp.net" || domain === "lid") && userPart) {
+    const canonical = canonicalUserHandle(userPart)
+    if (canonical) {
+      aliases.add(`${canonical}@s.whatsapp.net`)
+      aliases.add(`${canonical}@lid`)
+    }
+  }
+
+  return Array.from(aliases).filter(Boolean)
+}
+
+function normalizeRegistrationEntry(entry = {}, userId = "") {
+  const now = Date.now()
+  return {
+    userId,
+    registeredAt: Math.floor(Number(entry?.registeredAt) || now),
+    updatedAt: Math.floor(Number(entry?.updatedAt) || now),
+    lastKnownName: String(entry?.lastKnownName || "").trim(),
+    notificationsEnabled: entry?.notificationsEnabled !== false,
+    migratedEconomy: Boolean(entry?.migratedEconomy),
+    migrationSnapshot: entry?.migrationSnapshot && typeof entry.migrationSnapshot === "object"
+      ? entry.migrationSnapshot
+      : null,
+  }
+}
+
+function pickPreferredRegistrationEntry(current = null, incoming = null, userId = "") {
+  if (!current) return normalizeRegistrationEntry(incoming, userId)
+  if (!incoming) return normalizeRegistrationEntry(current, userId)
+  const currentNormalized = normalizeRegistrationEntry(current, userId)
+  const incomingNormalized = normalizeRegistrationEntry(incoming, userId)
+  const preferred = incomingNormalized.updatedAt > currentNormalized.updatedAt
+    ? incomingNormalized
+    : currentNormalized
+  if (!preferred.lastKnownName) {
+    preferred.lastKnownName = incomingNormalized.lastKnownName || currentNormalized.lastKnownName || ""
+  }
+  return preferred
+}
+
+function getAnyEntryByAliases(userId = "") {
+  const aliases = getUserIdAliases(userId)
+  for (const alias of aliases) {
+    if (cache.users[alias]) {
+      return { alias, entry: cache.users[alias] }
+    }
+  }
+  return null
+}
+
+function removeAliasesFromCache(userId = "") {
+  const aliases = getUserIdAliases(userId)
+  let removed = false
+  aliases.forEach((alias) => {
+    if (cache.users[alias]) {
+      delete cache.users[alias]
+      removed = true
+    }
+  })
+  return removed
 }
 
 function load() {
@@ -28,8 +122,25 @@ function load() {
       return
     }
     const data = JSON.parse(fs.readFileSync(REGISTRATION_FILE, "utf8"))
-    cache = {
-      users: data?.users && typeof data.users === "object" ? data.users : {},
+    const rawUsers = data?.users && typeof data.users === "object" ? data.users : {}
+    const migratedUsers = {}
+    let hasMigration = false
+
+    Object.entries(rawUsers).forEach(([rawUserId, rawEntry]) => {
+      const normalized = normalizeUserId(rawUserId)
+      if (!normalized) {
+        hasMigration = true
+        return
+      }
+      if (normalized !== rawUserId) {
+        hasMigration = true
+      }
+      migratedUsers[normalized] = pickPreferredRegistrationEntry(migratedUsers[normalized], rawEntry, normalized)
+    })
+
+    cache = { users: migratedUsers }
+    if (hasMigration) {
+      save(true)
     }
   } catch (err) {
     console.error("Erro ao carregar registrations.json", err)
@@ -57,13 +168,16 @@ function save(immediate = false) {
 }
 
 function readEconomyUserRaw(userId) {
-  const normalized = normalizeUserId(userId)
-  if (!normalized) return null
+  const aliases = getUserIdAliases(userId)
+  if (aliases.length === 0) return null
   try {
     if (!fs.existsSync(ECONOMY_FILE)) return null
     const raw = JSON.parse(fs.readFileSync(ECONOMY_FILE, "utf8"))
     const users = raw?.users || {}
-    return users[normalized] || null
+    for (const alias of aliases) {
+      if (users[alias]) return users[alias]
+    }
+    return null
   } catch (err) {
     console.error("Erro ao ler economy.json para migração", err)
     return null
@@ -73,12 +187,17 @@ function readEconomyUserRaw(userId) {
 function touchKnownName(userId, profileName = "") {
   const normalized = normalizeUserId(userId)
   if (!normalized) return false
-  const entry = cache.users[normalized]
+  const found = getAnyEntryByAliases(normalized)
+  const entry = found?.entry || null
   if (!entry) return false
   const safeName = String(profileName || "").trim()
   if (safeName && safeName !== entry.lastKnownName) {
     entry.lastKnownName = safeName
     entry.updatedAt = Date.now()
+    if (found?.alias && found.alias !== normalized) {
+      cache.users[normalized] = entry
+      delete cache.users[found.alias]
+    }
     save()
   }
   return true
@@ -90,7 +209,13 @@ function registerUser(userId, options = {}) {
     return { ok: false, reason: "invalid-user" }
   }
 
-  if (cache.users[normalized]) {
+  const existing = getAnyEntryByAliases(normalized)
+  if (existing?.entry) {
+    if (existing.alias !== normalized) {
+      cache.users[normalized] = normalizeRegistrationEntry(existing.entry, normalized)
+      delete cache.users[existing.alias]
+      save()
+    }
     touchKnownName(normalized, options?.profileName || "")
     return {
       ok: false,
@@ -137,17 +262,17 @@ function unregisterUser(userId) {
     return { ok: false, reason: "invalid-user" }
   }
 
-  if (!cache.users[normalized]) {
+  const removed = removeAliasesFromCache(normalized)
+  if (!removed) {
     return { ok: false, reason: "not-registered" }
   }
 
-  delete cache.users[normalized]
   save()
 
   return {
     ok: true,
     userId: normalized,
-    message: "Registro removido. Use !deleteconta para apagar tudo."
+    message: "Registro removido."
   }
 }
 
@@ -158,17 +283,22 @@ function deleteUserAccount(userId) {
     return { ok: false, reason: "invalid-user" }
   }
 
-  // remove registro
-  if (cache.users[normalized]) {
-    delete cache.users[normalized]
-  }
+  const removedRegistration = removeAliasesFromCache(normalized)
 
-  // remove economia
+  let removedEconomy = false
   try {
     if (fs.existsSync(ECONOMY_FILE)) {
       const raw = JSON.parse(fs.readFileSync(ECONOMY_FILE, "utf8"))
-      if (raw.users && raw.users[normalized]) {
-        delete raw.users[normalized]
+      const aliases = getUserIdAliases(normalized)
+      if (raw.users && typeof raw.users === "object") {
+        aliases.forEach((alias) => {
+          if (raw.users[alias]) {
+            delete raw.users[alias]
+            removedEconomy = true
+          }
+        })
+      }
+      if (removedEconomy) {
         fs.writeFileSync(ECONOMY_FILE, JSON.stringify(raw, null, 2))
       }
     }
@@ -178,20 +308,29 @@ function deleteUserAccount(userId) {
 
   save(true)
 
-  return { ok: true, userId: normalized }
+  return {
+    ok: true,
+    userId: normalized,
+    removedRegistration,
+    removedEconomy,
+  }
 }
 
 function isRegistered(userId) {
-  const normalized = normalizeUserId(userId)
-  if (!normalized) return false
-  return Boolean(cache.users[normalized])
+  return Boolean(getAnyEntryByAliases(userId)?.entry)
 }
 
 function getRegisteredEntry(userId) {
   const normalized = normalizeUserId(userId)
   if (!normalized) return null
-  const entry = cache.users[normalized]
-  return entry ? { ...entry } : null
+  const found = getAnyEntryByAliases(normalized)
+  if (!found?.entry) return null
+  if (found.alias !== normalized) {
+    cache.users[normalized] = normalizeRegistrationEntry(found.entry, normalized)
+    delete cache.users[found.alias]
+    save()
+  }
+  return { ...cache.users[normalized] }
 }
 
 function getRegisteredUsers() {
@@ -212,6 +351,7 @@ load()
 
 module.exports = {
   normalizeUserId,
+  getUserIdAliases,
   registerUser,
   unregisterUser,
   deleteUserAccount, // adicionado

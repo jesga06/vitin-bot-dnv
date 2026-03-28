@@ -16,6 +16,7 @@ const sharp = require("sharp")
 const fs = require("fs")
 const path = require("path")
 const crypto = require("crypto")
+const os = require("os")
 const { execFile } = require("child_process")
 const ffmpeg = require("fluent-ffmpeg")
 const ffmpegPath = require("ffmpeg-static")
@@ -1241,31 +1242,34 @@ app.listen(PORT,()=>console.log("Servidor rodando na porta " + PORT))
 // VIDEO PARA STICKER
 // =========================
 async function videoToSticker(buffer){
-  const input = "./input.mp4"
-  const output = "./output.webp"
+  const id = crypto.randomBytes(8).toString("hex")
+  const input = path.join(os.tmpdir(), `sticker_in_${id}.mp4`)
+  const output = path.join(os.tmpdir(), `sticker_out_${id}.webp`)
 
   fs.writeFileSync(input, buffer)
 
-  await new Promise((resolve,reject)=>{
-    ffmpeg(input)
-      .outputOptions([
-        "-vcodec libwebp",
-        "-vf scale=512:512:flags=lanczos", // força deformação completa para 512x512
-        "-loop 0",
-        "-preset default",
-        "-an",
-        "-vsync 0"
-      ])
-      .toFormat("webp")
-      .save(output)
-      .on("end", resolve)
-      .on("error", reject)
-  })
+  try {
+    await new Promise((resolve,reject)=>{
+      ffmpeg(input)
+        .outputOptions([
+          "-vcodec libwebp",
+          "-vf scale=512:512:flags=lanczos", // força deformação completa para 512x512
+          "-loop 0",
+          "-preset default",
+          "-an",
+          "-vsync 0"
+        ])
+        .toFormat("webp")
+        .save(output)
+        .on("end", resolve)
+        .on("error", reject)
+    })
 
-  const sticker = fs.readFileSync(output)
-  fs.unlinkSync(input)
-  fs.unlinkSync(output)
-  return sticker
+    return fs.readFileSync(output)
+  } finally {
+    try { fs.unlinkSync(input) } catch (_) {}
+    try { fs.unlinkSync(output) } catch (_) {}
+  }
 }
 
 // =========================

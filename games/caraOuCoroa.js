@@ -126,7 +126,6 @@ function clearActivePunishmentByState(groupId, userId) {
   if (!punishment) return
   if (punishment.timerId) clearTimeout(punishment.timerId)
   delete activePunishments[groupId][userId]
-  if (Object.keys(activePunishments[groupId]).length === 0) delete activePunishments[groupId]
   storage.setActivePunishments(activePunishments)
 }
 

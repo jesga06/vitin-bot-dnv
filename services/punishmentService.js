@@ -338,7 +338,6 @@ function clearPunishment(groupId, userId) {
   const timerId = activePunishments[groupId][userId]?.timerId
   if (timerId) clearTimeout(timerId)
   delete activePunishments[groupId][userId]
-  if (Object.keys(activePunishments[groupId]).length === 0) delete activePunishments[groupId]
   storage.setActivePunishments(activePunishments)
 }
 

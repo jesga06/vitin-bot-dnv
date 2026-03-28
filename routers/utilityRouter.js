@@ -1,4 +1,5 @@
 const telemetry = require("../services/telemetryService")
+const { getCommandHelp, getPublicCommandNames } = require("../commandHelp")
 
 const pendingPrivateFeedbackBySender = new Map()
 
@@ -41,6 +42,7 @@ async function handleUtilityCommands(ctx) {
 
     const sections = {
       menu: [
+        { cmd: `${prefix}ajuda`, aliases: [`${prefix}duvida`], usage: `${prefix}ajuda <comando>`, effect: "explica como usar um comando", badges: ["GERAL"] },
         { cmd: `${prefix}feedback`, usage: `${prefix}feedback`, effect: "links para feedback e report de bugs", badges: ["GERAL"] },
         { cmd: `${prefix}feedbackpriv`, usage: `${prefix}feedbackpriv`, effect: "captura a proxima mensagem e envia feedback no privado para override", badges: ["GERAL"] },
         { cmd: `${prefix}menu`, usage: `${prefix}menu`, effect: "abre o menu principal", badges: ["GERAL"] },
@@ -128,6 +130,7 @@ async function handleUtilityCommands(ctx) {
         { cmd: `${prefix}removeoverride`, usage: `${prefix}removeoverride @usuario`, effect: "remove de perfis override", badges: ["DM", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}overridelist`, usage: `${prefix}overridelist`, effect: "status dos perfis/grupos", badges: ["DM", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}overridegroup`, usage: `${prefix}overridegroup <perfil> <add|rm|list> [groupJid]`, effect: "mapeia grupos por perfil", badges: ["DM", "OVERRIDE", "OCULTO"] },
+        { cmd: `${prefix}whois`, usage: `${prefix}whois <apelido>`, effect: "resolve numero pelo apelido", badges: ["DM", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}jidsgrupo`, usage: `${prefix}jidsgrupo @user1 @user2`, effect: "envia JIDs normalizados no DM", badges: ["GRUPO", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}wipeeconomia`, aliases: [`${prefix}wipeeconomy`], usage: `${prefix}wipeeconomia`, effect: "wipe interativo total/perfis", badges: ["DM", "HARDCODED", "OCULTO"] },
         { cmd: `${prefix}nuke`, usage: `${prefix}nuke`, effect: "limpa punicoes do proprio override", badges: ["GRUPO", "OVERRIDE", "OCULTO"] },
@@ -218,6 +221,10 @@ async function handleUtilityCommands(ctx) {
 │ ⚙️ Sistema: Baileys
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
+╭━━━〔 ❓ AJUDA 〕━━━╮
+│ ${prefix}ajuda <comando> - explica comando
+╰━━━━━━━━━━━━━━━━━━━━╯
+
 ╭━━━〔 🛠️ FEEDBACK 〕━━━╮
 │ ${prefix}feedback
 │ ${prefix}feedbackpriv
@@ -244,6 +251,45 @@ async function handleUtilityCommands(ctx) {
 │ ${prefix}admeconomia
 ╰━━━━━━━━━━━━━━━━━━━━╯`,
     })
+    return true
+  }
+
+  if (cmd === prefix + "ajuda" || cmd.startsWith(prefix + "ajuda ") || cmd === prefix + "duvida" || cmd.startsWith(prefix + "duvida ")) {
+    const tokens = String(cmd || "").trim().split(/\s+/).filter(Boolean)
+    const requested = String(tokens.slice(1).join(" ") || "").trim().toLowerCase().replace(/^!+/, "")
+
+    if (!requested) {
+      const examples = getPublicCommandNames().slice(0, 12).map((name) => `!${name}`).join(", ")
+      await sock.sendMessage(from, {
+        text:
+          `Use: *${prefix}ajuda <comando>*\n` +
+          `Exemplo: *${prefix}ajuda economia*\n` +
+          `Comandos comuns: ${examples}`,
+      })
+      trackUtility("ajuda", "rejected", { reason: "missing-command" })
+      return true
+    }
+
+    const helpText = getCommandHelp(requested)
+    if (!helpText) {
+      await sock.sendMessage(from, {
+        text: `Não encontrei ajuda para *${requested}*. Use *${prefix}menu* para ver os comandos.`,
+      })
+      trackUtility("ajuda", "rejected", { reason: "unknown-command", requested })
+      return true
+    }
+
+    if (isGroup) {
+      await sock.sendMessage(sender, { text: helpText })
+      await sock.sendMessage(from, {
+        text: `📩 @${sender.split("@")[0]}, te enviei a ajuda de *${requested}* no privado.`,
+        mentions: [sender],
+      })
+    } else {
+      await sock.sendMessage(from, { text: helpText })
+    }
+
+    trackUtility("ajuda", "success", { requested, dm: isGroup })
     return true
   }
 

@@ -114,7 +114,8 @@ Observações de lobby:
 - !doarcoins / !doaritem
 - !roubar
 - !daily
-- !cassino / !aposta
+- !cassino <valor>
+- !aposta <LobbyID> <1-10|skip>
 - !lootbox <quantidade>
 - !falsificar <tipo 1-13> [severidade] [quantidade] [S|N]
 - !loteria "<titulo>" "<recompensas>" <S|N> <qtdVencedores>

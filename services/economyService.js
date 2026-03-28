@@ -615,6 +615,8 @@ const DEFAULT_USER_STATS = {
   itemsBought: 0,
   shieldsUsed: 0,
   questsCompleted: 0,
+  tradesCompleted: 0,
+  forgedPasses: 0,
 }
 
 const DEFAULT_PROGRESSION = {
@@ -1320,6 +1322,8 @@ function creditCoins(userId, amount, transaction = null) {
   if (applied <= 0) return 0
 
   user.coins = current + applied
+  if (!Number.isFinite(user.stats.coinsLifetimeEarned)) user.stats.coinsLifetimeEarned = 0
+  user.stats.coinsLifetimeEarned = Math.max(0, Math.floor(Number(user.stats.coinsLifetimeEarned) || 0) + applied)
   touchUser(user)
   saveEconomy()
   if (transaction) {
@@ -2599,10 +2603,26 @@ function setMentionOptIn(userId = "", enabled = false) {
 function setPublicLabel(userId = "", label = "") {
   const user = ensureUser(userId)
   if (!user) return false
-  user.preferences.publicLabel = String(label || "").trim().slice(0, 32)
+  user.preferences.publicLabel = String(label || "").trim().slice(0, 30)
   touchUser(user)
   saveEconomy()
   return true
+}
+
+function findUsersByPublicLabel(label = "") {
+  const wanted = String(label || "").trim().toLowerCase()
+  if (!wanted) return []
+
+  return Object.keys(economyCache.users)
+    .map((userId) => {
+      const current = String(economyCache.users?.[userId]?.preferences?.publicLabel || "").trim()
+      return {
+        userId,
+        publicLabel: current,
+      }
+    })
+    .filter((entry) => entry.publicLabel && entry.publicLabel.toLowerCase() === wanted)
+    .sort((a, b) => a.userId.localeCompare(b.userId))
 }
 
 function incrementStat(userId, key, amount = 1) {
@@ -2702,6 +2722,7 @@ function buildForgeDeps() {
     addItem,
     removeItem,
     pickRandomPunishmentType,
+    incrementStat,
   }
 }
 
@@ -2845,6 +2866,7 @@ module.exports = {
   isMentionOptIn,
   setMentionOptIn,
   setPublicLabel,
+  findUsersByPublicLabel,
   openLootbox,
   forgePunishmentPass,
   applyForgedPassTypeChoice,

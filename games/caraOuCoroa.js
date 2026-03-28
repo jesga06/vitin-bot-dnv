@@ -464,19 +464,6 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
     }
   }
 
-  // Deduct buy-in from player
-  const debitSuccess = economyService.debitCoins(sender, buyInAmount, {
-    type: "coin_toss_buyin",
-    group: from,
-    betMultiplier,
-  })
-  if (!debitSuccess) {
-    await sock.sendMessage(from, {
-      text: `Erro ao descontar a aposta. Tente novamente.`,
-    })
-    return true
-  }
-
   const resenhaOn = storage.isResenhaEnabled(from)
   const dobroState = getDobroState(from)
   const dobroToggleActive = Boolean(dobroState?.enabled)
@@ -496,6 +483,19 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
   if (coinGames[from]?.[sender]) {
     await sock.sendMessage(from, {
       text: "Você já tem uma rodada em andamento. Responda com *cara* ou *coroa*."
+    })
+    return true
+  }
+
+  // Deduct buy-in only after eligibility checks pass.
+  const debitSuccess = economyService.debitCoins(sender, buyInAmount, {
+    type: "coin_toss_buyin",
+    group: from,
+    betMultiplier,
+  })
+  if (!debitSuccess) {
+    await sock.sendMessage(from, {
+      text: `Erro ao descontar a aposta. Tente novamente.`,
     })
     return true
   }

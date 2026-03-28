@@ -293,7 +293,7 @@ const COMMAND_HELP = {
       "!apelido - Ver apelido atual",
       "!apelido MeuNome - Definir novo apelido",
     ],
-    details: "Até 32 caracteres. Necessário se desativar menções no !mentions.",
+    details: "Até 30 caracteres",
   },
 
   cupom: {

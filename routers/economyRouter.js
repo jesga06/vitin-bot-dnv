@@ -622,7 +622,7 @@ async function handleEconomyCommands(ctx) {
       maxForgeQuantity: 1_000,
     }
 
-  const getRankingIdentity = (userId = "") => {
+  const getRankingIdentity = (userId = "", options = {}) => {
     const isRegistered = typeof registrationService?.isRegistered === "function"
       ? registrationService.isRegistered(userId)
       : true
@@ -640,25 +640,39 @@ async function handleEconomyCommands(ctx) {
       ? registrationService.getRegisteredEntry(userId)
       : null
     const knownName = String(registeredEntry?.lastKnownName || "").trim()
+    const publicIdentityLabel = publicLabel || knownName
+    const requirePublicIdentity = Boolean(options?.requirePublicIdentity)
+
+    const mentionJidByNormalized = options?.mentionJidByNormalized instanceof Map
+      ? options.mentionJidByNormalized
+      : null
 
     if (mentionOptIn) {
-      const tag = String(userId || "").split("@")[0]
-      if (!tag) return { visible: false, label: "", mentionId: null }
-      return {
-        visible: true,
-        label: `@${tag}`,
-        mentionId: userId,
+      const mentionJid = mentionJidByNormalized
+        ? mentionJidByNormalized.get(jidNormalizedUser(userId)) || null
+        : userId
+      if (mentionJid) {
+        const tag = String(mentionJid).split("@")[0].split(":")[0]
+        if (!tag) return { visible: false, label: "", mentionId: null }
+        return {
+          visible: true,
+          label: `@${tag}`,
+          mentionId: mentionJid,
+        }
       }
     }
 
-    const fallbackLabel = publicLabel || knownName
-    if (!fallbackLabel) {
+    if (requirePublicIdentity && !publicIdentityLabel) {
+      return { visible: false, label: "", mentionId: null }
+    }
+
+    if (!publicIdentityLabel) {
       return { visible: false, label: "", mentionId: null }
     }
 
     return {
       visible: true,
-      label: fallbackLabel,
+      label: publicIdentityLabel,
       mentionId: null,
     }
   }
@@ -724,7 +738,7 @@ async function handleEconomyCommands(ctx) {
       economyService.setPublicLabel(sender, label)
     }
     await sock.sendMessage(from, {
-      text: `✅ Apelido público atualizado para: *${label.slice(0, 32)}*`,
+      text: `✅ Apelido público atualizado para: *${label.slice(0, 30)}*`,
     })
     return true
   }
@@ -1957,9 +1971,10 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     ? economyService.getProfile(sender)
     : null
   const senderCustomLabel = String(senderProfile?.preferences?.publicLabel || "").trim()
-  const senderMentionOptIn = hasMentionPreferenceApi
-    ? economyService.isMentionOptIn(sender)
-    : true
+  const senderRegisteredEntry = typeof registrationService?.getRegisteredEntry === "function"
+    ? registrationService.getRegisteredEntry(sender)
+    : null
+  const senderKnownName = String(senderRegisteredEntry?.lastKnownName || "").trim()
   const mustRegisterBeforeEconomy = isEconomyCommandInvocation && !senderIsRegistered
   if (mustRegisterBeforeEconomy) {
     await sock.sendMessage(from, {
@@ -1970,11 +1985,12 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     return true
   }
 
-  const mustSetNicknameBeforeEconomy = isEconomyCommandInvocation && hasMentionPreferenceApi && !senderMentionOptIn && !senderCustomLabel
+  const senderHasPublicIdentityLabel = Boolean(senderCustomLabel || senderKnownName)
+  const mustSetNicknameBeforeEconomy = isEconomyCommandInvocation && hasMentionPreferenceApi && !senderHasPublicIdentityLabel
   if (mustSetNicknameBeforeEconomy) {
     await sock.sendMessage(from, {
       text:
-        "⚠️ Você desativou menções e ainda não definiu apelido público.\n" +
+        "⚠️ Você ainda não definiu apelido público.\n" +
         `Para continuar usando a economia, use: *${prefix}apelido <novo nome>*`,
     })
     return true
@@ -2724,6 +2740,11 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         valueBand: getValueBand(grossValue),
       })
 
+      if (typeof incrementUserStat === "function") {
+        incrementUserStat(trade.initiator, "tradesCompleted", 1)
+        incrementUserStat(trade.counterparty, "tradesCompleted", 1)
+      }
+
       await sock.sendMessage(from, {
         text:
           `Trade ${trade.tradeId} concluído com sucesso.\n` +
@@ -2995,11 +3016,17 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
   if (cmd === prefix + "coinsranking" && isGroup) {
     const metadata = await sock.groupMetadata(from)
     const members = (metadata?.participants || []).map((p) => jidNormalizedUser(p.id))
+    const mentionJidByNormalized = new Map((metadata?.participants || [])
+      .map((p) => [jidNormalizedUser(p.id), p.id])
+      .filter(([normalizedId, originalId]) => Boolean(normalizedId && originalId)))
     const ranking = economyService.getGroupRanking(members, 10)
     const visibleRanking = ranking
       .map((entry) => ({
         ...entry,
-        rankingIdentity: getRankingIdentity(entry.userId),
+        rankingIdentity: getRankingIdentity(entry.userId, {
+          mentionJidByNormalized,
+          requirePublicIdentity: true,
+        }),
       }))
       .filter((entry) => entry.rankingIdentity.visible)
     if (visibleRanking.length === 0) {
@@ -3028,13 +3055,19 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
   if (cmd === prefix + "xpranking" && isGroup) {
     const metadata = await sock.groupMetadata(from)
     const members = (metadata?.participants || []).map((p) => jidNormalizedUser(p.id))
+    const mentionJidByNormalized = new Map((metadata?.participants || [])
+      .map((p) => [jidNormalizedUser(p.id), p.id])
+      .filter(([normalizedId, originalId]) => Boolean(normalizedId && originalId)))
     const ranking = typeof economyService.getGroupXpRanking === "function"
       ? economyService.getGroupXpRanking(members, 10)
       : []
     const visibleRanking = ranking
       .map((entry) => ({
         ...entry,
-        rankingIdentity: getRankingIdentity(entry.userId),
+        rankingIdentity: getRankingIdentity(entry.userId, {
+          mentionJidByNormalized,
+          requirePublicIdentity: true,
+        }),
       }))
       .filter((entry) => entry.rankingIdentity.visible)
     if (visibleRanking.length === 0) {

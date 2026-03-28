@@ -185,6 +185,12 @@ test("economy router handles !xpranking command", async () => {
       getMutedUsers: () => ({}),
       setMutedUsers: () => {},
     },
+    registrationService: {
+      isRegistered: () => true,
+      getRegisteredEntry: (userId) => ({
+        lastKnownName: userId.startsWith("autor") ? "Autor Nome" : "Alvo Nome",
+      }),
+    },
     economyService: {
       getGroupXpRanking: () => ([
         { userId: "autor@s.whatsapp.net", level: 5, xp: 20, xpToNextLevel: 240 },
@@ -244,6 +250,11 @@ test("economy router !coinsranking hides unregistered/non-visible users and avoi
     },
     registrationService: {
       isRegistered: (userId) => userId !== "unreg@s.whatsapp.net",
+      getRegisteredEntry: (userId) => {
+        if (userId === "alias@s.whatsapp.net") return { lastKnownName: "Alias Registro" }
+        if (userId === "mention@s.whatsapp.net") return { lastKnownName: "Mention Registro" }
+        return { lastKnownName: "" }
+      },
     },
     economyService: {
       getGroupRanking: () => ([
@@ -277,6 +288,71 @@ test("economy router !coinsranking hides unregistered/non-visible users and avoi
   assert.ok(!/unreg@s\.whatsapp\.net/i.test(text))
   assert.ok(!/USR-/i.test(text))
   assert.deepEqual(sent[0].payload?.mentions || [], ["mention@s.whatsapp.net"])
+})
+
+test("economy router !coinsranking falls back to nickname when mention jid is not in current group", async () => {
+  const { sock, sent } = createSockCapture()
+  sock.groupMetadata = async () => ({
+    participants: [
+      { id: "caller@s.whatsapp.net" },
+    ],
+  })
+
+  const handled = await handleEconomyCommands({
+    sock,
+    from: "group@g.us",
+    sender: "caller@s.whatsapp.net",
+    cmd: "!coinsranking",
+    cmdName: "!coinsranking",
+    cmdArg1: "",
+    cmdArg2: "",
+    cmdParts: ["!coinsranking"],
+    mentioned: [],
+    prefix: "!",
+    isGroup: true,
+    senderIsAdmin: false,
+    jidNormalizedUser: (id) => id,
+    storage: {
+      getMutedUsers: () => ({}),
+      setMutedUsers: () => {},
+    },
+    registrationService: {
+      isRegistered: () => true,
+      getRegisteredEntry: (userId) => {
+        if (userId === "out1@s.whatsapp.net") return { lastKnownName: "Jogador Um" }
+        if (userId === "out2@s.whatsapp.net") return { lastKnownName: "Jogador Dois" }
+        return { lastKnownName: "Caller" }
+      },
+    },
+    economyService: {
+      getGroupRanking: () => ([
+        { userId: "out1@s.whatsapp.net", coins: 1000 },
+        { userId: "out2@s.whatsapp.net", coins: 900 },
+      ]),
+      getUserGlobalPosition: () => 9,
+      isMentionOptIn: () => true,
+      getProfile: () => ({
+        preferences: {
+          publicLabel: "",
+        },
+      }),
+    },
+    parseQuantity: () => 0,
+    formatDuration: () => "0m",
+    buildGameStatsText: () => "",
+    buildEconomyStatsText: () => "",
+    buildInventoryText: () => "",
+    incrementUserStat: () => {},
+  })
+
+  assert.equal(handled, true)
+  assert.equal(sent.length, 1)
+  const text = String(sent[0].payload?.text || "")
+  assert.match(text, /Jogador Um/)
+  assert.match(text, /Jogador Dois/)
+  assert.ok(!/@out1/i.test(text))
+  assert.ok(!/@out2/i.test(text))
+  assert.deepEqual(sent[0].payload?.mentions || [], [])
 })
 
 test("economy router handles !guia command and sends two DM parts", async () => {
@@ -2892,7 +2968,37 @@ test("utility router handles !menu command", async () => {
   assert.equal(handled, true)
   assert.equal(sent.length, 1)
   assert.match(sent[0].payload.text, /VITIN BOT/)
+  assert.match(sent[0].payload.text, /!ajuda <comando>/i)
   assert.match(sent[0].payload.text, /feedback/i)
+})
+
+test("utility router handles !ajuda command and DMs help in group", async () => {
+  const { sock, sent } = createSockCapture()
+  const sender = "user@s.whatsapp.net"
+
+  const handled = await handleUtilityCommands({
+    sock,
+    from: "group@g.us",
+    sender,
+    cmd: "!ajuda economia",
+    prefix: "!",
+    isGroup: true,
+    msg: { message: {} },
+    quoted: null,
+    mentioned: [],
+    sharp: () => ({}),
+    downloadMediaMessage: async () => null,
+    logger: {},
+    videoToSticker: async () => null,
+    dddMap: {},
+  })
+
+  assert.equal(handled, true)
+  assert.equal(sent.length, 2)
+  assert.equal(sent[0].to, sender)
+  assert.match(String(sent[0].payload?.text || ""), /Economia/i)
+  assert.equal(sent[1].to, "group@g.us")
+  assert.match(String(sent[1].payload?.text || ""), /enviei a ajuda/i)
 })
 
 test("utility router handles !feedback command", async () => {

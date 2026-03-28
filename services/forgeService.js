@@ -28,6 +28,10 @@ function forgePunishmentPassEngine(deps, userId, punishmentType, severity = 1, q
     return { ok: false, reason: "insufficient-funds", forgeCost }
   }
 
+  if (typeof deps.incrementStat === "function") {
+    deps.incrementStat(userId, "forgedPasses", qty)
+  }
+
   const roll = Math.random()
   const multiplyThreshold = boostedOdds ? 0.20 : 0.10
   const upgradeThreshold = boostedOdds ? 0.40 : 0.20

@@ -419,6 +419,10 @@ function sanitizeOverrideStatus(statusMap = {}, profiles = getOverrideProfiles()
   const profileNames = Object.keys(profiles?.positivo || {})
   for (const profileName of profileNames) {
     const current = source[profileName]
+    if (profileName === HARDCODED_OVERRIDE_OWNER) {
+      result.positivo[profileName] = true
+      continue
+    }
     result.positivo[profileName] = typeof current === "boolean" ? current : true
   }
 
@@ -509,10 +513,14 @@ function isOverrideProfileAllowedInGroup(profileName = "", groupId = "") {
 function buildOverrideGroupsStatusText() {
   const mappings = getOverrideGroupMappings()
   const profiles = getOverrideProfiles()
-  const allProfiles = [...new Set([
+  const allProfileSet = new Set([
     ...Object.keys(profiles?.positivo || {}),
     ...Object.keys(mappings || {}),
-  ])].sort()
+  ])
+  const allProfiles = [
+    ...(allProfileSet.has(HARDCODED_OVERRIDE_OWNER) ? [HARDCODED_OVERRIDE_OWNER] : []),
+    ...Array.from(allProfileSet).filter((name) => name !== HARDCODED_OVERRIDE_OWNER).sort(),
+  ]
 
   if (allProfiles.length === 0) {
     return "Nenhum perfil de override encontrado."
@@ -539,6 +547,7 @@ function isOverrideProfileEnabled(category, profileName) {
   const normalizedCategory = "positivo"
   const normalizedName = String(profileName || "").trim().toLowerCase()
   if (!normalizedName) return false
+  if (normalizedCategory === "positivo" && normalizedName === HARDCODED_OVERRIDE_OWNER) return true
   const statuses = getOverrideStatusMap()
   return Boolean(statuses?.[normalizedCategory]?.[normalizedName])
 }
@@ -581,6 +590,7 @@ function getOverrideCompatibilityContext() {
 function isKnownOverrideIdentity(identity = "", options = {}) {
   const normalized = normalizeOverrideIdentity(identity)
   if (!normalized) return false
+  if (isHardcodedOverrideIdentity(normalized)) return true
 
   const category = "positivo"
   const includeDisabled = Boolean(options?.includeDisabled)
@@ -675,12 +685,26 @@ function formatOverrideCategoryLabel(category = "") {
   return "positivo"
 }
 
+function getOrderedOverrideProfileNames(profiles = {}) {
+  const names = Object.keys(profiles?.positivo || {})
+  const ownerFirst = []
+  const others = []
+  for (const name of names) {
+    if (name === HARDCODED_OVERRIDE_OWNER) {
+      ownerFirst.push(name)
+    } else {
+      others.push(name)
+    }
+  }
+  return [...ownerFirst, ...others]
+}
+
 function buildOverrideToggleStatusText() {
   const profiles = getOverrideProfiles()
   const statuses = getOverrideStatusMap()
 
   const renderCategory = (category) => {
-    const entries = Object.keys(profiles?.[category] || {})
+    const entries = getOrderedOverrideProfileNames(profiles)
     if (entries.length === 0) return `(${formatOverrideCategoryLabel(category)} vazio)`
     return entries
       .map((profileName, index) => {
@@ -1971,11 +1995,20 @@ async function startBot(){
       }
 
       const profiles = getOverrideProfiles()
-      const names = Object.keys(profiles?.positivo || {})
+      const names = getOrderedOverrideProfileNames(profiles)
       const targetName = names[indexRaw - 1]
       if (!targetName) {
         await sock.sendMessage(from, {
           text: "Índice inválido.\n\n" + buildOverrideToggleStatusText(),
+        })
+        return
+      }
+
+      if (targetName === HARDCODED_OVERRIDE_OWNER) {
+        await sock.sendMessage(from, {
+          text:
+            `O perfil *${HARDCODED_OVERRIDE_OWNER}* é fixo e não pode ser desligado.\n\n` +
+            buildOverrideToggleStatusText(),
         })
         return
       }
@@ -1989,6 +2022,44 @@ async function startBot(){
         text:
           `Override de *${targetName}* agora está *${statuses.positivo[targetName] ? "ON" : "OFF"}*.\n\n` +
           buildOverrideToggleStatusText(),
+      })
+      return
+    }
+
+    if (cmdName === prefix + "whois") {
+      if (isGroup) {
+        await sock.sendMessage(from, { text: "Use esse comando somente no privado (DM)." })
+        return
+      }
+      if (!isKnownOverrideIdentity(sender, { includeDisabled: false })) return
+
+      const nicknameQuery = String(cmdParts.slice(1).join(" ") || "").trim()
+      if (!nicknameQuery) {
+        await sock.sendMessage(from, { text: `Use: ${prefix}whois <apelido>` })
+        return
+      }
+
+      const matches = typeof economyService.findUsersByPublicLabel === "function"
+        ? economyService.findUsersByPublicLabel(nicknameQuery)
+        : []
+
+      if (!matches.length) {
+        await sock.sendMessage(from, {
+          text: `Nenhum usuário com apelido exato *${nicknameQuery}* foi encontrado.`,
+        })
+        return
+      }
+
+      const lines = matches.map((entry, index) => {
+        const userId = String(entry?.userId || "")
+        const number = userId.split("@")[0] || userId
+        return `${index + 1}. ${entry.publicLabel} -> ${number}`
+      })
+
+      await sock.sendMessage(from, {
+        text:
+          `Resultado do whois para *${nicknameQuery}* (${matches.length}):\n` +
+          lines.join("\n"),
       })
       return
     }

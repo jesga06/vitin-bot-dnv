@@ -553,7 +553,7 @@ async function handleGameCommands(ctx) {
         from,
         sender,
         cmd: `${prefix}começar ${targetLobbyId}`,
-        cmdName,
+        cmdName: `${prefix}comecar`,
         cmdArg1: targetLobbyId,
         cmdArg2: graceState.rrBetValueToken || "",
         mentioned,

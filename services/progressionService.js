@@ -1,5 +1,62 @@
-function getStatValue(user, key) {
+function getRawStatValue(user, key) {
   return Math.max(0, Math.floor(Number(user?.stats?.[key]) || 0))
+}
+
+function getWeeklyGameWins(user) {
+  return (
+    getRawStatValue(user, "gameCoinWin") +
+    getRawStatValue(user, "gameBatataWin") +
+    getRawStatValue(user, "gameDadosWin") +
+    getRawStatValue(user, "gameRrWin") +
+    getRawStatValue(user, "gameComandoWin") +
+    getRawStatValue(user, "gameMemoriaWin") +
+    getRawStatValue(user, "gameReacaoWin") +
+    getRawStatValue(user, "gameEmbaralhadoWin") +
+    getRawStatValue(user, "gameGuessExact")
+  )
+}
+
+function getWeeklyGameLosses(user) {
+  return (
+    getRawStatValue(user, "gameCoinLoss") +
+    getRawStatValue(user, "gameBatataLoss") +
+    getRawStatValue(user, "gameDadosLoss") +
+    getRawStatValue(user, "gameRrShotLoss") +
+    getRawStatValue(user, "gameComandoLoss") +
+    getRawStatValue(user, "gameMemoriaLoss") +
+    getRawStatValue(user, "gameReacaoLoss") +
+    getRawStatValue(user, "gameEmbaralhadoLoss") +
+    getRawStatValue(user, "gameGuessLoss")
+  )
+}
+
+function getStatValue(user, key) {
+  const normalizedKey = String(key || "").trim()
+  if (!normalizedKey) return 0
+
+  // Legacy weekly quest keys map to tracked counters so old quest IDs remain progressable.
+  const aliasHandlers = {
+    weeklyWorks: () => getRawStatValue(user, "works"),
+    weeklyGameWins: () => getWeeklyGameWins(user),
+    weeklyCoinWins: () => getRawStatValue(user, "gameCoinWin"),
+    weeklyXpEarned: () => Math.max(0, Math.floor(Number(user?.progression?.seasonPoints) || 0)),
+    weeklyCoinsEarned: () => getRawStatValue(user, "coinsLifetimeEarned"),
+    weeklyStealAttempts: () => getRawStatValue(user, "stealAttempts"),
+    weeklyLootboxes: () => getRawStatValue(user, "lootboxesOpened"),
+    weeklyTrades: () => getRawStatValue(user, "tradesCompleted"),
+    weeklyShields: () => getRawStatValue(user, "shieldsUsed"),
+    questMaster: () => getRawStatValue(user, "questsCompleted"),
+    levelSpike: () => Math.max(1, Math.floor(Number(user?.progression?.level) || 1)),
+    xpMilestone: () => Math.floor((Math.max(0, Math.floor(Number(user?.progression?.seasonPoints) || 0))) / 10000),
+    undefeated: () => Math.max(0, getWeeklyGameWins(user) - getWeeklyGameLosses(user)),
+    forgemaster: () => getRawStatValue(user, "forgedPasses"),
+  }
+
+  if (typeof aliasHandlers[normalizedKey] === "function") {
+    return Math.max(0, Math.floor(Number(aliasHandlers[normalizedKey]()) || 0))
+  }
+
+  return getRawStatValue(user, normalizedKey)
 }
 
 function buildQuestProgress(user, quest = {}) {

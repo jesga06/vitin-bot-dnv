@@ -30,7 +30,9 @@ function hasVideoMessage(rawMsg = null) {
 }
 
 module.exports = {
-	start: (groupId, triggeredBy = null) => {
+	start: (groupId, triggeredBy = null, options = {}) => {
+		const players = Array.isArray(options.players) ? options.players : []
+		const restrictToPlayers = Boolean(options.restrictToPlayers)
 		const instruction = gameManager.pickRandom(instructions)
 		const state = {
 			groupId,
@@ -41,11 +43,21 @@ module.exports = {
 			createdAt: Date.now(),
 			triggeredBy,
 			silenceBreaker: null,
+			players,
+			restrictToPlayers,
 		}
 		return state
 	},
 
+	isPlayerAllowed: (state, playerId) => {
+		if (!state.restrictToPlayers) return true
+		return Array.isArray(state.players) && state.players.includes(playerId)
+	},
+
 	recordParticipant: (state, playerId) => {
+		if (!module.exports.isPlayerAllowed(state, playerId)) {
+			return
+		}
 		if (!Array.isArray(state.participants)) state.participants = []
 		if (!state.participantLastMessageAt || typeof state.participantLastMessageAt !== "object") {
 			state.participantLastMessageAt = {}
@@ -57,6 +69,9 @@ module.exports = {
 	},
 
 	recordCompliance: (state, playerId) => {
+		if (!module.exports.isPlayerAllowed(state, playerId)) {
+			return { valid: false, error: "Você não está na lista de participantes." }
+		}
 		if (state.compliers.some((c) => c.playerId === playerId)) {
 			return { valid: false, error: "Você já obedeceu!" }
 		}
@@ -70,6 +85,9 @@ module.exports = {
 	},
 
 	recordSilenceBreaker: (state, playerId) => {
+		if (!module.exports.isPlayerAllowed(state, playerId)) {
+			return
+		}
 		if (!state.silenceBreaker) {
 			state.silenceBreaker = playerId
 		}

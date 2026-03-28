@@ -978,6 +978,23 @@ async function handleGameCommands(ctx) {
       return true
     }
 
+    if (session.gameType === "comando") {
+      if (session.players.length < 3) {
+        await sock.sendMessage(from, { text: "Precisamos de pelo menos 3 jogadores para Comando!" })
+        return true
+      }
+      gameManager.clearOptInSession(from, lobbyId)
+      const startResult = await startPeriodicGame("comando", {
+        triggeredBy: sender,
+        automatic: false,
+        comandoParticipants: session.players,
+      })
+      if (!startResult.ok) {
+        await sock.sendMessage(from, { text: startResult.message })
+      }
+      return true
+    }
+
     await sock.sendMessage(from, { text: "Esse lobby deve ser iniciado com !começar <jogo> (ou !comecar / !start)." })
     return true
   }
@@ -1478,19 +1495,28 @@ async function handleGameCommands(ctx) {
   }
 
   if ((isStartCommand && normalizeUnifiedGameType(cmdArg1) === "comando") && isGroup) {
-    const participants = await getCommandParticipants()
-    if (participants.length < 3) {
-      await sock.sendMessage(from, { text: "São necessários pelo menos 3 participantes para iniciar o Comando por comando." })
+    const blockedReason = getLobbyCreateBlockMessage("comando", "Comando")
+    if (blockedReason) {
+      await sock.sendMessage(from, { text: blockedReason })
       return true
     }
 
-    const startResult = await startPeriodicGame("comando", {
-      triggeredBy: sender,
-      automatic: false,
+    const lobbyId = gameManager.createOptInSession(from, "comando", 3, null, 120000, {
+      initialPlayers: [sender],
+      onLobbyWarning: createLobbyWarningCallback,
+      onLobbyTimeout: createLobbyTimeoutCallback,
     })
-    if (!startResult.ok) {
-      await sock.sendMessage(from, { text: startResult.message })
-    }
+    incrementUserStat(sender, "lobbiesCreated", 1)
+    incrementUserStat(sender, "lobbiesJoined", 1)
+    await sock.sendMessage(from, {
+      text:
+        `🎯 Comando criado!\n` +
+        `Lobby ID: *${lobbyId}*\n\n` +
+        `Criador já entrou automaticamente no lobby.\n` +
+        `Para entrar: *!entrar ${lobbyId}*\n` +
+        `Para iniciar: *!começar ${lobbyId}*\n` +
+        `Mínimo de 3 jogadores.`,
+    })
     return true
   }
 

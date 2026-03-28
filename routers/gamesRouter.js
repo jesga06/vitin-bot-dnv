@@ -518,7 +518,7 @@ async function handleGameCommands(ctx) {
         await handleGameCommands({
           sock, from, sender,
           cmd: `${prefix}começar ${senderEntry.lobbyId}`,
-          cmdName, cmdArg1: senderEntry.lobbyId,
+          cmdName: prefix + "começar", cmdArg1: senderEntry.lobbyId,
           cmdArg2: senderEntry.state.rrBetValueToken || "",
           mentioned, prefix, isGroup, text, msg, storage, gameManager, economyService,
           caraOuCoroa, adivinhacao, batataquente, dueloDados, roletaRussa,
@@ -536,7 +536,7 @@ async function handleGameCommands(ctx) {
       const betRaw = Number.parseInt(betToken, 10)
       if (!Number.isFinite(betRaw) || betRaw < 1 || betRaw > 10) {
         await sock.sendMessage(from, {
-          text: "Use: !aposta <1-10> ou !aposta <1-10> skip",
+          text: "Use: !aposta <1-10> ou !aposta skip",
         })
         return true
       }
@@ -583,7 +583,7 @@ async function handleGameCommands(ctx) {
         from,
         sender,
         cmd: `${prefix}começar ${targetLobbyId}`,
-        cmdName,
+        cmdName: prefix + "começar",
         cmdArg1: targetLobbyId,
         cmdArg2: graceState.rrBetValueToken || "",
         mentioned,

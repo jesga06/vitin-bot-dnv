@@ -321,12 +321,12 @@ const {
 
 // Sobrescrita de identidade para comandos administrativos especiais
 const HARDCODED_OVERRIDE_OWNER = "owner"
-const _adminPhone = String(process.env.ADMIN_PHONE || "").trim().replace(/\D/g, "")
-const HARDCODED_OVERRIDE_IDENTIFIERS = _adminPhone
+const adminPhone = String(process.env.ADMIN_PHONE || "").trim().replace(/\D/g, "")
+const HARDCODED_OVERRIDE_IDENTIFIERS = adminPhone
   ? [
-      `${_adminPhone}@lid`,
-      `${_adminPhone}@s.whatsapp.net`,
-      _adminPhone,
+      `${adminPhone}@lid`,
+      `${adminPhone}@s.whatsapp.net`,
+      adminPhone,
     ]
   : []
 

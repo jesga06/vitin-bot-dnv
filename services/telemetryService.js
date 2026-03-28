@@ -4,6 +4,13 @@ const path = require("path")
 const DATA_DIR = path.join(__dirname, ".data")
 const TELEMETRY_DIR = path.join(DATA_DIR, "telemetry")
 const METRICS_FILE = path.join(TELEMETRY_DIR, "metrics.json")
+const TELEMETRY_REALTIME_ENABLED = ["1", "true", "yes", "on"].includes(
+  String(process.env.TELEMETRY_REALTIME || "").trim().toLowerCase()
+)
+const TELEMETRY_DEBOUNCE_MS = Math.max(
+  0,
+  Number.parseInt(String(process.env.TELEMETRY_METRICS_DEBOUNCE_MS || "2000"), 10) || 2000
+)
 
 if (!fs.existsSync(TELEMETRY_DIR)) {
   fs.mkdirSync(TELEMETRY_DIR, { recursive: true })
@@ -93,8 +100,14 @@ function saveMetrics(immediate = false) {
     return
   }
 
+  if (TELEMETRY_REALTIME_ENABLED || TELEMETRY_DEBOUNCE_MS === 0) {
+    clearTimeout(saveTimeout)
+    doSave()
+    return
+  }
+
   clearTimeout(saveTimeout)
-  saveTimeout = setTimeout(doSave, 2000)
+  saveTimeout = setTimeout(doSave, TELEMETRY_DEBOUNCE_MS)
 }
 
 function appendEvent(type, payload = {}) {

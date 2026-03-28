@@ -1,3 +1,6 @@
+process.on("uncaughtException", console.error)
+process.on("unhandledRejection", console.error)
+
 const { 
   default: makeWASocket, 
   useMultiFileAuthState, 
@@ -35,34 +38,6 @@ const economyService = require("./services/economyService")
 const registrationService = require("./services/registrationService")
 const telemetry = require("./services/telemetryService")
 const { COMMAND_HELP } = require("./commandHelp")
-
-// Ensure telemetry is flushed on exit
-process.on("SIGINT", () => {
-  console.log("SIGINT recebido, salvando telemetria...")
-  telemetry.flushMetrics()
-  process.exit(0)
-})
-
-process.on("SIGTERM", () => {
-  console.log("SIGTERM recebido, salvando telemetria...")
-  telemetry.flushMetrics()
-  process.exit(0)
-})
-
-// Update exception handlers to flush telemetry
-const originalUncaughtException = console.error
-process.removeAllListeners("uncaughtException")
-process.on("uncaughtException", (err) => {
-  originalUncaughtException(err)
-  telemetry.flushMetrics()
-})
-
-const originalUnhandledRejection = console.error
-process.removeAllListeners("unhandledRejection")
-process.on("unhandledRejection", (err) => {
-  originalUnhandledRejection(err)
-  telemetry.flushMetrics()
-})
 const { getLikelyCommandSuggestions } = require("./services/commandSuggestionService")
 const { handleGameCommands, handleGameMessageFlow } = require("./routers/gamesRouter")
 const { handleUtilityCommands } = require("./routers/utilityRouter")
@@ -161,7 +136,6 @@ const perfStats = {
   reconnects: 0,
   messagesReceived: 0,
   messagesErrored: 0,
-  messagesSuccessful: 0,
   ignoredNoMessage: 0,
   ignoredFromMe: 0,
   lastProcessedAt: 0,
@@ -174,15 +148,6 @@ const perfStats = {
   commandHistory: [],
   lastCommandByUser: {},
   stages: {},
-  errorLog: [],
-  alertQueue: [],
-  commandFrequency: {},
-  groupActivityMap: {},
-  connectionEvents: [],
-  economySnapshot: null,
-  gameStats: {},
-  punishmentStats: {},
-  storageMetrics: {},
 }
 
 function addCommandHistory(entry = {}) {
@@ -225,148 +190,6 @@ function getStageBucket(stageName) {
     perfStats.stages[stageName] = createMetricBucket()
   }
   return perfStats.stages[stageName]
-}
-
-function recordError(source = "", message = "", details = {}) {
-  const errorEntry = {
-    at: Date.now(),
-    source: String(source).slice(0, 50),
-    message: String(message).slice(0, 200),
-    details: details || {}
-  }
-  perfStats.errorLog.unshift(errorEntry)
-  if (perfStats.errorLog.length > 100) perfStats.errorLog.pop()
-  recordAlert({
-    type: "error",
-    severity: "high",
-    title: `Error in ${source}`,
-    message: message
-  })
-}
-
-function recordAlert(alert = {}) {
-  const alertEntry = {
-    at: Date.now(),
-    type: alert.type || "info",
-    severity: alert.severity || "low",
-    title: String(alert.title || "").slice(0, 100),
-    message: String(alert.message || "").slice(0, 200),
-  }
-  perfStats.alertQueue.unshift(alertEntry)
-  if (perfStats.alertQueue.length > 50) perfStats.alertQueue.pop()
-}
-
-function trackCommandUsage(command = "", userId = "", groupId = "") {
-  const cmdKey = String(command).toLowerCase().trim() || "unknown"
-  if (!perfStats.commandFrequency[cmdKey]) {
-    perfStats.commandFrequency[cmdKey] = { count: 0, lastUsed: 0 }
-  }
-  perfStats.commandFrequency[cmdKey].count += 1
-  perfStats.commandFrequency[cmdKey].lastUsed = Date.now()
-
-  const groupKey = String(groupId || "dm").toLowerCase()
-  if (!perfStats.groupActivityMap[groupKey]) {
-    perfStats.groupActivityMap[groupKey] = { 
-      commands: 0, 
-      messages: 0, 
-      users: new Set(),
-      lastActivity: 0
-    }
-  }
-  perfStats.groupActivityMap[groupKey].commands += 1
-  perfStats.groupActivityMap[groupKey].lastActivity = Date.now()
-  if (userId) perfStats.groupActivityMap[groupKey].users.add(String(userId))
-}
-
-function recordConnectionEvent(state = "", reason = "") {
-  const event = {
-    at: Date.now(),
-    state: String(state),
-    reason: String(reason)
-  }
-  perfStats.connectionEvents.unshift(event)
-  if (perfStats.connectionEvents.length > 100) perfStats.connectionEvents.pop()
-}
-
-function updateStorageMetrics() {
-  try {
-    const dataDir = path.join(__dirname, ".data")
-    if (fs.existsSync(dataDir)) {
-      const files = fs.readdirSync(dataDir)
-      let totalSize = 0
-      for (const file of files) {
-        const filePath = path.join(dataDir, file)
-        const stat = fs.statSync(filePath)
-        totalSize += stat.size
-      }
-      perfStats.storageMetrics = {
-        totalSizeMb: (totalSize / (1024 * 1024)).toFixed(2),
-        fileCount: files.length,
-        lastUpdated: Date.now()
-      }
-    }
-  } catch (err) {
-    recordError("updateStorageMetrics", err.message)
-  }
-}
-
-function checkHealthConditions() {
-  const memory = getMemoryUsageMb()
-  const eventLoopLag = getMetricSnapshot(perfStats.eventLoopLagMs)
-  const successRate = perfStats.messagesReceived > 0
-    ? (perfStats.messagesSuccessful / perfStats.messagesReceived) * 100
-    : 100
-  const recentErrors = perfStats.errorLog.slice(0, 30).length
-  
-  // Check memory usage
-  if (memory.heapUsed > 500) {
-    recordAlert({
-      type: "warning",
-      severity: "medium",
-      title: "Alto Uso de Memória",
-      message: `Heap usando ${memory.heapUsed} MB`
-    })
-  }
-  
-  // Check event loop lag
-  if (eventLoopLag.avgMs > 50) {
-    recordAlert({
-      type: "warning",
-      severity: "medium",
-      title: "Event Loop Degradado",
-      message: `Lag médio: ${eventLoopLag.avgMs.toFixed(1)} ms`
-    })
-  }
-  
-  // Check success rate
-  if (successRate < 80) {
-    recordAlert({
-      type: "error",
-      severity: "high",
-      title: "Taxa de Sucesso Crítica",
-      message: `Apenas ${successRate.toFixed(1)}% de mensagens bem-sucedidas`
-    })
-  }
-  
-  // Check for recent errors
-  if (recentErrors > 10) {
-    recordAlert({
-      type: "error",
-      severity: "high",
-      title: "Muitos Erros Recentes",
-      message: `${recentErrors} erros nos últimos registros`
-    })
-  }
-  
-  // Check connection state
-  if (perfStats.connectionState !== "open") {
-    recordAlert({
-      type: "warning",
-      severity: "high",
-      title: "Bot Desconectado",
-      message: `Estado atual: ${perfStats.connectionState}`
-    })
-  }
 }
 
 function parseMessageTimestampMs(msg) {
@@ -498,12 +321,6 @@ setInterval(() => {
   recordMetric(perfStats.eventLoopLagMs, lag)
   eventLoopLagExpectedAt = now + 1000
 }, 1000).unref()
-
-// Periodic background updates
-setInterval(() => {
-  updateStorageMetrics()
-  checkHealthConditions()
-}, 10000).unref()
 
 const {
   getPunishmentChoiceFromText,
@@ -1390,30 +1207,6 @@ function getProfilerSnapshot() {
     .sort((a, b) => b.avgMs - a.avgMs)
     .slice(0, 12)
 
-  const successRate = perfStats.messagesReceived > 0
-    ? ((perfStats.messagesSuccessful / perfStats.messagesReceived) * 100).toFixed(1)
-    : 0
-
-  const topCommands = Object.entries(perfStats.commandFrequency)
-    .sort((a, b) => b[1].count - a[1].count)
-    .slice(0, 10)
-    .map(([cmd, data]) => ({ command: cmd, count: data.count, lastUsed: data.lastUsed }))
-
-  const groupActivity = Object.entries(perfStats.groupActivityMap)
-    .map(([groupId, data]) => ({
-      groupId,
-      commands: data.commands,
-      messages: data.messages,
-      uniqueUsers: data.users.size,
-      lastActivity: data.lastActivity,
-      groupName: getKnownGroupName(groupId === "dm" ? "" : groupId)
-    }))
-    .sort((a, b) => b.commands - a.commands)
-    .slice(0, 15)
-
-  const recentAlerts = perfStats.alertQueue.slice(0, 20)
-  const recentErrors = perfStats.errorLog.slice(0, 20)
-
   return {
     now,
     authenticatedAt: perfStats.authenticatedAt,
@@ -1423,9 +1216,7 @@ function getProfilerSnapshot() {
     uptimeMs: now - perfStats.bootAt,
     authUptimeMs: perfStats.authenticatedAt ? now - perfStats.authenticatedAt : 0,
     messagesReceived: perfStats.messagesReceived,
-    messagesSuccessful: perfStats.messagesSuccessful,
     messagesErrored: perfStats.messagesErrored,
-    successRate: parseFloat(successRate),
     ignoredNoMessage: perfStats.ignoredNoMessage,
     ignoredFromMe: perfStats.ignoredFromMe,
     lastProcessedAt: perfStats.lastProcessedAt,
@@ -1444,12 +1235,6 @@ function getProfilerSnapshot() {
     registeredUsers: registeredUsers.length,
     registeredUsersList: registeredUsers,
     knownGroups: Array.from(knownGroupIds).map((groupId) => ({ groupId, groupName: getKnownGroupName(groupId) })),
-    topCommands,
-    groupActivity,
-    alerts: recentAlerts,
-    errors: recentErrors,
-    storage: perfStats.storageMetrics,
-    connectionEvents: perfStats.connectionEvents.slice(0, 30),
   }
 }
 
@@ -1468,42 +1253,6 @@ app.get("/profiler-data", (req, res) => {
 
 app.get("/dashboard-data", (req, res) => {
   res.json(getDashboardPayload())
-})
-
-app.post("/control/toggle-maintenance", (req, res) => {
-  if (!isProfilerAuthorized(req)) {
-    res.status(403).json({ ok: false, error: "unauthorized" })
-    return
-  }
-  try {
-    const currentState = getMaintenanceModeState()
-    const newState = !currentState.enabled
-    setMaintenanceModeState({ enabled: newState })
-    res.json({ ok: true, maintenanceMode: newState })
-  } catch (err) {
-    recordError("toggle-maintenance", err.message)
-    res.status(500).json({ ok: false, error: err.message })
-  }
-})
-
-app.get("/control/system-status", (req, res) => {
-  if (!isProfilerAuthorized(req)) {
-    res.status(403).json({ ok: false, error: "unauthorized" })
-    return
-  }
-  try {
-    const status = {
-      maintenanceMode: getMaintenanceModeState().enabled,
-      connectionState: perfStats.connectionState,
-      checkHelper: getOverrideChecksEnabled(),
-      memory: getMemoryUsageMb(),
-      uptime: Date.now() - perfStats.bootAt,
-    }
-    res.json({ ok: true, status })
-  } catch (err) {
-    recordError("system-status", err.message)
-    res.status(500).json({ ok: false, error: err.message })
-  }
 })
 
 app.get("/download-data", async (req, res) => {
@@ -1543,17 +1292,6 @@ app.get("/", (req,res)=>{
     </section>
   `
 
-  const controlsBlock = `
-    <section style="margin-top:20px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;max-width:980px">
-      <h3 style="margin:0 0 10px 0">⚙️ Controles do Sistema</h3>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <button id="btn-maintenance-toggle" style="padding:8px 12px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500">Modo Manutenção: Desconhecido</button>
-        <button onclick="location.reload()" style="padding:8px 12px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500">Atualizar Painel</button>
-      </div>
-      <p id="control-message" style="margin:10px 0 0 0;font-size:12px;color:#666;display:none"></p>
-    </section>
-  `
-
   res.send(
     `<!doctype html>
     <html>
@@ -1569,31 +1307,18 @@ app.get("/", (req,res)=>{
         </section>
 
         <section id="qr-section" style="margin-top:20px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;max-width:980px;display:none"></section>
-        <section id="alerts-section" style="display:none"></section>
-        <section id="health-section" style="display:none"></section>
         <section id="perf-section" style="display:none"></section>
-        <section id="commands-freq-section" style="display:none"></section>
-        <section id="group-activity-section" style="display:none"></section>
-        <section id="storage-section" style="display:none"></section>
-        <section id="errors-section" style="display:none"></section>
         <section id="users-section" style="display:none"></section>
         <section id="commands-section" style="display:none"></section>
         <section id="terminal-section" style="display:none"></section>
 
-        ${controlsBlock}
         ${downloadBlock}
 
         <script>
           const POLLING_MS = 1000
           const pollingStatusEl = document.getElementById("polling-status")
           const qrSectionEl = document.getElementById("qr-section")
-          const alertsSectionEl = document.getElementById("alerts-section")
-          const healthSectionEl = document.getElementById("health-section")
           const perfSectionEl = document.getElementById("perf-section")
-          const commandsFreqSectionEl = document.getElementById("commands-freq-section")
-          const groupActivitySectionEl = document.getElementById("group-activity-section")
-          const storageSectionEl = document.getElementById("storage-section")
-          const errorsSectionEl = document.getElementById("errors-section")
           const usersSectionEl = document.getElementById("users-section")
           const commandsSectionEl = document.getElementById("commands-section")
           const terminalSectionEl = document.getElementById("terminal-section")
@@ -1794,215 +1519,11 @@ app.get("/", (req,res)=>{
               "</section>"
           }
 
-          function renderAlerts(snapshot) {
-            if (!snapshot) {
-              alertsSectionEl.style.display = "none"
-              return
-            }
-            const alerts = readPath(snapshot, ["alerts"], [])
-            if (!alerts || alerts.length === 0) {
-              alertsSectionEl.style.display = "none"
-              return
-            }
-            const alertRows = alerts.slice(0, 15).map((alert) => {
-              const severity = readPath(alert, ["severity"], "low")
-              const severityColor = severity === "high" ? "#dc2626" : severity === "medium" ? "#f59e0b" : "#6b7280"
-              return "<tr style=\\"border-bottom:1px solid #eee\\">" +
-                "<td style=\\"padding:4px;color:" + severityColor + ";font-weight:700\\">" + escapeHtml(readPath(alert, ["type"], "info")) + "</td>" +
-                "<td style=\\"padding:4px;font-weight:500\\">" + escapeHtml(readPath(alert, ["title"], "-")) + "</td>" +
-                "<td style=\\"padding:4px\\">" + escapeHtml(readPath(alert, ["message"], "-")) + "</td>" +
-                "<td style=\\"padding:4px;text-align:right;color:#999;font-size:11px\\">" + formatDateTime(readPath(alert, ["at"], 0)) + "</td>" +
-              "</tr>"
-            }).join("")
-            alertsSectionEl.style.display = "block"
-            alertsSectionEl.innerHTML =
-              "<section style=\\"margin-top:20px;padding:16px;border:1px solid #fca5a5;border-radius:8px;background:#fef2f2;max-width:980px\\">" +
-                "<h3 style=\\"margin:0 0 10px 0;color:#991b1b\\">⚠️ Alertas e Avisos (" + alerts.length + ")</h3>" +
-                "<table style=\\"width:100%;font-size:12px;border-collapse:collapse\\">" +
-                  "<thead><tr style=\\"border-bottom:2px solid #fca5a5\\">" +
-                    "<th style=\\"text-align:left;padding:4px\\">Tipo</th>" +
-                    "<th style=\\"text-align:left;padding:4px\\">Título</th>" +
-                    "<th style=\\"text-align:left;padding:4px\\">Mensagem</th>" +
-                    "<th style=\\"text-align:right;padding:4px\\">Quando</th>" +
-                  "</tr></thead>" +
-                  "<tbody>" + alertRows + "</tbody>" +
-                "</table>" +
-              "</section>"
-          }
-
-          function renderHealth(snapshot) {
-            if (!snapshot) {
-              healthSectionEl.style.display = "none"
-              return
-            }
-            const connState = readPath(snapshot, ["connectionState"], "unknown")
-            const successRate = readPath(snapshot, ["successRate"], 0)
-            const recentErrors = readPath(snapshot, ["errors"], [])
-            const eventLoopLag = readPath(snapshot, ["metrics", "eventLoopLag", "avgMs"], 0)
-            const connStateColor = connState === "open" ? "#22c55e" : "#ef4444"
-            const healthColor = successRate > 95 ? "#22c55e" : successRate > 80 ? "#f59e0b" : "#ef4444"
-            
-            let statusText = connState === "open" ? "✓ Conectado" : "✗ Desconectado"
-            let healthStatus = successRate > 95 ? "Saudável" : successRate > 80 ? "Degradado" : "Crítico"
-            
-            healthSectionEl.style.display = "block"
-            healthSectionEl.innerHTML =
-              "<section style=\\"margin-top:20px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;max-width:980px\\">" +
-                "<h3 style=\\"margin:0 0 10px 0\\">📊 Status de Saúde do Sistema</h3>" +
-                "<div style=\\"display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px\\">" +
-                  "<div style=\\"padding:12px;background:white;border-radius:6px;border-left:4px solid " + connStateColor + "\\">" +
-                    "<p style=\\"margin:0 0 4px 0;font-size:11px;color:#666\\">Conexão WhatsApp</p>" +
-                    "<p style=\\"margin:0;font-size:14px;font-weight:700;color:" + connStateColor + "\\">" + statusText + "</p>" +
-                  "</div>" +
-                  "<div style=\\"padding:12px;background:white;border-radius:6px;border-left:4px solid " + healthColor + "\\">" +
-                    "<p style=\\"margin:0 0 4px 0;font-size:11px;color:#666\\">Taxa de Sucesso</p>" +
-                    "<p style=\\"margin:0;font-size:14px;font-weight:700;color:" + healthColor + "\\">" + Number(successRate).toFixed(1) + "%</p>" +
-                  "</div>" +
-                  "<div style=\\"padding:12px;background:white;border-radius:6px;border-left:4px solid #3b82f6\\">" +
-                    "<p style=\\"margin:0 0 4px 0;font-size:11px;color:#666\\">Event Loop Lag</p>" +
-                    "<p style=\\"margin:0;font-size:14px;font-weight:700;color:#3b82f6\\">" + formatMs(eventLoopLag) + "</p>" +
-                  "</div>" +
-                "</div>" +
-                (recentErrors.length > 0 ? "<p style=\\"margin:12px 0 0 0;color:#991b1b\\">⚠️ " + recentErrors.length + " erro(s) recente(s)</p>" : "") +
-              "</section>"
-          }
-
-          function renderCommandsFrequency(snapshot) {
-            if (!snapshot) {
-              commandsFreqSectionEl.style.display = "none"
-              return
-            }
-            const topCommands = readPath(snapshot, ["topCommands"], [])
-            if (!topCommands || topCommands.length === 0) {
-              commandsFreqSectionEl.style.display = "none"
-              return
-            }
-            const rows = topCommands.map((cmd) => {
-              return "<tr>" +
-                "<td style=\\"padding:4px;border-bottom:1px solid #eee\\">" + escapeHtml("!" + readPath(cmd, ["command"], "-")) + "</td>" +
-                "<td style=\\"padding:4px;border-bottom:1px solid #eee;text-align:right\\">" + Number(readPath(cmd, ["count"], 0)).toLocaleString("pt-BR") + "</td>" +
-                "<td style=\\"padding:4px;border-bottom:1px solid #eee;text-align:right;font-size:11px;color:#999\\">" + formatDateTime(readPath(cmd, ["lastUsed"], 0)) + "</td>" +
-              "</tr>"
-            }).join("")
-            commandsFreqSectionEl.style.display = "block"
-            commandsFreqSectionEl.innerHTML =
-              "<section style=\\"margin-top:20px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;max-width:980px\\">" +
-                "<h3 style=\\"margin:0 0 10px 0\\">Top 10 Comandos</h3>" +
-                "<table style=\\"width:100%;border-collapse:collapse;font-size:12px\\">" +
-                  "<thead><tr style=\\"border-bottom:2px solid #ccc\\">" +
-                    "<th style=\\"text-align:left;padding:4px\\">Comando</th>" +
-                    "<th style=\\"text-align:right;padding:4px\\">Usos</th>" +
-                    "<th style=\\"text-align:right;padding:4px\\">Último Uso</th>" +
-                  "</tr></thead>" +
-                  "<tbody>" + rows + "</tbody>" +
-                "</table>" +
-              "</section>"
-          }
-
-          function renderGroupActivity(snapshot) {
-            if (!snapshot) {
-              groupActivitySectionEl.style.display = "none"
-              return
-            }
-            const groups = readPath(snapshot, ["groupActivity"], [])
-            if (!groups || groups.length === 0) {
-              groupActivitySectionEl.style.display = "none"
-              return
-            }
-            const rows = groups.slice(0, 15).map((group) => {
-              return "<tr>" +
-                "<td style=\\"padding:4px;border-bottom:1px solid #eee\\">" + escapeHtml(readPath(group, ["groupName"], readPath(group, ["groupId"], "DM"))) + "</td>" +
-                "<td style=\\"padding:4px;border-bottom:1px solid #eee;text-align:right\\">" + Number(readPath(group, ["commands"], 0)).toLocaleString("pt-BR") + "</td>" +
-                "<td style=\\"padding:4px;border-bottom:1px solid #eee;text-align:right\\">" + Number(readPath(group, ["uniqueUsers"], 0)) + "</td>" +
-                "<td style=\\"padding:4px;border-bottom:1px solid #eee;text-align:right;font-size:11px;color:#999\\">" + formatDateTime(readPath(group, ["lastActivity"], 0)) + "</td>" +
-              "</tr>"
-            }).join("")
-            groupActivitySectionEl.style.display = "block"
-            groupActivitySectionEl.innerHTML =
-              "<section style=\\"margin-top:20px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;max-width:980px\\">" +
-                "<h3 style=\\"margin:0 0 10px 0\\">Atividade por Grupo</h3>" +
-                "<table style=\\"width:100%;border-collapse:collapse;font-size:12px\\">" +
-                  "<thead><tr style=\\"border-bottom:2px solid #ccc\\">" +
-                    "<th style=\\"text-align:left;padding:4px\\">Grupo</th>" +
-                    "<th style=\\"text-align:right;padding:4px\\">Comandos</th>" +
-                    "<th style=\\"text-align:right;padding:4px\\">Usuários Únicos</th>" +
-                    "<th style=\\"text-align:right;padding:4px\\">Última Atividade</th>" +
-                  "</tr></thead>" +
-                  "<tbody>" + rows + "</tbody>" +
-                "</table>" +
-              "</section>"
-          }
-
-          function renderStorageHealth(snapshot) {
-            if (!snapshot) {
-              storageSectionEl.style.display = "none"
-              return
-            }
-            const storage = readPath(snapshot, ["storage"], {})
-            if (!storage || !storage.totalSizeMb) {
-              storageSectionEl.style.display = "none"
-              return
-             }
-            storageSectionEl.style.display = "block"
-            storageSectionEl.innerHTML =
-              "<section style=\\"margin-top:20px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;max-width:980px\\">" +
-                "<h3 style=\\"margin:0 0 10px 0\\">💾 Armazenamento</h3>" +
-                "<div style=\\"display:grid;grid-template-columns:1fr 1fr;gap:12px\\">" +
-                  "<div style=\\"padding:12px;background:white;border-radius:6px\\">" +
-                    "<p style=\\"margin:0 0 4px 0;font-size:11px;color:#666\\">Tamanho Total</p>" +
-                    "<p style=\\"margin:0;font-size:16px;font-weight:700\\">" + Number(storage.totalSizeMb).toFixed(2) + " MB</p>" +
-                  "</div>" +
-                  "<div style=\\"padding:12px;background:white;border-radius:6px\\">" +
-                    "<p style=\\"margin:0 0 4px 0;font-size:11px;color:#666\\">Arquivos</p>" +
-                    "<p style=\\"margin:0;font-size:16px;font-weight:700\\">" + Number(storage.fileCount || 0) + "</p>" +
-                  "</div>" +
-                "</div>" +
-              "</section>"
-          }
-
-          function renderErrors(snapshot) {
-            if (!snapshot) {
-              errorsSectionEl.style.display = "none"
-              return
-            }
-            const errors = readPath(snapshot, ["errors"], [])
-            if (!errors || errors.length === 0) {
-              errorsSectionEl.style.display = "none"
-              return
-            }
-            const rows = errors.slice(0, 15).map((err) => {
-              return "<tr>" +
-                "<td style=\\"padding:4px;border-bottom:1px solid #eee;font-weight:500\\">" + escapeHtml(readPath(err, ["source"], "-")) + "</td>" +
-                "<td style=\\"padding:4px;border-bottom:1px solid #eee\\">" + escapeHtml(readPath(err, ["message"], "-")) + "</td>" +
-                "<td style=\\"padding:4px;border-bottom:1px solid #eee;text-align:right;font-size:11px;color:#999\\">" + formatDateTime(readPath(err, ["at"], 0)) + "</td>" +
-              "</tr>"
-            }).join("")
-            errorsSectionEl.style.display = "block"
-            errorsSectionEl.innerHTML =
-              "<section style=\\"margin-top:20px;padding:16px;border:1px solid #fecaca;border-radius:8px;background:#fef2f2;max-width:980px\\">" +
-                "<h3 style=\\"margin:0 0 10px 0;color:#991b1b\\">🔴 Erros Recentes (" + errors.length + ")</h3>" +
-                "<table style=\\"width:100%;border-collapse:collapse;font-size:12px\\">" +
-                  "<thead><tr style=\\"border-bottom:2px solid #fecaca\\">" +
-                    "<th style=\\"text-align:left;padding:4px\\">Fonte</th>" +
-                    "<th style=\\"text-align:left;padding:4px\\">Mensagem</th>" +
-                    "<th style=\\"text-align:right;padding:4px\\">Quando</th>" +
-                  "</tr></thead>" +
-                  "<tbody>" + rows + "</tbody>" +
-                "</table>" +
-              "</section>"
-          }
-
           function renderDashboard(payload) {
             const authReady = Boolean(readPath(payload, ["authReady"], false))
             const snapshot = readPath(payload, ["snapshot"], null)
             renderQr(authReady, readPath(payload, ["qrImage"], null))
-            renderAlerts(snapshot)
-            renderHealth(snapshot)
             renderPerf(snapshot)
-            renderCommandsFrequency(snapshot)
-            renderGroupActivity(snapshot)
-            renderStorageHealth(snapshot)
-            renderErrors(snapshot)
             renderRegisteredUsers(snapshot)
             renderCommands(snapshot)
             renderTerminal(snapshot)
@@ -2160,7 +1681,6 @@ async function startBot(){
   sock.ev.on("messages.upsert", async ({ messages })=>{
     const processingStartedAt = Date.now()
     perfStats.messagesReceived += 1
-    let messageErrored = false
 
     const measureStage = async (stageName, task) => {
       const stageStart = Date.now()
@@ -2201,7 +1721,7 @@ async function startBot(){
       sender,
     ]
       .map((candidate) => registrationService.normalizeUserId(candidate))
-      .filter((candidate) => String(candidate || "").endsWith("@s.whatsapp.net"))
+      .filter(Boolean)
     )]
     const senderRegisteredId = senderRegistrationCandidates.find((candidate) => registrationService.isRegistered(candidate)) || ""
     const senderIsRegistered = Boolean(senderRegisteredId)
@@ -3313,7 +2833,6 @@ async function startBot(){
         senderName: getKnownUserName(sender),
         groupName: isGroup ? getKnownGroupName(from) : "DM",
       })
-      trackCommandUsage(cmd, sender, from)
     }
 
     // =========================
@@ -4415,12 +3934,7 @@ async function startBot(){
     }
 
     } catch (err) {
-      messageErrored = true
       perfStats.messagesErrored += 1
-      recordError("messages.upsert", String(err?.message || err || "unknown error"), {
-        command: cmd,
-        sender: sender
-      })
       telemetry.incrementCounter("command.error", 1, {
         scope: "messages.upsert",
         scope: "messages.upsert.processing",
@@ -4433,9 +3947,6 @@ async function startBot(){
       })
       console.error("Erro no processamento de messages.upsert", err)
     } finally {
-      if (!messageErrored && perfStats.messagesReceived > perfStats.ignoredNoMessage + perfStats.ignoredFromMe + perfStats.messagesErrored) {
-        perfStats.messagesSuccessful += 1
-      }
       perfStats.lastProcessedAt = Date.now()
       recordMetric(perfStats.processingMs, perfStats.lastProcessedAt - processingStartedAt)
     }

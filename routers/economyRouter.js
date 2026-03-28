@@ -682,7 +682,7 @@ async function handleEconomyCommands(ctx) {
         }
         return String(candidate || "").trim().toLowerCase()
       })
-      .filter((candidate) => String(candidate || "").endsWith("@s.whatsapp.net"))
+      .filter(Boolean)
   )]
 
   const resolveRegisteredSenderId = () => {
@@ -2055,16 +2055,12 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     return true
   }
 
-  const hasMentionPreferenceApi = typeof economyService.isMentionOptIn === "function"
   const senderIsRegistered = Boolean(registeredSenderId) || typeof registrationService?.isRegistered !== "function"
+  const hasRegistrationGate = typeof registrationService?.isRegistered === "function"
   const senderProfile = typeof economyService.getProfile === "function"
     ? economyService.getProfile(sender)
     : null
   const senderCustomLabel = String(senderProfile?.preferences?.publicLabel || "").trim()
-  const senderRegisteredEntry = typeof registrationService?.getRegisteredEntry === "function"
-    ? registrationService.getRegisteredEntry(registeredSenderId || sender)
-    : null
-  const senderKnownName = String(senderRegisteredEntry?.lastKnownName || "").trim()
   const mustRegisterBeforeEconomy = isEconomyCommandInvocation && !senderIsRegistered
   if (mustRegisterBeforeEconomy) {
     await sock.sendMessage(from, {
@@ -2075,8 +2071,11 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     return true
   }
 
-  const senderHasPublicIdentityLabel = Boolean(senderCustomLabel || senderKnownName)
-  const mustSetNicknameBeforeEconomy = isEconomyCommandInvocation && hasMentionPreferenceApi && !senderHasPublicIdentityLabel
+  const mustSetNicknameBeforeEconomy =
+    isEconomyCommandInvocation &&
+    hasRegistrationGate &&
+    senderIsRegistered &&
+    !senderCustomLabel
   if (mustSetNicknameBeforeEconomy) {
     await sock.sendMessage(from, {
       text:

@@ -191,3 +191,40 @@ test("getAllUserIds returns created profiles", () => {
   assert.ok(userIds.includes(b))
   assert.equal(new Set(userIds).size, userIds.length)
 })
+
+test("deleteUserProfile removes all alias variants", () => {
+  cleanupTestUsers()
+  const base = "551198887777@s.whatsapp.net"
+
+  economy.creditCoins(base, 100, { type: "test-credit" })
+
+  const legacyLid = "551198887777@lid"
+  const legacyUpper = "551198887777@S.WHATSAPP.NET"
+  const legacyObject = {
+    coins: 999,
+    items: { lootbox: 3 },
+    buffs: {},
+    cooldowns: {},
+    stats: {},
+    preferences: {},
+    progression: {},
+    transactions: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }
+
+  const parsed = JSON.parse(fs.readFileSync(ECONOMY_FILE, "utf8"))
+  parsed.users[legacyLid] = { ...legacyObject }
+  parsed.users[legacyUpper] = { ...legacyObject }
+  fs.writeFileSync(ECONOMY_FILE, JSON.stringify(parsed, null, 2), "utf8")
+  economy.loadEconomy()
+
+  const deleted = economy.deleteUserProfile(base)
+  assert.equal(deleted, true)
+
+  const afterDelete = JSON.parse(fs.readFileSync(ECONOMY_FILE, "utf8"))
+  const remainingKeys = Object.keys(afterDelete.users || {})
+  const victimKeys = remainingKeys.filter((key) => String(key).includes("551198887777"))
+
+  assert.equal(victimKeys.length, 0)
+})

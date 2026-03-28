@@ -1334,14 +1334,31 @@ function ensureUser(userId) {
 }
 
 function deleteUserProfile(userId) {
-  const aliases = getUserIdAliases(userId)
+  const aliases = new Set(getUserIdAliases(userId))
+  const normalized = normalizeUserId(userId)
+  const { userPart } = parseUserParts(normalized || userId)
+  const canonicalTarget = canonicalUserHandle(userPart)
   let removed = false
-  for (const alias of aliases) {
-    if (economyCache.users[alias]) {
-      delete economyCache.users[alias]
-      removed = true
+
+  for (const key of Object.keys(economyCache.users || {})) {
+    let shouldRemove = aliases.has(key)
+
+    if (!shouldRemove) {
+      const keyAliases = getUserIdAliases(key)
+      shouldRemove = keyAliases.some((alias) => aliases.has(alias))
     }
+
+    if (!shouldRemove && canonicalTarget) {
+      const parsed = parseUserParts(key)
+      const canonicalKey = canonicalUserHandle(parsed.userPart)
+      shouldRemove = Boolean(canonicalKey && canonicalKey === canonicalTarget)
+    }
+
+    if (!shouldRemove) continue
+    delete economyCache.users[key]
+    removed = true
   }
+
   if (!removed) return false
   saveEconomy(true)
   return true

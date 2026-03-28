@@ -199,7 +199,15 @@ test("economy router handles !xpranking command", async () => {
       getUserGlobalXpPosition: () => 3,
       getStablePublicLabel: (userId) => (userId.startsWith("autor") ? "AUTOR" : "ALVO"),
       isMentionOptIn: () => true,
-      getProfile: () => ({ coins: 0, shields: 0, buffs: {}, inventory: {} }),
+      getProfile: (userId) => ({
+        coins: 0,
+        shields: 0,
+        buffs: {},
+        inventory: {},
+        preferences: {
+          publicLabel: userId === "autor@s.whatsapp.net" ? "AutorNick" : "",
+        },
+      }),
       getStatement: () => [],
       getGroupRanking: () => [],
       getShopIndexText: () => "shop",
@@ -331,9 +339,9 @@ test("economy router !coinsranking falls back to nickname when mention jid is no
       ]),
       getUserGlobalPosition: () => 9,
       isMentionOptIn: () => true,
-      getProfile: () => ({
+      getProfile: (userId) => ({
         preferences: {
-          publicLabel: "",
+          publicLabel: userId === "caller@s.whatsapp.net" ? "CallerNick" : "",
         },
       }),
     },
@@ -399,7 +407,7 @@ test("economy router handles !guia command and sends three DM sections", async (
   assert.match(String(sent[0].payload?.text || ""), /SECAO 1\/3/)
   assert.match(String(sent[1].payload?.text || ""), /SECAO 2\/3/)
   assert.match(String(sent[2].payload?.text || ""), /SECAO 3\/3/)
-  assert.match(String(sent[3].payload?.text || ""), /guia de economia no privado em 3 secoes/i)
+  assert.match(String(sent[3].payload?.text || ""), /guia de economia no privado em 3 partes/i)
 })
 
 test("economy router handles !time criar command", async () => {
@@ -1131,7 +1139,7 @@ test("economy router grants XP on successful !trabalho", async () => {
   }
 })
 
-test("economy router blocks economy commands when mention opt-out user has no nickname", async () => {
+test("economy router blocks economy commands when registered user has no explicit !apelido", async () => {
   const { sock, sent } = createSockCapture()
 
   const handled = await handleEconomyCommands({
@@ -1153,7 +1161,6 @@ test("economy router blocks economy commands when mention opt-out user has no ni
       setMutedUsers: () => {},
     },
     economyService: {
-      isMentionOptIn: () => false,
       getProfile: () => ({
         coins: 0,
         shields: 0,
@@ -1164,6 +1171,12 @@ test("economy router blocks economy commands when mention opt-out user has no ni
       getStatement: () => [],
       getGroupRanking: () => [],
       getShopIndexText: () => "shop",
+    },
+    registrationService: {
+      isRegistered: () => true,
+      getRegisteredEntry: () => ({
+        lastKnownName: "Nome Registro Nao Deve Liberar",
+      }),
     },
     parseQuantity: () => 0,
     formatDuration: () => "0m",
@@ -2068,7 +2081,7 @@ test("games router blocks !começar reação with fewer than 3 participants", as
   assert.equal(handled, true)
   assert.equal(started, false)
   assert.equal(sent.length, 1)
-  assert.match(sent[0].payload.text, /pelo menos 3 participantes/i)
+  assert.match(sent[0].payload.text, /Mínimo de 3 jogadores/i)
 })
 
 test("games router starts 15s lobby bet grace on !começar <LobbyID>", async () => {
@@ -2191,14 +2204,14 @@ test("games router updates player lobby bet with !aposta during grace", async ()
     sock,
     from: "group@g.us",
     sender,
-    cmd: "!aposta 5",
+    cmd: "!aposta AB 5",
     cmdName: "!aposta",
-    cmdArg1: "5",
-    cmdArg2: "",
+    cmdArg1: "AB",
+    cmdArg2: "5",
     mentioned: [],
     prefix: "!",
     isGroup: true,
-    text: "!aposta 5",
+    text: "!aposta AB 5",
     msg: { message: {} },
     storage: {
       getGameState: (_groupId, key) => (key === "lobbyGrace:AB" ? graceState : null),
@@ -2259,7 +2272,7 @@ test("games router updates player lobby bet with !aposta during grace", async ()
     },
     BASE_GAME_REWARD: 30,
     normalizeUnifiedGameType: () => null,
-    normalizeLobbyId: () => "",
+    normalizeLobbyId: (v) => String(v || "").toUpperCase(),
     activeGameKey: () => "",
     resolveActiveLobbyForPlayer: () => ({ ok: false, reason: "not-found" }),
     getLobbyCreateBlockMessage: () => null,

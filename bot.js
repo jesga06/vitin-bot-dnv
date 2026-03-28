@@ -2378,39 +2378,36 @@ async function startBot(){
     // =========================
     // ESCOLHA PENDENTE DE PUNIÇÃO
     // =========================
-    if (botIsAdmin || !isGroup) {
-      const handledPendingPunishment = await measureStage("pendingPunishment", async () =>
-        handlePendingPunishmentChoice({
-          sock,
-          from,
-          sender,
-          text,
-          mentioned,
-          isGroup,
-          senderIsAdmin: senderIsNativeAdmin,
-          isCommand,
-        })
-      )
-      if (handledPendingPunishment) return
-    }
+    const handledPendingPunishment = await measureStage("pendingPunishment", async () =>
+      handlePendingPunishmentChoice({
+        sock,
+        from,
+        sender,
+        text,
+        mentioned,
+        isGroup,
+        senderIsAdmin: senderIsNativeAdmin,
+        isCommand,
+      })
+    )
+    if (handledPendingPunishment) return
 
     // =========================
     // APLICAÇÃO DE PUNIÇÃO ATIVA
     // =========================
-    if (botIsAdmin || !isGroup) {
-      const punishedMessageDeleted = await measureStage("punishmentEnforcement", async () =>
-        handlePunishmentEnforcement(
-          sock,
-          msg,
-          from,
-          sender,
-          text,
-          isGroup,
-          senderIsNativeAdmin && isCommand
-        )
+    const punishedMessageDeleted = await measureStage("punishmentEnforcement", async () =>
+      handlePunishmentEnforcement(
+        sock,
+        msg,
+        from,
+        sender,
+        text,
+        isGroup,
+        senderIsNativeAdmin && isCommand,
+        botIsAdmin
       )
-      if (punishedMessageDeleted) return
-    }
+    )
+    if (punishedMessageDeleted) return
 
     if (cmd === prefix + "resenha"){
       if (!isGroup) {

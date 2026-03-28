@@ -497,7 +497,65 @@ async function handleGameCommands(ctx) {
 
   if (cmdName === prefix + "aposta" && isGroup) {
     const explicitLobbyId = normalizeLobbyId(cmdArg1)
-    if (!explicitLobbyId) return false
+
+    // When no lobby ID is given, try to find the sender's active grace state and
+    // treat cmdArg1 as the bet value (shorthand: !aposta <1-10>)
+    if (!explicitLobbyId) {
+      const allGraceStates = getGraceStates()
+      const senderEntry = allGraceStates.find(
+        (entry) => Array.isArray(entry.state?.players) && entry.state.players.includes(sender)
+      )
+      if (!senderEntry) return false
+
+      const betToken = String(cmdArg1 || "").trim().toLowerCase()
+      if (betToken === "skip") {
+        senderEntry.state.forceStart = true
+        storage.setGameState(from, senderEntry.key, senderEntry.state)
+        await sock.sendMessage(from, {
+          text: `⏩ Lobby *${senderEntry.lobbyId}*: fase de aposta pulada por @${sender.split("@")[0]}.`,
+          mentions: [sender],
+        })
+        await handleGameCommands({
+          sock, from, sender,
+          cmd: `${prefix}começar ${senderEntry.lobbyId}`,
+          cmdName, cmdArg1: senderEntry.lobbyId,
+          cmdArg2: senderEntry.state.rrBetValueToken || "",
+          mentioned, prefix, isGroup, text, msg, storage, gameManager, economyService,
+          caraOuCoroa, adivinhacao, batataquente, dueloDados, roletaRussa,
+          startPeriodicGame, GAME_REWARDS, BASE_GAME_REWARD, normalizeUnifiedGameType,
+          normalizeLobbyId, activeGameKey, resolveActiveLobbyForPlayer,
+          getLobbyCreateBlockMessage, getGameBuyIn, collectLobbyBuyIn,
+          distributeLobbyBuyInPool, parsePositiveInt, isResenhaModeEnabled,
+          rewardPlayer, rewardPlayers, incrementUserStat, applyRandomGamePunishment,
+          createPendingTargetForWinner, jidNormalizedUser, createLobbyWarningCallback,
+          createLobbyTimeoutCallback, buildGameStatsText,
+        })
+        return true
+      }
+
+      const betRaw = Number.parseInt(betToken, 10)
+      if (!Number.isFinite(betRaw) || betRaw < 1 || betRaw > 10) {
+        await sock.sendMessage(from, {
+          text: "Use: !aposta <1-10> ou !aposta <1-10> skip",
+        })
+        return true
+      }
+
+      if (!senderEntry.state.playerBetByPlayer) senderEntry.state.playerBetByPlayer = {}
+      senderEntry.state.playerBetByPlayer[sender] = betRaw
+      storage.setGameState(from, senderEntry.key, senderEntry.state)
+
+      const baseBuyIn = Math.max(0, Number(senderEntry.state.buyInAmount) || 0)
+      const multipliedBuyIn = baseBuyIn * betRaw
+      await sock.sendMessage(from, {
+        text:
+          `🎯 Lobby *${senderEntry.lobbyId}*: bet de @${sender.split("@")[0]} ajustada para *${betRaw}x*.\n` +
+          `Buy-in deste jogador: *${multipliedBuyIn}* Epsteincoins (base ${baseBuyIn}).`,
+        mentions: [sender],
+      })
+      return true
+    }
+
     const targetLobbyId = explicitLobbyId
     const betToken = String(cmdArg2 || "").trim().toLowerCase()
 
@@ -1455,6 +1513,12 @@ async function handleGameCommands(ctx) {
     const blockedReason = getLobbyCreateBlockMessage("reação", "Reação")
     if (blockedReason) {
       await sock.sendMessage(from, { text: blockedReason })
+      return true
+    }
+
+    const participants = await getCommandParticipants()
+    if (participants.length < 3) {
+      await sock.sendMessage(from, { text: "São necessários pelo menos 3 participantes para iniciar a Reação." })
       return true
     }
 

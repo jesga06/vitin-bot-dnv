@@ -422,22 +422,22 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
 
   const rawBet = String(coinMatch[1] || "").trim()
   const profile = economyService.getProfile(sender)
-  const betMultiplier = rawBet ? Number.parseInt(rawBet, 10) : 2
+  const betMultiplier = rawBet ? Number.parseInt(rawBet, 10) : 1
   if (rawBet && !/^\d+$/.test(rawBet)) {
     await sock.sendMessage(from, {
-      text: `❌ Aposta inválida! Use bet 2-10. Estado: ${profile.coins}. (Compat: Use: !moeda [2-10])`,
+      text: `❌ Aposta inválida! Use bet 1-10. Estado: ${profile.coins}. (Compat: Use: !moeda [1-10])`,
     })
     return true
   }
-  if (!Number.isFinite(betMultiplier) || betMultiplier < 2 || betMultiplier > 10) {
+  if (!Number.isFinite(betMultiplier) || betMultiplier < 1 || betMultiplier > 10) {
     await sock.sendMessage(from, {
-      text: `❌ Aposta inválida! Use bet 2-10. Estado: ${profile.coins}. (Compat: Use: !moeda [2-10])`,
+      text: `❌ Aposta inválida! Use bet 1-10. Estado: ${profile.coins}. (Compat: Use: !moeda [1-10])`,
     })
     return true
   }
 
   // Coin balance check & buy-in deduction
-  const buyInAmount = betMultiplier * 25
+  const buyInAmount = betMultiplier * 10
   if (profile.coins < buyInAmount) {
     await sock.sendMessage(from, {
       text: `Você precisa de pelo menos *${buyInAmount}* moedas para fazer uma aposta de *${betMultiplier}x*. Saldo atual: ${profile.coins}`,

@@ -1,5 +1,4 @@
 const crypto = require("crypto")
-const { downloadMediaMessage } = require("@whiskeysockets/baileys")
 const storage = require("../storage")
 const economyService = require("./economyService")
 const telemetry = require("./telemetryService")
@@ -267,6 +266,7 @@ async function resendPunishedContent(sock, from, sender, msg, text = "") {
   }
 
   try {
+    const { downloadMediaMessage } = require("@whiskeysockets/baileys")
     if (msg?.message?.stickerMessage) {
       const stickerBuffer = await downloadMediaMessage(msg, "buffer", {}, {})
       await sock.sendMessage(from, { sticker: stickerBuffer })

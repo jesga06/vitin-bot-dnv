@@ -47,8 +47,6 @@ const logger = pino({ level: "silent" })
 
 const prefix = "!"
 
-let qrImage = null
-
 const METRIC_SAMPLE_LIMIT = 200
 const COMMAND_HISTORY_LIMIT = 10
 const TERMINAL_MIRROR_LIMIT = 500
@@ -64,8 +62,6 @@ const pendingOverrideAddBySender = new Map()
 const pendingEconomyWipeBySender = new Map()
 const pendingUnregisterBySender = new Map()
 const knownGroupIds = new Set()
-const groupNameCache = {}
-const userNameCache = {}
 const terminalMirrorLines = []
 
 function execFileAsync(file, args = [], options = {}) {
@@ -193,7 +189,7 @@ function parseMessageTimestampMs(msg) {
       const parsed = Number(ts.toNumber())
       return Number.isFinite(parsed) ? parsed * 1000 : 0
     }
-    const parsed = Number(ts.low)
+    const parsed = Number(ts.low ?? 0)
     return Number.isFinite(parsed) ? parsed * 1000 : 0
   }
   return 0
@@ -325,11 +321,14 @@ const {
 
 // Sobrescrita de identidade para comandos administrativos especiais
 const HARDCODED_OVERRIDE_OWNER = "owner"
-const HARDCODED_OVERRIDE_IDENTIFIERS = [
-  "5521995409899@lid",
-  "5521995409899@s.whatsapp.net",
-  "5521995409899",
-]
+const _adminPhone = String(process.env.ADMIN_PHONE || "").trim().replace(/\D/g, "")
+const HARDCODED_OVERRIDE_IDENTIFIERS = _adminPhone
+  ? [
+      `${_adminPhone}@lid`,
+      `${_adminPhone}@s.whatsapp.net`,
+      _adminPhone,
+    ]
+  : []
 
 const OVERRIDE_CONTROL_SCOPE = "__system__"
 const OVERRIDE_CONTROL_KEY = "overrideControl"

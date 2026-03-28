@@ -1055,6 +1055,7 @@ function parseEconomyWipeSelection(input = "", maxIndex = 0) {
 function buildEconomyWipePreviewText(sessionState = {}) {
   const selected = Array.isArray(sessionState.selectedEntries) ? sessionState.selectedEntries : []
   const wipeStats = Boolean(sessionState.wipeStats)
+  const wipeEconomyDataOnly = Boolean(sessionState.wipeEconomyDataOnly)
   const modeLabel = sessionState.mode === "total" ? "TOTAL" : "PERFIS"
   const sample = selected.slice(0, 20)
 
@@ -1062,11 +1063,13 @@ function buildEconomyWipePreviewText(sessionState = {}) {
     "Preview do wipe:",
     `Modo: ${modeLabel}`,
     `Perfis selecionados: ${selected.length}`,
+    `Arg wipeeconomy (somente dados): ${wipeEconomyDataOnly ? "SIM" : "NAO"}`,
     `Wipe de stats extras: ${wipeStats ? "SIM" : "NAO"}`,
     "",
     "Acoes base por perfil:",
-    "- deleteUserProfile (economyService)",
-    "- cleanupUserLinkedState (times/trades)",
+    ...(wipeEconomyDataOnly
+      ? ["- wipeUserData (economyService)"]
+      : ["- deleteUserProfile (economyService)", "- cleanupUserLinkedState (times/trades)"]),
     "",
   ]
 
@@ -1092,7 +1095,8 @@ function buildEconomyWipePreviewText(sessionState = {}) {
   return lines.join("\n")
 }
 
-function cleanupUserStateArtifacts(userId = "") {
+function cleanupUserStateArtifacts(userId = "", options = {}) {
+  const skipUnregister = Boolean(options?.skipUnregister)
   const identitySet = new Set(expandOverrideIdentityVariants(userId).map(normalizeOverrideIdentity).filter(Boolean))
   const matchesIdentity = (value = "") => {
     const normalized = normalizeOverrideIdentity(value)
@@ -1113,8 +1117,10 @@ function cleanupUserStateArtifacts(userId = "") {
     punishmentRemoved: 0,
   }
 
-  const unregister = registrationService.unregisterUser(userId)
-  metrics.registrationRemoved = Boolean(unregister?.ok)
+  if (!skipUnregister) {
+    const unregister = registrationService.unregisterUser(userId)
+    metrics.registrationRemoved = Boolean(unregister?.ok)
+  }
 
   if (storage.getPlayerProgress(userId)) {
     storage.setPlayerProgress(userId, {})
@@ -2014,12 +2020,12 @@ async function startBot(){
               ...entry,
               index: idx + 1,
             }))
-            pendingEconomyWipeState.phase = "choose-stats-wipe"
+            pendingEconomyWipeState.phase = "choose-wipeeconomy"
             refreshWipeTtl()
             await sock.sendMessage(from, {
               text:
                 "Escopo escolhido: *TOTAL*.\n" +
-                "Deseja limpar tambem stats/registro fora da economia? Responda *S* ou *N*.",
+                "Deseja usar o arg *wipeeconomy* (limpar so dados de economia/stats, mantendo perfil/registro)? Responda *S* ou *N*.",
             })
             return
           }
@@ -2047,12 +2053,41 @@ async function startBot(){
             ...(pendingEconomyWipeState.userSummaries[index - 1] || {}),
             index,
           }))
-          pendingEconomyWipeState.phase = "choose-stats-wipe"
+          pendingEconomyWipeState.phase = "choose-wipeeconomy"
           refreshWipeTtl()
           await sock.sendMessage(from, {
             text:
               `Selecionados: *${pendingEconomyWipeState.selectedEntries.length}* perfil(is).\n` +
-              "Deseja limpar tambem stats/registro fora da economia? Responda *S* ou *N*.",
+              "Deseja usar o arg *wipeeconomy* (limpar so dados de economia/stats, mantendo perfil/registro)? Responda *S* ou *N*.",
+          })
+          return
+        }
+
+        if (pendingEconomyWipeState.phase === "choose-wipeeconomy") {
+          if (!isYesToken(text) && !isNoToken(text)) {
+            await sock.sendMessage(from, {
+              text: "Responda apenas com *S* ou *N* para o arg wipeeconomy.",
+            })
+            return
+          }
+
+          pendingEconomyWipeState.wipeEconomyDataOnly = isYesToken(text)
+
+          if (pendingEconomyWipeState.wipeEconomyDataOnly) {
+            pendingEconomyWipeState.wipeStats = true
+            pendingEconomyWipeState.phase = "confirm"
+            pendingEconomyWipeState.previewText = buildEconomyWipePreviewText(pendingEconomyWipeState)
+            refreshWipeTtl()
+            await sock.sendMessage(from, {
+              text: pendingEconomyWipeState.previewText,
+            })
+            return
+          }
+
+          pendingEconomyWipeState.phase = "choose-stats-wipe"
+          refreshWipeTtl()
+          await sock.sendMessage(from, {
+            text: "Deseja limpar tambem stats/registro fora da economia? Responda *S* ou *N*.",
           })
           return
         }
@@ -2090,9 +2125,11 @@ async function startBot(){
             ? pendingEconomyWipeState.selectedEntries
             : []
           const wipeStats = Boolean(pendingEconomyWipeState.wipeStats)
+          const wipeEconomyDataOnly = Boolean(pendingEconomyWipeState.wipeEconomyDataOnly)
           const mode = pendingEconomyWipeState.mode === "total" ? "total" : "profiles"
           pendingEconomyWipeBySender.delete(sender)
 
+          let dataWiped = 0
           let profilesDeleted = 0
           let profilesNotFound = 0
           let registrationRemoved = 0
@@ -2105,21 +2142,38 @@ async function startBot(){
             const userId = entry?.userId
             if (!userId) continue
 
-            const deleted = economyService.deleteUserProfile(userId)
-            if (deleted) {
-              profilesDeleted += 1
-            } else {
-              profilesNotFound += 1
-            }
+            let deleted = false
+            let linkedCleanup = { teamsLeft: 0, teamsDeleted: 0, tradesCancelled: 0 }
 
-            const linkedCleanup = cleanupUserLinkedState(storage, userId)
-            teamsLeftTotal += Number(linkedCleanup?.teamsLeft || 0)
-            teamsDeletedTotal += Number(linkedCleanup?.teamsDeleted || 0)
-            tradesCancelledTotal += Number(linkedCleanup?.tradesCancelled || 0)
+            if (wipeEconomyDataOnly) {
+              const wiped = typeof economyService.wipeUserData === "function"
+                ? economyService.wipeUserData(userId)
+                : false
+              if (wiped) {
+                dataWiped += 1
+                deleted = true
+              } else {
+                profilesNotFound += 1
+              }
+            } else {
+              deleted = economyService.deleteUserProfile(userId)
+              if (deleted) {
+                profilesDeleted += 1
+              } else {
+                profilesNotFound += 1
+              }
+
+              linkedCleanup = cleanupUserLinkedState(storage, userId)
+              teamsLeftTotal += Number(linkedCleanup?.teamsLeft || 0)
+              teamsDeletedTotal += Number(linkedCleanup?.teamsDeleted || 0)
+              tradesCancelledTotal += Number(linkedCleanup?.tradesCancelled || 0)
+            }
 
             let statsMetrics = null
             if (wipeStats) {
-              statsMetrics = cleanupUserStateArtifacts(userId)
+              statsMetrics = cleanupUserStateArtifacts(userId, {
+                skipUnregister: wipeEconomyDataOnly,
+              })
               if (statsMetrics?.registrationRemoved) registrationRemoved += 1
               const removedCount =
                 Number(statsMetrics?.mutedRemoved || 0) +
@@ -2133,6 +2187,7 @@ async function startBot(){
 
             telemetry.incrementCounter("economy.wipe.profile", 1, {
               deleted: deleted ? "yes" : "no",
+              wipeEconomyDataOnly: wipeEconomyDataOnly ? "yes" : "no",
               statsWipe: wipeStats ? "yes" : "no",
             })
             telemetry.appendEvent("economy.wipe.profile", {
@@ -2142,6 +2197,7 @@ async function startBot(){
               deleted,
               mode,
               linkedCleanup,
+              wipeEconomyDataOnly,
               statsWipe: wipeStats,
               statsMetrics,
               redacted: true,
@@ -2150,6 +2206,7 @@ async function startBot(){
 
           telemetry.incrementCounter("economy.wipe.batch", 1, {
             mode,
+            wipeEconomyDataOnly: wipeEconomyDataOnly ? "yes" : "no",
             statsWipe: wipeStats ? "yes" : "no",
           })
           telemetry.appendEvent("economy.wipe.batch", {
@@ -2157,6 +2214,7 @@ async function startBot(){
             groupId: from,
             mode,
             selectedCount: selectedEntries.length,
+            dataWiped,
             profilesDeleted,
             profilesNotFound,
             registrationRemoved,
@@ -2164,6 +2222,7 @@ async function startBot(){
             teamsDeleted: teamsDeletedTotal,
             tradesCancelled: tradesCancelledTotal,
             statsArtifactsRemoved,
+            wipeEconomyDataOnly,
             statsWipe: wipeStats,
             redacted: true,
           })
@@ -2173,8 +2232,11 @@ async function startBot(){
               `Wipe concluido.\n` +
               `Modo: *${mode === "total" ? "TOTAL" : "PERFIS"}*\n` +
               `Selecionados: *${selectedEntries.length}*\n` +
-              `Perfis apagados: *${profilesDeleted}* | Nao encontrados: *${profilesNotFound}*\n` +
-              `Cleanup times: saidas *${teamsLeftTotal}* | times removidos *${teamsDeletedTotal}* | trades canceladas *${tradesCancelledTotal}*\n` +
+              `Arg wipeeconomy: *${wipeEconomyDataOnly ? "SIM" : "NAO"}*\n` +
+              (wipeEconomyDataOnly
+                ? `Dados de economia resetados: *${dataWiped}* | Nao encontrados: *${profilesNotFound}*\n`
+                : (`Perfis apagados: *${profilesDeleted}* | Nao encontrados: *${profilesNotFound}*\n` +
+                  `Cleanup times: saidas *${teamsLeftTotal}* | times removidos *${teamsDeletedTotal}* | trades canceladas *${tradesCancelledTotal}*\n`)) +
               `Stats wipe: *${wipeStats ? "SIM" : "NAO"}*` +
               (wipeStats
                 ? `\nRegistros removidos: *${registrationRemoved}* | artefatos de stats removidos: *${statsArtifactsRemoved}*`
@@ -2238,6 +2300,7 @@ async function startBot(){
         phase: "choose-scope",
         mode: null,
         wipeStats: false,
+        wipeEconomyDataOnly: false,
         userSummaries,
         selectedEntries: [],
         createdAt: Date.now(),
@@ -2253,7 +2316,8 @@ async function startBot(){
         text:
           "Escolha o escopo do wipe:\n" +
           "- Responda *TOTAL* para apagar todos os perfis listados.\n" +
-          "- Responda *PERFIS* para selecionar por indice/faixa/all.\n\n" +
+          "- Responda *PERFIS* para selecionar por indice/faixa/all.\n" +
+          "- Depois da seleção, o bot pergunta o arg *wipeeconomy* (somente dados, mantendo perfil/registro).\n\n" +
           "A sessao expira em 5 minutos. Envie *cancelar* para abortar.",
       })
       return

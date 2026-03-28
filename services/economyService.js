@@ -1364,6 +1364,92 @@ function deleteUserProfile(userId) {
   return true
 }
 
+function wipeUserData(userId) {
+  const aliases = new Set(getUserIdAliases(userId))
+  const normalized = normalizeUserId(userId)
+  const { userPart } = parseUserParts(normalized || userId)
+  const canonicalTarget = canonicalUserHandle(userPart)
+  const matchedKeys = []
+
+  for (const key of Object.keys(economyCache.users || {})) {
+    let shouldMatch = aliases.has(key)
+
+    if (!shouldMatch) {
+      const keyAliases = getUserIdAliases(key)
+      shouldMatch = keyAliases.some((alias) => aliases.has(alias))
+    }
+
+    if (!shouldMatch && canonicalTarget) {
+      const parsed = parseUserParts(key)
+      const canonicalKey = canonicalUserHandle(parsed.userPart)
+      shouldMatch = Boolean(canonicalKey && canonicalKey === canonicalTarget)
+    }
+
+    if (shouldMatch) matchedKeys.push(key)
+  }
+
+  if (matchedKeys.length === 0) return false
+
+  const targetKey = normalized || matchedKeys[0]
+  let targetUser = economyCache.users[targetKey] || null
+
+  for (const key of matchedKeys) {
+    if (key === targetKey) continue
+    targetUser = pickPreferredUserRecord(targetUser, economyCache.users[key])
+    delete economyCache.users[key]
+  }
+
+  if (!targetUser) {
+    targetUser = economyCache.users[targetKey]
+  }
+  if (!targetUser || typeof targetUser !== "object") return false
+
+  const preferences = {
+    mentionOptIn: Boolean(targetUser?.preferences?.mentionOptIn),
+    publicLabel: String(targetUser?.preferences?.publicLabel || "").trim().slice(0, 30),
+  }
+  const createdAt = Math.floor(Number(targetUser?.createdAt) || Date.now())
+
+  economyCache.users[targetKey] = {
+    ...targetUser,
+    coins: 0,
+    items: {},
+    buffs: {
+      kronosExpiresAt: 0,
+      kronosTempShieldDayKey: null,
+      kronosTempShields: 0,
+      kronosVerdadeiraActive: false,
+      xpBoosterExpiresAt: 0,
+      questRewardMultiplierCharges: 0,
+      claimMultiplierCharges: 0,
+      teamContribExpiresAt: 0,
+      espelhoDeLuzWeekKey: null,
+      coracaoOssificadoDayKey: null,
+    },
+    cooldowns: {
+      dailyClaimKey: null,
+      workAt: 0,
+      stealAt: 0,
+      stealDailyKey: null,
+      stealTargets: {},
+      stealAttemptsToday: 0,
+      carePackageLastClaimedAt: 0,
+    },
+    stats: {
+      ...DEFAULT_USER_STATS,
+    },
+    progression: buildDefaultProgression(),
+    transactions: [],
+    preferences,
+    createdAt,
+    updatedAt: Date.now(),
+  }
+
+  migrateUserShape(economyCache.users[targetKey])
+  saveEconomy(true)
+  return true
+}
+
 function touchUser(user) {
   if (!user || typeof user !== "object") return
   user.updatedAt = Date.now()
@@ -2986,6 +3072,7 @@ module.exports = {
   applyForgedPassTypeChoice,
   createPunishmentPassKey,
   getOperationLimits,
+  wipeUserData,
   deleteUserProfile,
   levelThresholds,
   getLevelThresholds,

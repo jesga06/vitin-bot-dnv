@@ -1,8 +1,11 @@
 function getStealSuccessChanceEngine(deps, victimId, thiefId = "") {
   const baseChance = 0.45
   const protection = deps.hasActiveKronos(victimId) ? 0.1 : 0
+  const antiStealCharm = Number(deps.getItemQuantity?.(victimId, "antiRouboCharm") || 0) > 0 ? 0.05 : 0
+  const defensiveJewel = Number(deps.getItemQuantity?.(victimId, "joiaDeProtecao") || 0) > 0 ? 0.06 : 0
   const thiefBuff = deps.hasActiveKronos(thiefId) ? 0.1 : 0
-  return Number(Math.max(0.05, Math.min(0.95, baseChance - protection + thiefBuff)).toFixed(2))
+  const assaultJewel = Number(deps.getItemQuantity?.(thiefId, "joiaDeAssalto") || 0) > 0 ? 0.08 : 0
+  return Number(Math.max(0.05, Math.min(0.95, baseChance - protection - antiStealCharm - defensiveJewel + thiefBuff + assaultJewel)).toFixed(2))
 }
 
 function canAttemptStealEngine(deps, thiefId, victimId) {

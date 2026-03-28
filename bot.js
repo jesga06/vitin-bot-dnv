@@ -733,7 +733,6 @@ function isEconomyCommandName(cmdName = "", cmd = "") {
     prefix + "roubar",
     prefix + "daily",
     prefix + "cassino",
-    prefix + "aposta",
     prefix + "lootbox",
     prefix + "falsificar",
     prefix + "trabalho",

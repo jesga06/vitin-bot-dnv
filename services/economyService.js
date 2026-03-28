@@ -42,6 +42,7 @@ const MAX_ITEM_STACK = 100_000
 const MAX_ITEM_OPERATION = 10_000
 const MAX_LOOTBOX_OPEN_PER_CALL = 10
 const MAX_FORGE_QUANTITY = 1_000
+const WORK_COOLDOWN_BASE_MS = 90 * 60 * 1000
 const DAILY_QUEST_COUNT = 3
 const WEEKLY_QUEST_COUNT = 5
 const BASE_XP_TO_LEVEL = 80
@@ -160,7 +161,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.8,
     stackable: true,
     rarity: 3,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (efeito reforçado ainda não implementado).",
+    description: "[PASSIVO] Ao ativar, converte-se em 3 proteções automáticas contra punições/roubos.",
   },
   // Risk Protection
   antiRouboCharm: {
@@ -171,7 +172,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (bloqueio por pingente ainda não implementado).",
+    description: "[PASSIVO] Reduz em 5% a chance de sucesso de roubos contra você.",
   },
   casinoInsurance: {
     key: "casinoInsurance",
@@ -181,7 +182,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.8,
     stackable: true,
     rarity: 3,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (seguro de cassino ainda não implementado).",
+    description: "[PASSIVO] Ao perder no cassino, consome 1 token e devolve 40% da perda.",
   },
   // Utility
   workSafetyToken: {
@@ -192,17 +193,17 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.8,
     stackable: true,
     rarity: 1,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (seguro de trabalho ainda não implementado).",
+    description: "[PASSIVO] Em falhas de trabalho, consome 1 token e devolve 40% da perda/valor de referência.",
   },
   rrFocusToken: {
-    key: "rrFocusToken",
+    key: "rrtokensorte",
     aliases: ["tokensorterr", "tokenSorteRR"],
     name: "Token de Sorte na RR",
     price: 1400,
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (foco de RR ainda não implementado).",
+    description: "[PASSIVO] Na Roleta Russa, reduz a chance de ser atingido. Consome 1 token ao vencer sem ser atingido.",
   },
   cooldownReducer: {
     key: "redutorCooldowns1",
@@ -222,7 +223,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.8,
     stackable: true,
     rarity: 2,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto (reroll de missão ainda não implementado).",
+    description: "[MANUAL via !usaritem] Re-rola as missões diárias atuais.",
   },
   streakSaver: {
     key: "streakSaver",
@@ -263,7 +264,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.75,
     stackable: true,
     rarity: 1,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] +5% ganhos de moedas em daily/trabalho/cassino/roubo.",
   },
   espelhoDeLuz: {
     key: "espelhoDeLuz",
@@ -273,7 +274,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.75,
     stackable: true,
     rarity: 1,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] Bloqueia automaticamente 1 punição/roubo por semana.",
   },
   boosterDeMoedas: {
     key: "boosterDeMoedas",
@@ -283,7 +284,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.8,
     stackable: true,
     rarity: 1,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] +25% moedas recebidas em trabalho.",
   },
   questPointBooster: {
     key: "questPointBooster",
@@ -313,7 +314,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.78,
     stackable: true,
     rarity: 3,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] +12% ganhos no cassino.",
   },
   joiaDeProtecao: {
     key: "joiaDeProtecao",
@@ -323,7 +324,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.78,
     stackable: true,
     rarity: 3,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] Reduz em 6% a chance de ser roubado.",
   },
   // Social
   teamContribBooster: {
@@ -346,7 +347,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.75,
     stackable: true,
     rarity: 4,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] +10% XP em todas as fontes.",
   },
   joiaDeAssalto: {
     key: "joiaDeAssalto",
@@ -356,17 +357,17 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.75,
     stackable: true,
     rarity: 4,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] Aumenta em 8% sua chance de sucesso ao roubar.",
   },
   reliquiaEsquecida: {
-    key: "reliquiaEsquecida",
-    aliases: ["reliquia"],
+    key: "charmeKronos",
+    aliases: ["charmeKronos"],
     name: "Charme do Kronos",
     price: 4500,
     sellRate: 0.75,
     stackable: true,
     rarity: 4,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] +10% moedas obtidas em roubos bem-sucedidos.",
   },
   tesouroClassico: {
     key: "tesouroClassico",
@@ -376,7 +377,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.75,
     stackable: true,
     rarity: 4,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] +12% recompensa de moedas no daily.",
   },
   coracaoOssiificado: {
     key: "coracaoOssificado",
@@ -386,7 +387,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.74,
     stackable: true,
     rarity: 4,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] Bloqueia automaticamente 1 punição/roubo por dia.",
   },
   seloLendario: {
     key: "seloLendario",
@@ -396,7 +397,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.75,
     stackable: true,
     rarity: 4,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] +25% efetividade de contribuição em times.",
   },
 
   // ===== KRONOS CROWNS (Special, Rarity 5) =====
@@ -430,7 +431,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.76,
     stackable: true,
     rarity: 5,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] +15% ganhos de moedas em múltiplas fontes.",
   },
   pedraClimatica: {
     key: "pedraClimatica",
@@ -440,7 +441,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.76,
     stackable: true,
     rarity: 5,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] Reduz em 25% o cooldown de !trabalho.",
   },
   coracaoDoUniverso: {
     key: "coracaoDoUniverso",
@@ -451,7 +452,7 @@ const ITEM_DEFINITIONS = {
     stackable: true,
     rarity: 5,
     permanent: true,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] +40% moedas no daily.",
   },
   marcaEterna: {
     key: "marcaEterna",
@@ -461,7 +462,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.76,
     stackable: true,
     rarity: 5,
-    description: "[SEM EFEITO FUNCIONAL] Item colecionável por enquanto.",
+    description: "[PASSIVO] +6% XP em todas as fontes.",
   },
 
   // ===== LOOTBOX & REGULAR ITEMS =====
@@ -620,6 +621,7 @@ const DEFAULT_PROGRESSION = {
   level: 1,
   xp: 0,
   seasonPoints: 0,
+  dailyQuestRerollNonce: 0,
   lastQuestDayKey: null,
   dailyQuests: [],
   teamId: null,
@@ -1045,7 +1047,8 @@ function migrateUserShape(user) {
     pingenteAntiRoubo: "antiRouboCharm",
     seguroCassino: "casinoInsurance",
     seguroTrabalho: "workSafetyToken",
-    tokenSorteRR: "rrFocusToken",
+    tokenSorteRR: "rrtokensorte",
+    rrFocusToken: "rrtokensorte",
     redutorCooldowns: "redutorCooldowns1",
     tokenRerolagem: "questRerollToken",
     salvaStreak: "streakSaver",
@@ -1073,6 +1076,8 @@ function migrateUserShape(user) {
       questRewardMultiplierCharges: 0,
       claimMultiplierCharges: 0,
       teamContribExpiresAt: 0,
+      espelhoDeLuzWeekKey: null,
+      coracaoOssificadoDayKey: null,
     }
   }
   if (!Number.isFinite(user.buffs.kronosExpiresAt)) user.buffs.kronosExpiresAt = 0
@@ -1085,6 +1090,12 @@ function migrateUserShape(user) {
   if (!Number.isFinite(user.buffs.questRewardMultiplierCharges) || user.buffs.questRewardMultiplierCharges < 0) user.buffs.questRewardMultiplierCharges = 0
   if (!Number.isFinite(user.buffs.claimMultiplierCharges) || user.buffs.claimMultiplierCharges < 0) user.buffs.claimMultiplierCharges = 0
   if (!Number.isFinite(user.buffs.teamContribExpiresAt) || user.buffs.teamContribExpiresAt < 0) user.buffs.teamContribExpiresAt = 0
+  if (typeof user.buffs.espelhoDeLuzWeekKey !== "string" && user.buffs.espelhoDeLuzWeekKey !== null) {
+    user.buffs.espelhoDeLuzWeekKey = null
+  }
+  if (typeof user.buffs.coracaoOssificadoDayKey !== "string" && user.buffs.coracaoOssificadoDayKey !== null) {
+    user.buffs.coracaoOssificadoDayKey = null
+  }
   if (!user.cooldowns || typeof user.cooldowns !== "object") {
     user.cooldowns = {
       dailyClaimKey: null,
@@ -1142,6 +1153,9 @@ function migrateUserShape(user) {
   if (typeof user.progression.lastQuestDayKey !== "string" && user.progression.lastQuestDayKey !== null) {
     user.progression.lastQuestDayKey = null
   }
+  if (!Number.isFinite(user.progression.dailyQuestRerollNonce) || user.progression.dailyQuestRerollNonce < 0) {
+    user.progression.dailyQuestRerollNonce = 0
+  }
   if (!Array.isArray(user.progression.weeklyQuests)) user.progression.weeklyQuests = []
   if (typeof user.progression.lastQuestWeekKey !== "string" && user.progression.lastQuestWeekKey !== null) {
     user.progression.lastQuestWeekKey = null
@@ -1197,6 +1211,8 @@ function ensureUser(userId) {
         questRewardMultiplierCharges: 0,
         claimMultiplierCharges: 0,
         teamContribExpiresAt: 0,
+        espelhoDeLuzWeekKey: null,
+        coracaoOssificadoDayKey: null,
       },
       cooldowns: {
         dailyClaimKey: null,
@@ -1511,7 +1527,11 @@ function consumeClaimMultiplier(userId, source = "") {
 }
 
 function getTeamContributionMultiplier(userId) {
-  return getTeamContributionMultiplierEngine(buildItemEffectsDeps(), userId)
+  const base = getTeamContributionMultiplierEngine(buildItemEffectsDeps(), userId)
+  if (getItemQuantity(userId, "seloLendario") > 0) {
+    return Number((base * 1.25).toFixed(2))
+  }
+  return base
 }
 
 function consumeStreakSaver(userId) {
@@ -1646,6 +1666,22 @@ function consumeShield(userId) {
   const user = ensureUser(userId)
   if (!user) return false
 
+  const weekKey = getWeekKey()
+  if (getItemQuantity(userId, "espelhoDeLuz") > 0 && user.buffs.espelhoDeLuzWeekKey !== weekKey) {
+    user.buffs.espelhoDeLuzWeekKey = weekKey
+    touchUser(user)
+    saveEconomy()
+    return true
+  }
+
+  const dayKey = getDayKey()
+  if (getItemQuantity(userId, "coracaoOssificado") > 0 && user.buffs.coracaoOssificadoDayKey !== dayKey) {
+    user.buffs.coracaoOssificadoDayKey = dayKey
+    touchUser(user)
+    saveEconomy()
+    return true
+  }
+
   const temporaryShields = Math.max(0, Math.floor(Number(user.buffs.kronosTempShields) || 0))
   if (temporaryShields > 0) {
     user.buffs.kronosTempShields = temporaryShields - 1
@@ -1655,10 +1691,112 @@ function consumeShield(userId) {
     return true
   }
 
-  if (getItemQuantity(userId, "escudo") <= 0) return false
-  removeItem(userId, "escudo", 1)
-  incrementStat(userId, "shieldsUsed", 1)
-  return true
+  if (getItemQuantity(userId, "escudo") > 0) {
+    removeItem(userId, "escudo", 1)
+    incrementStat(userId, "shieldsUsed", 1)
+    return true
+  }
+
+  if (getItemQuantity(userId, "escudoReforcado") > 0) {
+    removeItem(userId, "escudoReforcado", 1)
+    addItem(userId, "escudo", 3)
+    removeItem(userId, "escudo", 1)
+    incrementStat(userId, "shieldsUsed", 1)
+    return true
+  }
+
+  return false
+}
+
+function applyCasinoInsurance(userId, lostAmount = 0, options = {}) {
+  const threshold = Math.max(1, Math.floor(Number(options?.threshold) || 1))
+  const wager = Math.max(0, Math.floor(Number(options?.wager) || lostAmount || 0))
+  if (wager < threshold) {
+    return { ok: false, activated: false, reason: "below-threshold", refunded: 0 }
+  }
+
+  const available = getItemQuantity(userId, "casinoInsurance")
+  if (available <= 0) {
+    return { ok: false, activated: false, reason: "no-token", refunded: 0 }
+  }
+
+  const loss = Math.max(0, Math.floor(Number(lostAmount) || 0))
+  if (loss <= 0) {
+    return { ok: false, activated: false, reason: "no-loss", refunded: 0 }
+  }
+
+  const refund = Math.max(0, Math.floor(loss * 0.4))
+  if (refund <= 0) {
+    return { ok: false, activated: false, reason: "refund-zero", refunded: 0 }
+  }
+
+  removeItem(userId, "casinoInsurance", 1)
+  const credited = creditCoins(userId, refund, {
+    type: "casino-insurance-refund",
+    details: "Seguro de cassino ativado",
+    meta: {
+      wager,
+      loss,
+      threshold,
+    },
+  })
+
+  return {
+    ok: true,
+    activated: credited > 0,
+    refunded: credited,
+    consumed: credited > 0 ? 1 : 0,
+  }
+}
+
+function applyWorkSafetyToken(userId, lostAmount = 0, options = {}) {
+  const available = getItemQuantity(userId, "workSafetyToken")
+  if (available <= 0) {
+    return { ok: false, activated: false, reason: "no-token", refunded: 0, compensation: 0 }
+  }
+
+  const loss = Math.max(0, Math.floor(Number(lostAmount) || 0))
+  const referenceAmount = Math.max(0, Math.floor(Number(options?.referenceAmount) || 0))
+  const fallbackCompensation = Math.max(0, Math.floor(Number(options?.fallbackCompensation) || 0))
+  const workType = String(options?.workType || "unknown")
+
+  let credited = 0
+  let mode = "none"
+  if (loss > 0) {
+    const refund = Math.max(0, Math.floor(loss * 0.4))
+    if (refund > 0) {
+      credited = creditCoins(userId, refund, {
+        type: "work-safety-refund",
+        details: `Seguro de trabalho ativado (${workType})`,
+        meta: { loss, workType },
+      })
+      mode = "refund"
+    }
+  } else if (referenceAmount > 0 || fallbackCompensation > 0) {
+    const compensation = referenceAmount > 0
+      ? Math.max(0, Math.floor(referenceAmount * 0.4))
+      : fallbackCompensation
+    credited = creditCoins(userId, compensation, {
+      type: "work-safety-compensation",
+      details: `Compensação por falha de trabalho (${workType})`,
+      meta: { workType, referenceAmount },
+    })
+    mode = "compensation"
+  }
+
+  if (credited <= 0) {
+    return { ok: false, activated: false, reason: "zero-credit", refunded: 0, compensation: 0 }
+  }
+
+  removeItem(userId, "workSafetyToken", 1)
+  return {
+    ok: true,
+    activated: true,
+    mode,
+    consumed: 1,
+    refunded: mode === "refund" ? credited : 0,
+    compensation: mode === "compensation" ? credited : 0,
+  }
 }
 
 function buyShield(userId) {
@@ -1710,10 +1848,26 @@ function refreshKronosTemporaryShields(userId) {
 function applyKronosGainMultiplier(userId, amount, type = "generic") {
   const base = Math.max(0, Math.floor(Number(amount) || 0))
   if (base <= 0) return 0
-  if (!hasActiveKronos(userId)) return base
-  if (type === "daily") return Math.floor(base * 1.1)
-  if (type === "casino" || type === "steal" || type === "work") return Math.floor(base * 1.3)
-  return base
+  let withItems = base
+  if (getItemQuantity(userId, "moedaDaSorte") > 0) withItems = Math.floor(withItems * 1.05)
+  if (getItemQuantity(userId, "tesouroLendario") > 0) withItems = Math.floor(withItems * 1.15)
+  if (type === "daily" && getItemQuantity(userId, "tesouroClassico") > 0) withItems = Math.floor(withItems * 1.12)
+  if (type === "daily" && getItemQuantity(userId, "coracaoDoUniverso") > 0) withItems = Math.floor(withItems * 1.4)
+  if (type === "work" && getItemQuantity(userId, "boosterDeMoedas") > 0) withItems = Math.floor(withItems * 1.25)
+  if (type === "casino" && getItemQuantity(userId, "cristalDeAmplificacao") > 0) withItems = Math.floor(withItems * 1.12)
+  if (type === "steal" && getItemQuantity(userId, "reliquiaEsquecida") > 0) withItems = Math.floor(withItems * 1.1)
+
+  if (!hasActiveKronos(userId)) return withItems
+  if (type === "daily") return Math.floor(withItems * 1.1)
+  if (type === "casino" || type === "steal" || type === "work") return Math.floor(withItems * 1.3)
+  return withItems
+}
+
+function getXpItemMultiplier(userId) {
+  let multiplier = 1
+  if (getItemQuantity(userId, "artefatoAntigo") > 0) multiplier *= 1.1
+  if (getItemQuantity(userId, "marcaEterna") > 0) multiplier *= 1.06
+  return Number(multiplier.toFixed(4))
 }
 
 function getStealSuccessChance(victimId, thiefId = "") {
@@ -1734,6 +1888,7 @@ function buildStealDeps() {
     hasActiveKronos,
     getCoins,
     consumeShield,
+    getItemQuantity,
     debitCoinsFlexible,
     creditCoins,
     incrementStat,
@@ -2255,9 +2410,9 @@ function getDailyQuestState(userId, dayKey = getDayKey()) {
 function addXp(userId, amount = 0, meta = {}) {
   const user = ensureUser(userId)
   const baseAmount = Math.max(0, Math.floor(Number(amount) || 0))
-  const parsedAmount = isXpBoosterActive(userId)
-    ? Math.max(0, Math.floor(baseAmount * 1.15))
-    : baseAmount
+  const itemMultiplier = getXpItemMultiplier(userId)
+  const xpBoosterMultiplier = isXpBoosterActive(userId) ? 1.15 : 1
+  const parsedAmount = Math.max(0, Math.floor(baseAmount * itemMultiplier * xpBoosterMultiplier))
   if (!user || parsedAmount <= 0) {
     return {
       ok: false,
@@ -2511,6 +2666,14 @@ function getWorkCooldown(userId) {
   return Math.floor(Number(user.cooldowns.workAt) || 0)
 }
 
+function getWorkCooldownDurationMs(userId) {
+  const base = WORK_COOLDOWN_BASE_MS
+  if (getItemQuantity(userId, "pedraClimatica") > 0) {
+    return Math.floor(base * 0.75)
+  }
+  return base
+}
+
 function setStealCooldown(userId, timestamp = Date.now()) {
   const user = ensureUser(userId)
   if (!user) return
@@ -2651,11 +2814,14 @@ module.exports = {
   getTeamContributionMultiplier,
   consumeStreakSaver,
   applySalvageInsurance,
+  applyCasinoInsurance,
+  applyWorkSafetyToken,
   applyCooldownReducer,
   claimCarePackage,
   hasActiveKronos,
   isXpBoosterActive,
   applyKronosGainMultiplier,
+  getXpItemMultiplier,
   getStealSuccessChance,
   canAttemptSteal,
   getGlobalRanking,
@@ -2671,6 +2837,7 @@ module.exports = {
   incrementStat,
   setWorkCooldown,
   getWorkCooldown,
+  getWorkCooldownDurationMs,
   setStealCooldown,
   getStealCooldown,
   getProfile,

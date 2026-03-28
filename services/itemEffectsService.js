@@ -218,6 +218,23 @@ function useItemEngine(deps, userId, itemKey) {
     }
   }
 
+  if (normalized === "questRerollToken") {
+    deps.removeItem(userId, normalized, 1)
+    const currentNonce = Math.max(0, Math.floor(Number(user.progression?.dailyQuestRerollNonce) || 0))
+    user.progression.dailyQuestRerollNonce = currentNonce + 1
+    user.progression.lastQuestDayKey = null
+    user.progression.dailyQuests = []
+    deps.touchUser(user)
+    deps.saveEconomy()
+    return {
+      ok: true,
+      itemKey: normalized,
+      consumed: 1,
+      effect: "quest-reroll",
+      rerollNonce: user.progression.dailyQuestRerollNonce,
+    }
+  }
+
   return { ok: false, reason: "item-not-usable-manually", itemKey: normalized }
 }
 

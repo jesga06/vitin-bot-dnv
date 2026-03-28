@@ -588,7 +588,6 @@ async function handleEconomyCommands(ctx) {
     `${commandPrefix}daily`,
     `${commandPrefix}carepackage`,
     `${commandPrefix}cassino`,
-    `${commandPrefix}aposta`,
     `${commandPrefix}lootbox`,
     `${commandPrefix}falsificar`,
     `${commandPrefix}usaritem`,
@@ -623,49 +622,53 @@ async function handleEconomyCommands(ctx) {
       maxForgeQuantity: 1_000,
     }
 
-  const applyMentionPolicy = (userIds = []) => {
-    const unique = [...new Set((userIds || []).filter(Boolean))]
-    return unique.filter((userId) => {
-      const isRegistered = typeof registrationService?.isRegistered === "function"
-        ? registrationService.isRegistered(userId)
-        : true
-      if (!isRegistered) return false
-      if (typeof economyService.isMentionOptIn !== "function") return true
-      return economyService.isMentionOptIn(userId)
-    })
-  }
-
-  const hasPublicVisibility = (userId = "") => {
+  const getRankingIdentity = (userId = "") => {
     const isRegistered = typeof registrationService?.isRegistered === "function"
       ? registrationService.isRegistered(userId)
       : true
-    if (!isRegistered) return false
+    if (!isRegistered) return { visible: false, label: "", mentionId: null }
 
     const mentionOptIn = typeof economyService.isMentionOptIn === "function"
       ? economyService.isMentionOptIn(userId)
       : true
+
     const profile = typeof economyService.getProfile === "function"
       ? economyService.getProfile(userId)
       : null
-    const customLabel = String(profile?.preferences?.publicLabel || "").trim()
-    return Boolean(mentionOptIn || customLabel)
-  }
-
-  const getPublicRankingLabel = (userId = "") => {
-    const profile = typeof economyService.getProfile === "function"
-      ? economyService.getProfile(userId)
+    const publicLabel = String(profile?.preferences?.publicLabel || "").trim()
+    const registeredEntry = typeof registrationService?.getRegisteredEntry === "function"
+      ? registrationService.getRegisteredEntry(userId)
       : null
-    const customLabel = String(profile?.preferences?.publicLabel || "").trim()
-    if (customLabel) return customLabel
+    const knownName = String(registeredEntry?.lastKnownName || "").trim()
 
-    const mentionOptIn = typeof economyService.isMentionOptIn === "function"
-      ? economyService.isMentionOptIn(userId)
-      : true
     if (mentionOptIn) {
-      return `@${String(userId || "").split("@")[0]}`
+      const tag = String(userId || "").split("@")[0]
+      if (!tag) return { visible: false, label: "", mentionId: null }
+      return {
+        visible: true,
+        label: `@${tag}`,
+        mentionId: userId,
+      }
     }
 
-    return ""
+    const fallbackLabel = publicLabel || knownName
+    if (!fallbackLabel) {
+      return { visible: false, label: "", mentionId: null }
+    }
+
+    return {
+      visible: true,
+      label: fallbackLabel,
+      mentionId: null,
+    }
+  }
+
+  const applyMentionPolicy = (userIds = []) => {
+    const unique = [...new Set((userIds || []).filter(Boolean))]
+    return unique.filter((userId) => {
+      const identity = getRankingIdentity(userId)
+      return Boolean(identity?.mentionId)
+    })
   }
 
   if (cmdName === prefix + "mentions") {
@@ -2993,18 +2996,25 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     const metadata = await sock.groupMetadata(from)
     const members = (metadata?.participants || []).map((p) => jidNormalizedUser(p.id))
     const ranking = economyService.getGroupRanking(members, 10)
-    const visibleRanking = ranking.filter((entry) => hasPublicVisibility(entry.userId))
+    const visibleRanking = ranking
+      .map((entry) => ({
+        ...entry,
+        rankingIdentity: getRankingIdentity(entry.userId),
+      }))
+      .filter((entry) => entry.rankingIdentity.visible)
     if (visibleRanking.length === 0) {
       await sock.sendMessage(from, { text: "Sem dados de economia neste grupo ainda." })
       return true
     }
 
     const lines = visibleRanking.map((entry, index) => {
-      const label = getPublicRankingLabel(entry.userId)
+      const label = entry.rankingIdentity.label
       return `${index + 1}. ${label} - *${entry.coins}*`
     })
     const globalPos = economyService.getUserGlobalPosition(sender)
-    const mentions = applyMentionPolicy(visibleRanking.map((entry) => entry.userId))
+    const mentions = [...new Set(visibleRanking
+      .map((entry) => entry.rankingIdentity.mentionId)
+      .filter(Boolean))]
     await sock.sendMessage(from, {
       text:
         `🏦 Ranking de ${CURRENCY_LABEL} (grupo)\n` +
@@ -3021,14 +3031,19 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     const ranking = typeof economyService.getGroupXpRanking === "function"
       ? economyService.getGroupXpRanking(members, 10)
       : []
-    const visibleRanking = ranking.filter((entry) => hasPublicVisibility(entry.userId))
+    const visibleRanking = ranking
+      .map((entry) => ({
+        ...entry,
+        rankingIdentity: getRankingIdentity(entry.userId),
+      }))
+      .filter((entry) => entry.rankingIdentity.visible)
     if (visibleRanking.length === 0) {
       await sock.sendMessage(from, { text: "Sem dados de XP neste grupo ainda." })
       return true
     }
 
     const lines = visibleRanking.map((entry, index) => {
-      const label = getPublicRankingLabel(entry.userId)
+      const label = entry.rankingIdentity.label
       const level = Math.max(1, Math.floor(Number(entry?.level) || 1))
       const xpNow = Math.max(0, Math.floor(Number(entry?.xp) || 0))
       const xpToNext = Math.max(1, Math.floor(Number(entry?.xpToNextLevel) || 1))
@@ -3037,7 +3052,9 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     const globalPos = typeof economyService.getUserGlobalXpPosition === "function"
       ? economyService.getUserGlobalXpPosition(sender)
       : null
-    const mentions = applyMentionPolicy(visibleRanking.map((entry) => entry.userId))
+    const mentions = [...new Set(visibleRanking
+      .map((entry) => entry.rankingIdentity.mentionId)
+      .filter(Boolean))]
     await sock.sendMessage(from, {
       text:
         `⭐ Ranking de XP (grupo)\n` +
@@ -3260,6 +3277,9 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       if (used.effect === "team-contrib-multiplier") {
         return "👥 Multiplicador de contribuições ativo: *2x* em times por 24h."
       }
+      if (used.effect === "quest-reroll") {
+        return "🔄 Missões diárias re-roladas com sucesso. Use !missao para ver a nova rotação."
+      }
       return "✅ Item usado com sucesso."
     })()
 
@@ -3481,7 +3501,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     return true
   }
 
-  if (cmdName === prefix + "cassino" || cmdName === prefix + "aposta") {
+  if (cmdName === prefix + "cassino") {
     const value = parseQuantity(cmdArg1, 0)
     if (value <= 0) {
       await sock.sendMessage(from, { text: "Use: !cassino <valor>" })
@@ -3559,8 +3579,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       return arr
     }
 
-    // Meta de balanceamento: ~40% de rodadas vencedoras no cassino.
-    const isWin = Math.random() < 0.4
+    // Meta de balanceamento: 20% de rodadas vencedoras no cassino.
+    const isWin = Math.random() < 0.2
     let maxCount = 0
     if (isWin) {
       const tierRoll = Math.random()
@@ -3587,12 +3607,21 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       incrementUserStat(sender, "moneyCasinoWon", payout)
     }
 
+    let casinoInsurance = { activated: false, refunded: 0 }
     let salvage = { activated: false, refunded: 0 }
-    if (payout <= 0 && typeof economyService.applySalvageInsurance === "function") {
-      salvage = economyService.applySalvageInsurance(sender, value, {
-        betValue: value,
-        threshold: 4,
-      })
+    if (payout <= 0) {
+      if (typeof economyService.applyCasinoInsurance === "function") {
+        casinoInsurance = economyService.applyCasinoInsurance(sender, value, {
+          wager: value,
+          threshold: 2,
+        })
+      }
+      if (typeof economyService.applySalvageInsurance === "function") {
+        salvage = economyService.applySalvageInsurance(sender, value, {
+          betValue: value,
+          threshold: 4,
+        })
+      }
     }
 
     const casinoXp = payout > 0
@@ -3621,6 +3650,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         (payout > 0
           ? `Resultado: ganhou *${payout}* ${CURRENCY_LABEL}.`
           : `Resultado: perdeu *${value}* ${CURRENCY_LABEL}.`) +
+        (casinoInsurance.activated ? `\n🎟️ Seguro de Cassino ativado: devolução de *${casinoInsurance.refunded}* ${CURRENCY_LABEL}.` : "") +
         (salvage.activated ? `\n🛟 Seguro Geral ativado: devolução de *${salvage.refunded}* ${CURRENCY_LABEL}.` : "") +
         buildXpRewardText(xpResult, casinoXp),
     })
@@ -3886,7 +3916,9 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       return true
     }
 
-    const WORK_COOLDOWN_MS = 90 * 60_000
+    const WORK_COOLDOWN_MS = typeof economyService.getWorkCooldownDurationMs === "function"
+      ? economyService.getWorkCooldownDurationMs(sender)
+      : 90 * 60_000
     const lastWorkAt = economyService.getWorkCooldown(sender)
     const remaining = (lastWorkAt + WORK_COOLDOWN_MS) - Date.now()
     if (remaining > 0) {
@@ -3900,6 +3932,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     economyService.incrementStat(sender, "works", 1)
 
     let gain = 0
+    let workLossAmount = 0
+    let workSafetyReferenceAmount = 150
     let message = ""
     let workStatus = "none"
     let xpReward = XP_REWARDS.workFail
@@ -3911,6 +3945,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         xpReward = XP_REWARDS.workFail
       } else {
         gain = Math.floor(Math.random() * 91) + 55
+        workSafetyReferenceAmount = gain
         message = `🍔 Delivery concluído! Você ganhou ${gain} ${CURRENCY_LABEL}.`
         workStatus = "win"
         xpReward = XP_REWARDS.workWin
@@ -3922,11 +3957,13 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         xpReward = XP_REWARDS.workFail
       } else {
         gain = 110
+        workSafetyReferenceAmount = gain
         message = `🌱 Serviço concluído! Você ganhou ${gain} ${CURRENCY_LABEL}.`
         workStatus = "win"
         xpReward = XP_REWARDS.workWin
       }
     } else if (work === "lavagem") {
+      workSafetyReferenceAmount = 320
       if (Math.random() < 0.8) {
         const lossByPercent = Math.floor(economyService.getCoins(sender) * 0.2)
         const lost = economyService.debitCoinsFlexible(sender, Math.min(lossByPercent, 1500), {
@@ -3934,11 +3971,13 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
           details: "Falha no trabalho lavagem",
           meta: { work },
         })
+        workLossAmount = lost
         message = `💀 Lavagem fracassou! Você perdeu ${lost} ${CURRENCY_LABEL}.`
         workStatus = "loss"
         xpReward = XP_REWARDS.workFail
       } else {
         gain = Math.floor(Math.random() * 301) + 320
+        workSafetyReferenceAmount = gain
         message = `💰 Lavagem concluída! Você ganhou ${gain} ${CURRENCY_LABEL}.`
         workStatus = "win"
         xpReward = XP_REWARDS.workWin
@@ -3949,16 +3988,19 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       const baseGain = 150
       if (roll > 50) {
         gain = Math.floor(baseGain * 2) // 2x payout branch
+        workSafetyReferenceAmount = gain
         message = `🎲 Aposta vencida! Você ganhou ${gain} ${CURRENCY_LABEL} (2x multiplicador).`
         workStatus = "win"
         xpReward = XP_REWARDS.workWin
       } else {
         gain = Math.floor(baseGain * 0.5) // 0.5x payout branch (50% floor)
+        workSafetyReferenceAmount = gain
         message = `🎲 Aposta parcial! Você ganhou ${gain} ${CURRENCY_LABEL} (0.5x multiplicador).`
         workStatus = "win"
         xpReward = XP_REWARDS.workWin
       }
     } else if (work === "minerar") {
+      workSafetyReferenceAmount = 180
       // Minigame work type: roll determines outcome (0% chance - zero payout or normal)
       const roll = Math.random() * 100
       if (roll < 30) {
@@ -3968,11 +4010,13 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         xpReward = XP_REWARDS.workFail
       } else {
         gain = Math.floor(Math.random() * 151) + 180
+        workSafetyReferenceAmount = gain
         message = `⛏️ Mineração bem-sucedida! Você extraiu minérios e ganhou ${gain} ${CURRENCY_LABEL}.`
         workStatus = "win"
         xpReward = XP_REWARDS.workWin
       }
     } else if (work === "bitcoin") {
+      workSafetyReferenceAmount = 200
       // Standard work type: moderate difficulty, good base reward
       if (Math.random() < 0.15) {
         message = `💰 Mineração de Bitcoin falhou! Sua GPU superaqueceu e você perdeu tempo valioso.`
@@ -3980,6 +4024,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         xpReward = XP_REWARDS.workFail
       } else {
         gain = Math.floor(Math.random() * 151) + 200
+        workSafetyReferenceAmount = gain
         message = `💰 Mineração de Bitcoin realizada! Você ganhou ${gain} ${CURRENCY_LABEL} em criptos.`
         workStatus = "win"
         xpReward = XP_REWARDS.workWin
@@ -4005,6 +4050,26 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       })
       if (claimBoost.active) {
         message += "\n✨ Multiplicador de rotina aplicado no trabalho."
+      }
+    } else if ((workStatus === "fail" || workStatus === "zero") && typeof economyService.applyWorkSafetyToken === "function") {
+      const scaledReference = getLevelScaledAmount(workSafetyReferenceAmount, level, 0.045)
+      const workSafety = economyService.applyWorkSafetyToken(sender, 0, {
+        workType: work,
+        referenceAmount: scaledReference,
+        fallbackCompensation: 0,
+      })
+      if (workSafety.activated && workSafety.compensation > 0) {
+        message += `\n🦺 Token de Seguro no Trabalho ativado: compensação de *${workSafety.compensation}* ${CURRENCY_LABEL}.`
+      }
+    }
+
+    if (work === "lavagem" && workStatus === "loss" && workLossAmount > 0 && typeof economyService.applyWorkSafetyToken === "function") {
+      const workSafety = economyService.applyWorkSafetyToken(sender, workLossAmount, {
+        workType: work,
+        fallbackCompensation: 0,
+      })
+      if (workSafety.activated && workSafety.refunded > 0) {
+        message += `\n🦺 Token de Seguro no Trabalho ativado: reembolso de *${workSafety.refunded}* ${CURRENCY_LABEL}.`
       }
     }
 

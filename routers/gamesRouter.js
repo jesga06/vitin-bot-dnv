@@ -129,6 +129,30 @@ async function handleGameCommands(ctx) {
     })
   }
 
+  function consumeRrLuckTokenOnWin(winnerIds = [], options = {}) {
+    const uniqueWinners = [...new Set((winnerIds || []).filter(Boolean))]
+    const consumedBy = []
+    if (uniqueWinners.length === 0) return consumedBy
+    if (typeof economyService?.getItemQuantity !== "function") return consumedBy
+    if (typeof economyService?.removeItem !== "function") return consumedBy
+
+    const reason = String(options?.reason || "rr-win")
+    for (const winnerId of uniqueWinners) {
+      const qty = economyService.getItemQuantity(winnerId, "rrtokensorte")
+      if (qty <= 0) continue
+      economyService.removeItem(winnerId, "rrtokensorte", 1)
+      consumedBy.push(winnerId)
+      telemetry.appendEvent("game.rr.token.consume", {
+        groupId: from,
+        lobbyId: options?.lobbyId || null,
+        userId: winnerId,
+        reason,
+      })
+    }
+
+    return consumedBy
+  }
+
   function getGraceStates() {
     const states = storage.getGameStates(from)
     return Object.keys(states || {})
@@ -216,6 +240,10 @@ async function handleGameCommands(ctx) {
       incrementUserStat(timedOutPlayer, "gameRrShotLoss", 1)
 
       if (winners.length > 0) {
+        consumeRrLuckTokenOnWin(winners, {
+          lobbyId,
+          reason: "rr-timeout-win",
+        })
         winners.forEach((playerId) => {
           incrementUserStat(playerId, "gameRrWin", 1)
           incrementUserStat(playerId, "gameRrBetWin", 1)
@@ -1240,6 +1268,43 @@ async function handleGameCommands(ctx) {
       lobbyId,
       hit: Boolean(result.hit),
     })
+
+    const canAttemptRrLuckDodge =
+      result.hit &&
+      !result.allWin &&
+      !result.autoWin &&
+      typeof economyService?.getItemQuantity === "function" &&
+      typeof economyService?.removeItem === "function" &&
+      economyService.getItemQuantity(sender, "rrtokensorte") > 0
+
+    if (canAttemptRrLuckDodge) {
+      const dodgeChance = 0.5
+      const dodged = Math.random() < dodgeChance
+      if (dodged) {
+        state.loser = null
+        state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length
+        storage.setGameState(from, stateKey, state)
+
+        const nextPlayerAfterDodge = roletaRussa.getCurrentPlayer(state)
+        const dodgeMentions = Array.from(new Set([
+          sender,
+          ...(nextPlayerAfterDodge ? [nextPlayerAfterDodge] : []),
+        ]))
+
+        await sock.sendMessage(from, {
+          text:
+            `🍀 *SORTE NA RR!*\n` +
+            `@${sender.split("@")[0]} desviou do tiro com o efeito do *rrtokensorte* no lobby *${lobbyId}*.\n` +
+            `O token só é consumido em vitória sem ser atingido.\n\n` +
+            `${roletaRussa.formatStatus(state)}`,
+          mentions: dodgeMentions,
+        })
+
+        scheduleRrTurnTimeout(lobbyId, stateKey)
+        return true
+      }
+    }
+
     storage.setGameState(from, stateKey, state)
     const betMultiplier = parsePositiveInt(state.betMultiplier, 1)
     const betValueRaw = Number.parseInt(String(state.betValue), 10)
@@ -1274,12 +1339,20 @@ async function handleGameCommands(ctx) {
           await rewardPlayer(sender, soloGain, 1, "Roleta Russa (solo)")
         }
       }
+      const winnersWithoutHit = Boolean(result.hit)
+        ? []
+        : winners
+      const consumedRrLuck = consumeRrLuckTokenOnWin(winnersWithoutHit, {
+        lobbyId,
+        reason: "rr-auto-win",
+      })
       await distributeLobbyBuyInPool(winners, state.buyInPool, "Roleta Russa", getLobbyPayoutOptions(state))
       await sock.sendMessage(from, {
         text:
           `*CLICK*\n` +
           `✅ @${sender.split("@")[0]} sobreviveu e ultrapassou a aposta (*${betValue}*) no lobby *${lobbyId}*!\n` +
-          `🏆 Vitória automática no modo solo.`,
+          `🏆 Vitória automática no modo solo.` +
+          (consumedRrLuck.length > 0 ? "\n🍀 rrtokensorte consumido por vitória sem tiro." : ""),
         mentions: winners,
       })
       telemetry.incrementCounter("game.rr.completed", 1, {
@@ -1313,7 +1386,17 @@ async function handleGameCommands(ctx) {
           grantGameXp(playerId, GAME_XP_REWARDS.rrWin, "rr-win", { lobbyId, mode: "all-win" })
         })
         if (winners.length > 0) {
+          const consumedRrLuck = consumeRrLuckTokenOnWin(winners, {
+            lobbyId,
+            reason: "rr-all-win",
+          })
           await distributeLobbyBuyInPool(winners, state.buyInPool, "Roleta Russa", getLobbyPayoutOptions(state))
+          if (consumedRrLuck.length > 0) {
+            await sock.sendMessage(from, {
+              text: `🍀 rrtokensorte consumido por vitória sem tiro: ${consumedRrLuck.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+              mentions: consumedRrLuck,
+            })
+          }
         }
         await sock.sendMessage(from, {
           text:
@@ -1378,7 +1461,17 @@ async function handleGameCommands(ctx) {
         incrementUserStat(playerId, "gameRrBetWin", 1)
         grantGameXp(playerId, GAME_XP_REWARDS.rrWin, "rr-win", { lobbyId, mode: "hit" })
       })
+      const consumedRrLuck = consumeRrLuckTokenOnWin(winners, {
+        lobbyId,
+        reason: "rr-hit-win",
+      })
       await distributeLobbyBuyInPool(winners, state.buyInPool, "Roleta Russa", getLobbyPayoutOptions(state))
+      if (consumedRrLuck.length > 0) {
+        await sock.sendMessage(from, {
+          text: `🍀 rrtokensorte consumido por vitória sem tiro: ${consumedRrLuck.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+          mentions: consumedRrLuck,
+        })
+      }
       telemetry.incrementCounter("game.rr.completed", 1, {
         result: result.guaranteed ? "guaranteed-hit" : "hit",
       })

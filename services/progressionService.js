@@ -24,7 +24,8 @@ function ensureDailyQuestsForUser(deps, userId, dayKey = deps.getDayKey()) {
     return user.progression.dailyQuests
   }
 
-  const seed = `${deps.normalizeUserId(userId)}:${currentDayKey}`
+  const rerollNonce = Math.max(0, Math.floor(Number(user.progression?.dailyQuestRerollNonce) || 0))
+  const seed = `${deps.normalizeUserId(userId)}:${currentDayKey}:${rerollNonce}`
   const used = new Set()
   const quests = []
 

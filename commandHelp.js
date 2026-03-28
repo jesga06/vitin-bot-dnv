@@ -138,12 +138,11 @@ const COMMAND_HELP = {
 
   cassino: {
     name: "Cassino",
-    aliases: ["cassino", "aposta"],
+    aliases: ["cassino"],
     description: "Joga na máquina caça-níqueis (chance de ganhar ou perder coins)",
     usage: "!cassino <quantidade>",
     commonUsage: [
       "!cassino 100 - Apostar 100 coins",
-      "!aposta 50 - Alias de cassino",
     ],
     details: "Jogo de azar. Pode multiplicar sua aposta ou perder tudo. Alto risco, alto retorno.",
   },

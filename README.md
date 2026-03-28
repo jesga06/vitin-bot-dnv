@@ -109,7 +109,7 @@ Observações de lobby:
 - !missao claim <Q1|Q2|Q3>
 - !extrato
 - !loja
-- !comprar <item|indice> / !comprarpara
+- !comprar <item|id> / !comprarpara
 - !vender
 - !doarcoins / !doaritem
 - !roubar

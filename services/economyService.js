@@ -93,50 +93,6 @@ const PUNISHMENT_PASS_BASE_SELL = {
 const PASS_ITEM_ID_BASE = 100_000
 const PASS_ITEM_ID_TYPE_FACTOR = 1_000
 
-const ITEM_NUMERIC_IDS = {
-  kronosVerdadeira: "0",
-  escudo: "1",
-  escudoReforcado: "2",
-  antiRouboCharm: "3",
-  casinoInsurance: "4",
-  workSafetyToken: "5",
-  rrtokensorte: "6",
-  redutorCooldowns1: "7",
-  questRerollToken: "8",
-  streakSaver: "9",
-  salvageToken: "10",
-  xpBooster: "11",
-  moedaDaSorte: "12",
-  espelhoDeLuz: "13",
-  boosterDeMoedas: "14",
-  questPointBooster: "15",
-  claimMultiplier: "16",
-  cristalDeAmplificacao: "17",
-  joiaDeProtecao: "18",
-  teamContribBooster: "19",
-  artefatoAntigo: "20",
-  joiaDeAssalto: "21",
-  charmeKronos: "22",
-  tesouroClassico: "23",
-  coracaoOssificado: "24",
-  seloLendario: "25",
-  kronosQuebrada: "26",
-  tesouroLendario: "27",
-  pedraClimatica: "28",
-  coracaoDoUniverso: "29",
-  marcaEterna: "30",
-  lootbox: "31",
-  coupon5pct: "32",
-  coupon10pct: "33",
-  coupon25pct: "34",
-  coupon40pct: "35",
-}
-
-const LEGACY_ITEM_KEY_TO_ID = { ...ITEM_NUMERIC_IDS }
-
-const KRONOS_VERDADEIRA_ITEM_ID = ITEM_NUMERIC_IDS.kronosVerdadeira
-const KRONOS_QUEBRADA_ITEM_ID = ITEM_NUMERIC_IDS.kronosQuebrada
-
 function normalizePassSeverity(value, fallback = 1) {
   const parsed = Math.floor(Number(value) || 0)
   return parsed > 0 ? parsed : fallback
@@ -202,8 +158,9 @@ const ITEM_DEFINITIONS = {
   // Defense
   escudo: {
     key: "escudo",
+    id: "1",
     aliases: ["escudob"],
-    name: "Escudo Básico",
+    name: "Escudo",
     price: 900,
     sellRate: 0.8,
     stackable: true,
@@ -212,6 +169,7 @@ const ITEM_DEFINITIONS = {
   },
   escudoReforcado: {
     key: "escudoReforcado",
+    id: "2",
     aliases: ["escudoforte"],
     name: "Escudo Reforçado",
     price: 2500,
@@ -223,6 +181,7 @@ const ITEM_DEFINITIONS = {
   // Risk Protection
   antiRouboCharm: {
     key: "antiRouboCharm",
+    id: "3",
     aliases: ["pingenteantiroubo", "pingentear", "pingenteantiroubo", "pingenteAntiRoubo"],
     name: "Pingente Anti-Roubo",
     price: 1200,
@@ -233,6 +192,7 @@ const ITEM_DEFINITIONS = {
   },
   casinoInsurance: {
     key: "casinoInsurance",
+    id: "4",
     aliases: ["tokensegurocassino", "seguroCassino"],
     name: "Token de Seguro no Cassino",
     price: 1800,
@@ -244,6 +204,7 @@ const ITEM_DEFINITIONS = {
   // Utility
   workSafetyToken: {
     key: "workSafetyToken",
+    id: "5",
     aliases: ["tokentrabalhoseguro", "seguroTrabalho"],
     name: "Token de Seguro no Trabalho",
     price: 600,
@@ -254,6 +215,7 @@ const ITEM_DEFINITIONS = {
   },
   rrFocusToken: {
     key: "rrtokensorte",
+    id: "6",
     aliases: ["tokensorterr", "tokenSorteRR"],
     name: "Token de Sorte na RR",
     price: 1400,
@@ -264,6 +226,7 @@ const ITEM_DEFINITIONS = {
   },
   cooldownReducer: {
     key: "redutorCooldowns1",
+    id: "7",
     aliases: ["redutor", "redutorCooldowns"],
     name: "Redutor de Cooldowns",
     price: 1100,
@@ -274,6 +237,7 @@ const ITEM_DEFINITIONS = {
   },
   questRerollToken: {
     key: "questRerollToken",
+    id: "8",
     aliases: ["rerollmissao", "tokenRerolagem"],
     name: "Token de Re-rolagem",
     price: 800,
@@ -284,6 +248,7 @@ const ITEM_DEFINITIONS = {
   },
   streakSaver: {
     key: "streakSaver",
+    id: "9",
     aliases: ["salvadorstreak", "salvaStreak"],
     name: "Salva-streak",
     price: 1300,
@@ -294,6 +259,7 @@ const ITEM_DEFINITIONS = {
   },
   salvageToken: {
     key: "salvageToken",
+    id: "10",
     aliases: ["seguro", "seguroGeral"],
     name: "Seguro Geral",
     price: 2000,
@@ -305,6 +271,7 @@ const ITEM_DEFINITIONS = {
   // Boosters
   xpBooster: {
     key: "xpBooster",
+    id: "11",
     aliases: ["boosterxp", "boosterXp"],
     name: "Booster de XP",
     price: 700,
@@ -315,6 +282,7 @@ const ITEM_DEFINITIONS = {
   },
   moedaDaSorte: {
     key: "moedaDaSorte",
+    id: "12",
     aliases: ["moedadasorte"],
     name: "Moeda da Sorte",
     price: 450,
@@ -325,6 +293,7 @@ const ITEM_DEFINITIONS = {
   },
   espelhoDeLuz: {
     key: "espelhoDeLuz",
+    id: "13",
     aliases: ["espelhol"],
     name: "Espelho de Luz",
     price: 500,
@@ -335,6 +304,7 @@ const ITEM_DEFINITIONS = {
   },
   boosterDeMoedas: {
     key: "boosterDeMoedas",
+    id: "14",
     aliases: ["boostermoedas"],
     name: "Booster de Moedas",
     price: 550,
@@ -345,6 +315,7 @@ const ITEM_DEFINITIONS = {
   },
   questPointBooster: {
     key: "questPointBooster",
+    id: "15",
     aliases: ["boostermissao", "boosterMissao"],
     name: "Multiplicador de Recompensas (Quests)",
     price: 950,
@@ -355,6 +326,7 @@ const ITEM_DEFINITIONS = {
   },
   claimMultiplier: {
     key: "claimMultiplier",
+    id: "16",
     aliases: ["multiplicador", "multiplicadorRotina"],
     name: "Multiplicador de Rotina (!daily/!trabalho)",
     price: 1500,
@@ -365,6 +337,7 @@ const ITEM_DEFINITIONS = {
   },
   cristalDeAmplificacao: {
     key: "cristalDeAmplificacao",
+    id: "17",
     aliases: ["cristal"],
     name: "Cristal de Amplificação",
     price: 2200,
@@ -375,6 +348,7 @@ const ITEM_DEFINITIONS = {
   },
   joiaDeProtecao: {
     key: "joiaDeProtecao",
+    id: "18",
     aliases: ["joiaprotecao"],
     name: "Joia de Proteção",
     price: 2400,
@@ -386,6 +360,7 @@ const ITEM_DEFINITIONS = {
   // Social
   teamContribBooster: {
     key: "teamContribBooster",
+    id: "19",
     aliases: ["boostertime", "multiplicadorTime"],
     name: "Multiplicador de Contribuições",
     price: 1600,
@@ -398,6 +373,7 @@ const ITEM_DEFINITIONS = {
   // ===== RARE ITEMS (Rarity 4) =====
   artefatoAntigo: {
     key: "artefatoAntigo",
+    id: "20",
     aliases: ["artefato"],
     name: "Artefato Antigo",
     price: 3500,
@@ -408,6 +384,7 @@ const ITEM_DEFINITIONS = {
   },
   joiaDeAssalto: {
     key: "joiaDeAssalto",
+    id: "21",
     aliases: ["joiaroubo", "joiaassalto"],
     name: "Joia de Assalto",
     price: 4000,
@@ -418,6 +395,7 @@ const ITEM_DEFINITIONS = {
   },
   reliquiaEsquecida: {
     key: "charmeKronos",
+    id: "22",
     aliases: ["charmeKronos"],
     name: "Charme do Kronos",
     price: 4500,
@@ -428,6 +406,7 @@ const ITEM_DEFINITIONS = {
   },
   tesouroClassico: {
     key: "tesouroClassico",
+    id: "23",
     aliases: ["tesouro"],
     name: "Tesouro Clássico",
     price: 5000,
@@ -438,6 +417,7 @@ const ITEM_DEFINITIONS = {
   },
   coracaoOssiificado: {
     key: "coracaoOssificado",
+    id: "24",
     aliases: ["coracao"],
     name: "Amuleto de Defesa",
     price: 3800,
@@ -448,6 +428,7 @@ const ITEM_DEFINITIONS = {
   },
   seloLendario: {
     key: "seloLendario",
+    id: "25",
     aliases: ["selo"],
     name: "Selo de Bônus Global",
     price: 4200,
@@ -460,6 +441,7 @@ const ITEM_DEFINITIONS = {
   // ===== KRONOS CROWNS (Special, Rarity 5) =====
   kronosQuebrada: {
     key: "kronosQuebrada",
+    id: "26",
     aliases: ["coroakronosquebrada"],
     name: "Coroa Kronos (Quebrada)",
     price: 24000,
@@ -471,6 +453,7 @@ const ITEM_DEFINITIONS = {
   },
   kronosVerdadeira: {
     key: "kronosVerdadeira",
+    id: "0",
     aliases: ["coroakronosverdadeira"],
     name: "Coroa Kronos Verdadeira",
     price: 120000,
@@ -482,6 +465,7 @@ const ITEM_DEFINITIONS = {
   },
   tesouroLendario: {
     key: "tesouroLendario",
+    id: "27",
     aliases: ["tesouro"],
     name: "Tesouro Lendário",
     price: 150000,
@@ -492,6 +476,7 @@ const ITEM_DEFINITIONS = {
   },
   pedraClimatica: {
     key: "pedraClimatica",
+    id: "28",
     aliases: ["pedra"],
     name: "Token de Pico Semanal",
     price: 100000,
@@ -502,6 +487,7 @@ const ITEM_DEFINITIONS = {
   },
   coracaoDoUniverso: {
     key: "coracaoDoUniverso",
+    id: "29",
     aliases: ["coracao"],
     name: "Renda Diária Suprema",
     price: 180000,
@@ -513,6 +499,7 @@ const ITEM_DEFINITIONS = {
   },
   marcaEterna: {
     key: "marcaEterna",
+    id: "30",
     aliases: ["marca"],
     name: "Marca de Crescimento",
     price: 160000,
@@ -525,6 +512,7 @@ const ITEM_DEFINITIONS = {
   // ===== LOOTBOX & REGULAR ITEMS =====
   lootbox: {
     key: "lootbox",
+    id: "31",
     aliases: ["caixa", "lootcaixa"],
     name: "Lootbox",
     price: 900,
@@ -537,6 +525,7 @@ const ITEM_DEFINITIONS = {
   // ===== DISCOUNT COUPONS (buyable and earnable, not in shop) =====
   coupon5pct: {
     key: "coupon5pct",
+    id: "32",
     aliases: ["cupom5"],
     name: "Discount Coupon (5%)",
     price: 0,
@@ -548,6 +537,7 @@ const ITEM_DEFINITIONS = {
   },
   coupon10pct: {
     key: "coupon10pct",
+    id: "33",
     aliases: ["cupom10"],
     name: "Discount Coupon (10%)",
     price: 0,
@@ -559,6 +549,7 @@ const ITEM_DEFINITIONS = {
   },
   coupon25pct: {
     key: "coupon25pct",
+    id: "34",
     aliases: ["cupom25"],
     name: "Discount Coupon (25%)",
     price: 0,
@@ -570,6 +561,7 @@ const ITEM_DEFINITIONS = {
   },
   coupon40pct: {
     key: "coupon40pct",
+    id: "35",
     aliases: ["cupom40"],
     name: "Discount Coupon (40%)",
     price: 0,
@@ -582,19 +574,32 @@ const ITEM_DEFINITIONS = {
 
 }
 
+const LEGACY_ITEM_KEY_TO_ID = {}
+const seenItemNumericIds = new Set()
+
 for (const item of Object.values(ITEM_DEFINITIONS)) {
   const legacyKey = String(item?.key || "").trim()
+  const numericId = String(item?.id || "").trim()
   if (!legacyKey) continue
-  item.legacyKey = legacyKey
-  const mapped = LEGACY_ITEM_KEY_TO_ID[legacyKey]
-  if (typeof mapped === "string") {
-    item.key = mapped
+  if (!numericId || !/^\d+$/.test(numericId)) {
+    throw new Error(`Item sem id numérico válido em ITEM_DEFINITIONS: ${legacyKey}`)
   }
+  if (seenItemNumericIds.has(numericId)) {
+    throw new Error(`ID de item duplicado em ITEM_DEFINITIONS: ${numericId}`)
+  }
+  seenItemNumericIds.add(numericId)
+  LEGACY_ITEM_KEY_TO_ID[legacyKey] = numericId
+  item.legacyKey = legacyKey
+  item.id = numericId
+  item.key = numericId
 }
 
 const ITEM_DEFINITIONS_BY_ID = Object.fromEntries(
   Object.values(ITEM_DEFINITIONS).map((item) => [String(item?.key || ""), item])
 )
+
+const KRONOS_VERDADEIRA_ITEM_ID = LEGACY_ITEM_KEY_TO_ID.kronosVerdadeira
+const KRONOS_QUEBRADA_ITEM_ID = LEGACY_ITEM_KEY_TO_ID.kronosQuebrada
 
 const SHIELD_PRICE = ITEM_DEFINITIONS.escudo.price
 
@@ -2374,13 +2379,13 @@ function getItemCatalog() {
 }
 
 function getShopIndexText() {
-  const lines = ["Loja (indice)"]
+  const lines = ["Loja (ID do item)"]
   const catalog = getItemCatalog().filter((item) => item.buyable !== false)
   catalog.forEach((item, idx) => {
-    lines.push(`${idx + 1}. ${item.name} (${item.key}) - ${item.price} Epsteincoins`)
+    lines.push(`${idx + 1}. ${item.name} (ID ${item.key}) - ${item.price} Epsteincoins`)
   })
   lines.push("")
-  lines.push("Compre com: !comprar <item> [quantidade]")
+  lines.push("Compre com: !comprar <id|nome> [quantidade]")
   lines.push("Compre para outro: !comprarpara @usuario <item> [quantidade]")
   return lines.join("\n")
 }

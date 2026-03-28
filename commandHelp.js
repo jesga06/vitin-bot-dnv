@@ -190,13 +190,13 @@ const COMMAND_HELP = {
     name: "Comprar",
     aliases: ["comprar", "comprarpara"],
     description: "Compra um item da loja para você ou para outro",
-    usage: "!comprar <item|indice> [quantidade]",
+    usage: "!comprar <item|id> [quantidade]",
     commonUsage: [
       "!comprar escudo - Comprar 1 escudo",
-      "!comprar 1 3 - Comprar item índice 1, quantidade 3",
+      "!comprar 1 3 - Comprar item de ID 1, quantidade 3",
       "!comprarpara @user escudo - Comprar para outro usuário",
     ],
-    details: "Use nomes de itens ou índices da loja. Coins são debitados da sua conta.",
+    details: "Use nomes de itens ou IDs da loja. Coins são debitados da sua conta.",
   },
 
   vender: {

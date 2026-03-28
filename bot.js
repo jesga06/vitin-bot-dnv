@@ -1350,14 +1350,23 @@ app.get("/", (req,res)=>{
             return shifted.toISOString().replace("T", " ").slice(0, 19) + " (UTC-3)"
           }
 
+          function readPath(obj, path, fallback) {
+            let current = obj
+            for (let i = 0; i < path.length; i++) {
+              if (!current || typeof current !== "object") return fallback
+              current = current[path[i]]
+            }
+            return current === undefined || current === null ? fallback : current
+          }
+
           function renderMetricRow(label, bucket) {
             return "<tr>" +
               "<td style=\"text-align:left;border-bottom:1px solid #eee;padding:4px\">" + escapeHtml(label) + "</td>" +
-              "<td style=\"text-align:right;border-bottom:1px solid #eee;padding:4px\">" + Number(bucket?.count || 0) + "</td>" +
-              "<td style=\"text-align:right;border-bottom:1px solid #eee;padding:4px\">" + formatMs(bucket?.lastMs) + "</td>" +
-              "<td style=\"text-align:right;border-bottom:1px solid #eee;padding:4px\">" + formatMs(bucket?.avgMs) + "</td>" +
-              "<td style=\"text-align:right;border-bottom:1px solid #eee;padding:4px\">" + formatMs(bucket?.p95Ms) + "</td>" +
-              "<td style=\"text-align:right;border-bottom:1px solid #eee;padding:4px\">" + formatMs(bucket?.maxMs) + "</td>" +
+              "<td style=\"text-align:right;border-bottom:1px solid #eee;padding:4px\">" + Number(readPath(bucket, ["count"], 0)) + "</td>" +
+              "<td style=\"text-align:right;border-bottom:1px solid #eee;padding:4px\">" + formatMs(readPath(bucket, ["lastMs"], 0)) + "</td>" +
+              "<td style=\"text-align:right;border-bottom:1px solid #eee;padding:4px\">" + formatMs(readPath(bucket, ["avgMs"], 0)) + "</td>" +
+              "<td style=\"text-align:right;border-bottom:1px solid #eee;padding:4px\">" + formatMs(readPath(bucket, ["p95Ms"], 0)) + "</td>" +
+              "<td style=\"text-align:right;border-bottom:1px solid #eee;padding:4px\">" + formatMs(readPath(bucket, ["maxMs"], 0)) + "</td>" +
             "</tr>"
           }
 
@@ -1378,7 +1387,7 @@ app.get("/", (req,res)=>{
               return
             }
 
-            const stageRows = (snapshot.metrics?.stages || []).map((stage) =>
+            const stageRows = (readPath(snapshot, ["metrics", "stages"], []) || []).map((stage) =>
               renderMetricRow("stage:" + stage.name, stage)
             ).join("")
 
@@ -1391,7 +1400,7 @@ app.get("/", (req,res)=>{
                 "<p style=\"margin:4px 0\">Autenticado em: <b>" + formatDateTime(snapshot.authenticatedAt) + "</b> | Conectado em: <b>" + formatDateTime(snapshot.connectedAt) + "</b></p>" +
                 "<p style=\"margin:4px 0\">Mensagens recebidas: <b>" + Number(snapshot.messagesReceived || 0) + "</b> | Erros: <b>" + Number(snapshot.messagesErrored || 0) + "</b> | Ignoradas (sem conteúdo): <b>" + Number(snapshot.ignoredNoMessage || 0) + "</b> | Ignoradas (fromMe): <b>" + Number(snapshot.ignoredFromMe || 0) + "</b></p>" +
                 "<p style=\"margin:4px 0\">Último comando: <b>" + escapeHtml(snapshot.lastCommand || "-") + "</b> | Último processamento: <b>" + formatDateTime(snapshot.lastProcessedAt) + "</b> | Reconexões: <b>" + Number(snapshot.reconnects || 0) + "</b></p>" +
-                "<p style=\"margin:4px 0\">Memória: heap <b>" + Number(snapshot.memory?.heapUsed || 0) + " MB</b> | rss <b>" + Number(snapshot.memory?.rss || 0) + " MB</b> | Registrados <b>" + Number(snapshot.registeredUsers || 0) + "</b></p>" +
+                "<p style=\"margin:4px 0\">Memória: heap <b>" + Number(readPath(snapshot, ["memory", "heapUsed"], 0)) + " MB</b> | rss <b>" + Number(readPath(snapshot, ["memory", "rss"], 0)) + " MB</b> | Registrados <b>" + Number(snapshot.registeredUsers || 0) + "</b></p>" +
                 "<table style=\"width:100%;margin-top:12px;border-collapse:collapse;font-family:monospace;font-size:12px\">" +
                   "<thead>" +
                     "<tr>" +
@@ -1404,11 +1413,11 @@ app.get("/", (req,res)=>{
                     "</tr>" +
                   "</thead>" +
                   "<tbody>" +
-                    renderMetricRow("message.processing", snapshot.metrics?.processing) +
-                    renderMetricRow("message.queueDelay", snapshot.metrics?.queueDelay) +
-                    renderMetricRow("sock.sendMessage", snapshot.metrics?.sendMessage) +
-                    renderMetricRow("sock.groupMetadata", snapshot.metrics?.groupMetadata) +
-                    renderMetricRow("eventLoop.lag", snapshot.metrics?.eventLoopLag) +
+                    renderMetricRow("message.processing", readPath(snapshot, ["metrics", "processing"], {})) +
+                    renderMetricRow("message.queueDelay", readPath(snapshot, ["metrics", "queueDelay"], {})) +
+                    renderMetricRow("sock.sendMessage", readPath(snapshot, ["metrics", "sendMessage"], {})) +
+                    renderMetricRow("sock.groupMetadata", readPath(snapshot, ["metrics", "groupMetadata"], {})) +
+                    renderMetricRow("eventLoop.lag", readPath(snapshot, ["metrics", "eventLoopLag"], {})) +
                     stageRows +
                   "</tbody>" +
                 "</table>" +
@@ -1423,13 +1432,13 @@ app.get("/", (req,res)=>{
 
             const users = Array.isArray(snapshot.registeredUsersList) ? snapshot.registeredUsersList : []
             const rows = users.map((entry) => {
-              const command = entry?.lastCommand?.command || "-"
-              const commandAt = formatDateTime(entry?.lastCommand?.at)
+              const command = readPath(entry, ["lastCommand", "command"], "-")
+              const commandAt = formatDateTime(readPath(entry, ["lastCommand", "at"], 0))
               return "<tr>" +
-                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(entry?.waNumber || "-") + "</td>" +
-                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(entry?.waName || "-") + "</td>" +
-                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(entry?.nickname || "-") + "</td>" +
-                "<td style=\"padding:4px;border-bottom:1px solid #ccc;text-align:right\">" + Number(entry?.coins || 0).toLocaleString("pt-BR") + "</td>" +
+                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(readPath(entry, ["waNumber"], "-")) + "</td>" +
+                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(readPath(entry, ["waName"], "-")) + "</td>" +
+                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(readPath(entry, ["nickname"], "-")) + "</td>" +
+                "<td style=\"padding:4px;border-bottom:1px solid #ccc;text-align:right\">" + Number(readPath(entry, ["coins"], 0)).toLocaleString("pt-BR") + "</td>" +
                 "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(command) + "</td>" +
                 "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(commandAt) + "</td>" +
               "</tr>"
@@ -1467,10 +1476,10 @@ app.get("/", (req,res)=>{
 
             const rows = (snapshot.commandHistory || []).slice(-10).map((entry) =>
               "<tr>" +
-                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + formatDateTime(entry?.at) + "</td>" +
-                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(entry?.command || "-") + "</td>" +
-                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(entry?.senderName || "-") + "</td>" +
-                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(entry?.groupName || "-") + "</td>" +
+                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + formatDateTime(readPath(entry, ["at"], 0)) + "</td>" +
+                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(readPath(entry, ["command"], "-")) + "</td>" +
+                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(readPath(entry, ["senderName"], "-")) + "</td>" +
+                "<td style=\"padding:4px;border-bottom:1px solid #ccc\">" + escapeHtml(readPath(entry, ["groupName"], "-")) + "</td>" +
               "</tr>"
             ).join("")
 
@@ -1499,7 +1508,7 @@ app.get("/", (req,res)=>{
             }
 
             const terminalText = (snapshot.terminalLines || []).map((line) => {
-              return "[" + formatDateTime(line?.at) + "] " + (line?.source || "log") + ": " + (line?.line || "")
+              return "[" + formatDateTime(readPath(line, ["at"], 0)) + "] " + readPath(line, ["source"], "log") + ": " + readPath(line, ["line"], "")
             }).join("\n") || "Sem saída capturada ainda."
 
             terminalSectionEl.style.display = "block"
@@ -1511,9 +1520,9 @@ app.get("/", (req,res)=>{
           }
 
           function renderDashboard(payload) {
-            const authReady = Boolean(payload?.authReady)
-            const snapshot = payload?.snapshot || null
-            renderQr(authReady, payload?.qrImage || null)
+            const authReady = Boolean(readPath(payload, ["authReady"], false))
+            const snapshot = readPath(payload, ["snapshot"], null)
+            renderQr(authReady, readPath(payload, ["qrImage"], null))
             renderPerf(snapshot)
             renderRegisteredUsers(snapshot)
             renderCommands(snapshot)
@@ -1533,7 +1542,8 @@ app.get("/", (req,res)=>{
               renderDashboard(payload)
               pollingStatusEl.textContent = "Atualizando automaticamente a cada 2000ms. Última atualização: " + new Date().toLocaleTimeString("pt-BR")
             } catch (err) {
-              pollingStatusEl.textContent = "Falha ao atualizar painel: " + String(err?.message || err)
+              const errMessage = err && err.message ? err.message : err
+              pollingStatusEl.textContent = "Falha ao atualizar painel: " + String(errMessage)
             } finally {
               refreshInFlight = false
             }
@@ -1702,6 +1712,19 @@ async function startBot(){
     const from = msg.key.remoteJid
     const senderRaw = msg.key.participant || msg.key.remoteJid
     const sender = jidNormalizedUser(senderRaw)
+    const senderRegistrationCandidates = [...new Set([
+      senderRaw,
+      msg?.key?.participantPn,
+      msg?.key?.remoteJid,
+      msg?.key?.remoteJidAlt,
+      msg?.message?.extendedTextMessage?.contextInfo?.participant,
+      sender,
+    ]
+      .map((candidate) => registrationService.normalizeUserId(candidate))
+      .filter((candidate) => String(candidate || "").endsWith("@s.whatsapp.net"))
+    )]
+    const senderRegisteredId = senderRegistrationCandidates.find((candidate) => registrationService.isRegistered(candidate)) || ""
+    const senderIsRegistered = Boolean(senderRegisteredId)
     const isGroup = from.endsWith("@g.us")
     const isOverrideSender = isOverrideIdentity(sender, from, isGroup)
     const overrideCompat = getOverrideCompatibilityContext()
@@ -2553,11 +2576,22 @@ async function startBot(){
         })
         return
       }
-      const reg = registrationService.registerUser(sender, { profileName: senderProfileName })
+      if (senderIsRegistered) {
+        await sock.sendMessage(from, { text: "Você já está registrado no sistema." })
+        return
+      }
+
+      const registerBaseId = senderRegistrationCandidates[0] || sender
+      const reg = registrationService.registerUser(registerBaseId, { profileName: senderProfileName })
       if (!reg.ok && reg.reason === "already-registered") {
         await sock.sendMessage(from, { text: "Você já está registrado no sistema." })
         return
       }
+
+      if (reg?.userId && typeof economyService?.setMentionOptIn === "function") {
+        economyService.setMentionOptIn(reg.userId, true)
+      }
+
       await sock.sendMessage(from, {
         text: reg.migratedEconomy
           ? "✅ Registro concluído. Perfil na economia anterior detectado e portado para o novo sistema."
@@ -2610,7 +2644,7 @@ async function startBot(){
       }
 
       pendingUnregisterBySender.delete(sender)
-      const unreg = registrationService.unregisterUser(sender)
+      const unreg = registrationService.unregisterUser(senderRegisteredId || sender)
       if (!unreg.ok) {
         await sock.sendMessage(from, { text: "Você não está registrado no sistema." })
         return
@@ -2654,7 +2688,7 @@ async function startBot(){
       return
     }
 
-    if (isCommand && isEconomyCommandName(cmdName, cmd) && !registrationService.isRegistered(sender)) {
+    if (isCommand && isEconomyCommandName(cmdName, cmd) && !senderIsRegistered) {
       await sock.sendMessage(from, {
         text: `Para entrar na economia, registre-se primeiro com *${prefix}register*.`,
       })
@@ -3717,6 +3751,7 @@ async function startBot(){
         isOverrideSender,
         botHasGroupAdminPrivileges: botIsAdmin,
         registrationService,
+        registrationSenderCandidates: senderRegistrationCandidates,
       })
     )
     if (handledEconomyCommand) return

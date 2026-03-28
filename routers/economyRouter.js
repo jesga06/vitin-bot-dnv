@@ -277,12 +277,23 @@ function parseTradeOffer(tokens = [], economyService, limits) {
   return { ok: true, offer: { coins, items } }
 }
 
-function formatTradeOffer(offer = {}) {
+function formatItemWithId(economyService, itemKey = "") {
+  const key = String(itemKey || "").trim()
+  if (!key) return "Item desconhecido"
+  const itemDef = typeof economyService?.getItemDefinition === "function"
+    ? economyService.getItemDefinition(key)
+    : null
+  const resolvedId = String(itemDef?.key || key)
+  const resolvedName = String(itemDef?.name || key)
+  return `${resolvedName} [ID ${resolvedId}]`
+}
+
+function formatTradeOffer(offer = {}, economyService) {
   const coins = Math.max(0, Math.floor(Number(offer.coins) || 0))
   const items = offer.items && typeof offer.items === "object" ? offer.items : {}
   const itemParts = Object.entries(items)
     .filter(([, qty]) => Number(qty) > 0)
-    .map(([key, qty]) => `${key}:${qty}`)
+    .map(([key, qty]) => `${formatItemWithId(economyService, key)}:${qty}`)
   const itemsText = itemParts.length > 0 ? itemParts.join(", ") : "nenhum item"
   return `${coins} ${CURRENCY_LABEL} | ${itemsText}`
 }
@@ -482,7 +493,7 @@ async function handleLevel100Milestone(sock, userId, xpResult) {
   }
 }
 
-function buildXpRewardText(xpResult, xpAmount) {
+function buildXpRewardText(xpResult, xpAmount, economyService = null) {
   const granted = Math.max(0, Math.floor(Number(xpAmount) || 0))
   if (!granted) return ""
   const levelUps = Math.max(0, Math.floor(Number(xpResult?.levelsGained) || 0))
@@ -497,7 +508,7 @@ function buildXpRewardText(xpResult, xpAmount) {
         const itemKey = String(entry?.key || "").trim()
         const itemQty = Math.max(0, Math.floor(Number(entry?.quantity) || 0))
         if (!itemKey || itemQty <= 0) return ""
-        return `${itemQty}x ${itemKey}`
+        return `${itemQty}x ${formatItemWithId(economyService, itemKey)}`
       })
       .filter(Boolean)
     const itemText = itemSegments.length > 0 ? ` + ${itemSegments.join(", ")}` : ""
@@ -601,6 +612,7 @@ async function handleEconomyCommands(ctx) {
     raffleRevealDelayMs,
     raffleOptInWindowMs,
     registrationService,
+    registrationSenderCandidates,
   } = ctx
 
   const normalizedCmdName = String(cmdName || "").trim().toLowerCase()
@@ -662,6 +674,35 @@ async function handleEconomyCommands(ctx) {
       maxForgeQuantity: 1_000,
     }
 
+  const normalizedSenderRegistrationCandidates = [...new Set(
+    (Array.isArray(registrationSenderCandidates) ? registrationSenderCandidates : [sender])
+      .map((candidate) => {
+        if (typeof registrationService?.normalizeUserId === "function") {
+          return registrationService.normalizeUserId(candidate)
+        }
+        return String(candidate || "").trim().toLowerCase()
+      })
+      .filter((candidate) => String(candidate || "").endsWith("@s.whatsapp.net"))
+  )]
+
+  const resolveRegisteredSenderId = () => {
+    if (typeof registrationService?.isRegistered !== "function") return sender
+    for (const candidate of normalizedSenderRegistrationCandidates) {
+      if (registrationService.isRegistered(candidate)) return candidate
+    }
+    return ""
+  }
+
+  const registeredSenderId = resolveRegisteredSenderId()
+  const mentionPreferenceUserId = registeredSenderId || sender
+
+  const normalizeRankingUserId = (userId = "") => {
+    const normalizedByRegistration = typeof registrationService?.normalizeUserId === "function"
+      ? registrationService.normalizeUserId(userId)
+      : ""
+    return normalizedByRegistration || jidNormalizedUser(userId)
+  }
+
   const getRankingIdentity = (userId = "", options = {}) => {
     const isRegistered = typeof registrationService?.isRegistered === "function"
       ? registrationService.isRegistered(userId)
@@ -691,8 +732,9 @@ async function handleEconomyCommands(ctx) {
       : null
 
     if (mentionOptIn) {
+      const normalizedRankingUserId = normalizeRankingUserId(userId)
       const mentionJid = mentionJidByNormalized
-        ? mentionJidByNormalized.get(jidNormalizedUser(userId)) || null
+        ? mentionJidByNormalized.get(normalizedRankingUserId) || mentionJidByNormalized.get(jidNormalizedUser(userId)) || null
         : userId
       if (mentionJid) {
         const tag = String(mentionJid).split("@")[0].split(":")[0]
@@ -732,7 +774,7 @@ async function handleEconomyCommands(ctx) {
     const action = String(cmdArg1 || "").trim().toLowerCase()
     if (!action || action === "status") {
       const current = typeof economyService.isMentionOptIn === "function"
-        ? economyService.isMentionOptIn(sender)
+        ? economyService.isMentionOptIn(mentionPreferenceUserId)
         : false
       await sock.sendMessage(from, {
         text: `Preferência de menção em rankings/listas: *${current ? "ATIVADA" : "DESATIVADA"}*\nUse: !mention on | !mention off`,
@@ -746,7 +788,12 @@ async function handleEconomyCommands(ctx) {
     }
 
     if (typeof economyService.setMentionOptIn === "function") {
-      economyService.setMentionOptIn(sender, action === "on")
+      economyService.setMentionOptIn(mentionPreferenceUserId, action === "on")
+      for (const candidate of normalizedSenderRegistrationCandidates) {
+        if (candidate !== mentionPreferenceUserId) {
+          economyService.setMentionOptIn(candidate, action === "on")
+        }
+      }
     }
     await sock.sendMessage(from, {
       text: `✅ Menções em rankings/listas ${action === "on" ? "ativadas" : "desativadas"}.`,
@@ -1510,7 +1557,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         ? poolItemEntries
           .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
           .slice(0, 10)
-          .map(([itemKey, qty]) => `- ${itemKey} x${qty}`)
+          .map(([itemKey, qty]) => `- ${formatItemWithId(economyService, itemKey)} x${qty}`)
           .join("\n")
         : "- vazio"
 
@@ -1669,7 +1716,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 
       await sock.sendMessage(from, {
         text:
-          `✅ @${sender.split("@")[0]} depositou *${quantity}x ${normalizedItem}* no pool do time.` +
+          `✅ @${sender.split("@")[0]} depositou *${quantity}x ${formatItemWithId(economyService, normalizedItem)}* no pool do time.` +
           (poolQuantity !== quantity ? `\n⚡ Multiplicador de contribuições ativo: pool recebeu *${poolQuantity}x*.` : ""),
         mentions: [sender],
       })
@@ -1821,7 +1868,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       }
 
       await sock.sendMessage(from, {
-        text: `✅ Retirada concluida: *${credited}x ${normalizedItem}* do pool para @${sender.split("@")[0]}.`,
+        text: `✅ Retirada concluida: *${credited}x ${formatItemWithId(economyService, normalizedItem)}* do pool para @${sender.split("@")[0]}.`,
         mentions: [sender],
       })
       return true
@@ -2009,15 +2056,13 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
   }
 
   const hasMentionPreferenceApi = typeof economyService.isMentionOptIn === "function"
-  const senderIsRegistered = typeof registrationService?.isRegistered === "function"
-    ? registrationService.isRegistered(sender)
-    : true
+  const senderIsRegistered = Boolean(registeredSenderId) || typeof registrationService?.isRegistered !== "function"
   const senderProfile = typeof economyService.getProfile === "function"
     ? economyService.getProfile(sender)
     : null
   const senderCustomLabel = String(senderProfile?.preferences?.publicLabel || "").trim()
   const senderRegisteredEntry = typeof registrationService?.getRegisteredEntry === "function"
-    ? registrationService.getRegisteredEntry(sender)
+    ? registrationService.getRegisteredEntry(registeredSenderId || sender)
     : null
   const senderKnownName = String(senderRegisteredEntry?.lastKnownName || "").trim()
   const mustRegisterBeforeEconomy = isEconomyCommandInvocation && !senderIsRegistered
@@ -2220,7 +2265,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     │ ${prefix}economia extras
     │
     │ Atalhos úteis:
-    │ ${prefix}loja | ${prefix}comprar <item|indice> *<quantidade>
+    │ ${prefix}loja | ${prefix}comprar <item|id> *<quantidade>
     │ ${prefix}comprarpara @user <item> *<quantidade>
     │ ${prefix}vender <item> *<quantidade>
     │ ${prefix}usaritem <item>
@@ -2649,8 +2694,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
           `Status: *${trade.status}* | Fase: *${trade.phase}*\n` +
           `Iniciador: @${trade.initiator.split("@")[0]}\n` +
           `Contraparte: @${trade.counterparty.split("@")[0]}\n` +
-          `Oferta iniciador: ${formatTradeOffer(trade.offers?.initiator)}\n` +
-          `Oferta contraparte: ${formatTradeOffer(trade.offers?.counterparty)}\n` +
+          `Oferta iniciador: ${formatTradeOffer(trade.offers?.initiator, economyService)}\n` +
+          `Oferta contraparte: ${formatTradeOffer(trade.offers?.counterparty, economyService)}\n` +
           `Expira em: ${new Date(trade.expiresAt || Date.now()).toLocaleString()}`,
         mentions: [trade.initiator, trade.counterparty],
       })
@@ -2700,8 +2745,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       await sock.sendMessage(from, {
         text:
           `Trade ${trade.tradeId} atualizado para análise.\n` +
-          `Oferta iniciador: ${formatTradeOffer(trade.offers.initiator)}\n` +
-          `Oferta contraparte: ${formatTradeOffer(trade.offers.counterparty)}\n` +
+          `Oferta iniciador: ${formatTradeOffer(trade.offers.initiator, economyService)}\n` +
+          `Oferta contraparte: ${formatTradeOffer(trade.offers.counterparty, economyService)}\n` +
           `Agora ambos precisam confirmar com: !escambo revisar ${trade.tradeId}`,
         mentions: [trade.initiator, trade.counterparty],
       })
@@ -2883,8 +2928,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       await sock.sendMessage(from, {
         text:
           `Contraoferta registrada em ${trade.tradeId}.\n` +
-          `Oferta iniciador: ${formatTradeOffer(trade.offers.initiator)}\n` +
-          `Oferta contraparte: ${formatTradeOffer(trade.offers.counterparty)}\n` +
+          `Oferta iniciador: ${formatTradeOffer(trade.offers.initiator, economyService)}\n` +
+          `Oferta contraparte: ${formatTradeOffer(trade.offers.counterparty, economyService)}\n` +
           `Se concordarem, ambos usem !escambo aceitar ${trade.tradeId}.`,
         mentions: [trade.initiator, trade.counterparty],
       })
@@ -3005,7 +3050,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       await sock.sendMessage(from, {
         text:
           `Trade ${tradeId} criado.\n` +
-          `Oferta inicial de @${sender.split("@")[0]}: ${formatTradeOffer(parsedOffer.offer)}\n` +
+          `Oferta inicial de @${sender.split("@")[0]}: ${formatTradeOffer(parsedOffer.offer, economyService)}\n` +
           `@${target.split("@")[0]} responda com: !escambo resposta ${tradeId} <coins> [item:quantidade...]`,
         mentions: [sender, target],
       })
@@ -3105,9 +3150,17 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     if (isGroup) {
       const metadata = await sock.groupMetadata(from)
       members = (metadata?.participants || []).map((p) => jidNormalizedUser(p.id))
-      mentionJidByNormalized = new Map((metadata?.participants || [])
-        .map((p) => [jidNormalizedUser(p.id), p.id])
-        .filter(([normalizedId, originalId]) => Boolean(normalizedId && originalId)))
+      mentionJidByNormalized = new Map()
+      ;(metadata?.participants || []).forEach((participant) => {
+        const participantId = String(participant?.id || "").trim()
+        if (!participantId) return
+        const normalizedJid = jidNormalizedUser(participantId)
+        const normalizedRegistration = typeof registrationService?.normalizeUserId === "function"
+          ? registrationService.normalizeUserId(participantId)
+          : ""
+        if (normalizedJid) mentionJidByNormalized.set(normalizedJid, participantId)
+        if (normalizedRegistration) mentionJidByNormalized.set(normalizedRegistration, participantId)
+      })
     }
 
     let ranking = []
@@ -3154,9 +3207,17 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     if (isGroup) {
       const metadata = await sock.groupMetadata(from)
       members = (metadata?.participants || []).map((p) => jidNormalizedUser(p.id))
-      mentionJidByNormalized = new Map((metadata?.participants || [])
-        .map((p) => [jidNormalizedUser(p.id), p.id])
-        .filter(([normalizedId, originalId]) => Boolean(normalizedId && originalId)))
+      mentionJidByNormalized = new Map()
+      ;(metadata?.participants || []).forEach((participant) => {
+        const participantId = String(participant?.id || "").trim()
+        if (!participantId) return
+        const normalizedJid = jidNormalizedUser(participantId)
+        const normalizedRegistration = typeof registrationService?.normalizeUserId === "function"
+          ? registrationService.normalizeUserId(participantId)
+          : ""
+        if (normalizedJid) mentionJidByNormalized.set(normalizedJid, participantId)
+        if (normalizedRegistration) mentionJidByNormalized.set(normalizedRegistration, participantId)
+      })
     }
 
     let ranking = []
@@ -3288,9 +3349,10 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     const quantity = parseQuantity(cmdArg2, 1)
     let item = itemInput
     if (/^\d+$/.test(itemInput)) {
-      const itemIndex = Number.parseInt(itemInput, 10)
-      const catalog = economyService.getItemCatalog()
-      item = catalog[itemIndex - 1]?.key || ""
+      const itemById = typeof economyService.getItemDefinition === "function"
+        ? economyService.getItemDefinition(itemInput)
+        : null
+      item = itemById?.key || ""
     }
     const bought = economyService.buyItem(sender, item, quantity, sender)
     if (!bought.ok) {
@@ -3303,7 +3365,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
               ? `Limite de pilha atingido para esse item. Máximo por item: ${bought.maxStack}.`
               : (bought.reason === "not-for-sale"
                 ? "Esse item não pode ser comprado diretamente na loja."
-                : "Item/índice inválido. Use !loja para ver o índice."))),
+                : "Item/ID inválido. Use !loja para ver os IDs disponíveis."))),
       })
       return true
     }
@@ -3314,7 +3376,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       : ""
     await sock.sendMessage(from, {
       text:
-        `Compra concluída: *${bought.quantity}x ${bought.itemKey}*\n` +
+        `Compra concluída: *${bought.quantity}x ${formatItemWithId(economyService, bought.itemKey)}*\n` +
         `Custo: *${bought.totalCost}* ${CURRENCY_LABEL}${discountText}\n` +
         `Saldo atual: *${profile.coins}*`,
     })
@@ -3350,7 +3412,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 
     await sock.sendMessage(from, {
       text:
-        `🎁 @${sender.split("@")[0]} comprou *${bought.quantity}x ${bought.itemKey}* para @${target.split("@")[0]}.`,
+        `🎁 @${sender.split("@")[0]} comprou *${bought.quantity}x ${formatItemWithId(economyService, bought.itemKey)}* para @${target.split("@")[0]}.`,
       mentions: [sender, target],
     })
     return true
@@ -3371,7 +3433,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       return true
     }
     await sock.sendMessage(from, {
-      text: `💱 Venda concluída: ${sold.quantity}x ${sold.itemKey} por *${sold.total}* ${CURRENCY_LABEL}.`,
+      text: `💱 Venda concluída: ${sold.quantity}x ${formatItemWithId(economyService, sold.itemKey)} por *${sold.total}* ${CURRENCY_LABEL}.`,
     })
     return true
   }
@@ -3477,7 +3539,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     }
 
     await sock.sendMessage(from, {
-      text: `🎁 @${sender.split("@")[0]} doou *${transferred.quantity}x ${transferred.itemKey}* para @${target.split("@")[0]}.`,
+      text: `🎁 @${sender.split("@")[0]} doou *${transferred.quantity}x ${formatItemWithId(economyService, transferred.itemKey)}* para @${target.split("@")[0]}.`,
       mentions: [sender, target],
     })
     return true
@@ -3541,7 +3603,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         text:
           `🚨 Roubo falhou! @${sender.split("@")[0]} perdeu *${steal.lost}* ${CURRENCY_LABEL}.\n` +
           `Chance de sucesso nesta tentativa: ${(steal.successChance * 100).toFixed(0)}%` +
-          buildXpRewardText(xpResult, XP_REWARDS.stealAttemptFail),
+          buildXpRewardText(xpResult, XP_REWARDS.stealAttemptFail, economyService),
         mentions: [sender],
       })
       return true
@@ -3557,7 +3619,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         `🕵️ Roubo bem-sucedido! @${sender.split("@")[0]} roubou *${steal.stolenFromVictim}* de @${target.split("@")[0]} e recebeu *${steal.gained}* ${CURRENCY_LABEL}.\n` +
         `Faixa base do roubo: 90 a 320 ${CURRENCY_LABEL} (antes de bônus da Coroa Kronos).\n` +
         `Chance de sucesso nesta tentativa: ${(steal.successChance * 100).toFixed(0)}%` +
-        buildXpRewardText(xpResult, XP_REWARDS.stealAttemptSuccess),
+        buildXpRewardText(xpResult, XP_REWARDS.stealAttemptSuccess, economyService),
       mentions: [sender, target],
     })
     return true
@@ -3595,7 +3657,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         `💰 Daily resgatado: *${daily.amount}* ${CURRENCY_LABEL}.` +
         (daily.kronosBonus ? " (bônus da Coroa Kronos aplicado)" : "") +
         (claimBoost.active ? "\n✨ Multiplicador de rotina aplicado no daily." : "") +
-        buildXpRewardText(xpResult, scaledDailyXp),
+        buildXpRewardText(xpResult, scaledDailyXp, economyService),
     })
     return true
   }
@@ -3794,7 +3856,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
           : `Resultado: perdeu *${value}* ${CURRENCY_LABEL}.`) +
         (casinoInsurance.activated ? `\n🎟️ Seguro de Cassino ativado: devolução de *${casinoInsurance.refunded}* ${CURRENCY_LABEL}.` : "") +
         (salvage.activated ? `\n🛟 Seguro Geral ativado: devolução de *${salvage.refunded}* ${CURRENCY_LABEL}.` : "") +
-        buildXpRewardText(xpResult, casinoXp),
+        buildXpRewardText(xpResult, casinoXp, economyService),
     })
     return true
   }
@@ -4131,21 +4193,20 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       const roll = Math.random() * 100
       const baseGain = 150
       if (roll > 50) {
-        gain = Math.floor(baseGain * 2) // 2x payout branch
+        gain = Math.floor(baseGain * 2)
         workSafetyReferenceAmount = gain
-        message = `🎲 Aposta vencida! Você ganhou ${gain} ${CURRENCY_LABEL} (2x multiplicador).`
+        message = `🎲 Você ganhou ${gain} ${CURRENCY_LABEL} no jogo do bicho!`
         workStatus = "win"
         xpReward = XP_REWARDS.workWin
       } else {
-        gain = Math.floor(baseGain * 0.5) // 0.5x payout branch (50% floor)
+        gain = Math.floor(baseGain * 0.5)
         workSafetyReferenceAmount = gain
-        message = `🎲 Aposta parcial! Você ganhou ${gain} ${CURRENCY_LABEL} (0.5x multiplicador).`
+        message = `🎲 Você ganhou no jogo do bicho, mas te roubaram logo em seguida! Você ganhou apenas ${gain} ${CURRENCY_LABEL}.`
         workStatus = "win"
         xpReward = XP_REWARDS.workWin
       }
     } else if (work === "minerar") {
       workSafetyReferenceAmount = 180
-      // Minigame work type: roll determines outcome (0% chance - zero payout or normal)
       const roll = Math.random() * 100
       if (roll < 30) {
         gain = 0
@@ -4236,7 +4297,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     })
     await handleLevel100Milestone(sock, sender, xpResult)
     await sock.sendMessage(from, {
-      text: message + buildXpRewardText(xpResult, scaledWorkXp),
+      text: message + buildXpRewardText(xpResult, scaledWorkXp, economyService),
     })
     return true
   }
@@ -4301,7 +4362,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
                 meta: { groupId: from, createdBy: activeSession.createdBy, item: reward.itemKey, qty: added },
               })
             }
-            appliedRewardLines.push(`- @${winner.split("@")[0]}: ${added}x ${reward.name}`)
+            appliedRewardLines.push(`- @${winner.split("@")[0]}: ${added}x ${formatItemWithId(economyService, reward.itemKey)}`)
             continue
           }
 
@@ -4432,7 +4493,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     const rewardPreview = parsedRewards.rewards
       .map((reward) => {
         if (reward.type === "coins") return `- moedas=${reward.amount}`
-        if (reward.type === "item") return `- item:${reward.itemKey}-${reward.quantity}`
+        if (reward.type === "item") return `- item:${formatItemWithId(economyService, reward.itemKey)} x${reward.quantity}`
         return `- ${reward.text}`
       })
       .join("\n")
@@ -4590,16 +4651,15 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       const next = economyService.addItem(target, effectiveItem, qty)
       if (next <= 0) return sock.sendMessage(from, { text: "Item inválido." })
 
-      const itemDef = economyService.getItemDefinition(effectiveItem)
-      const itemName = itemDef?.name || effectiveItem
+      const itemDisplayName = formatItemWithId(economyService, effectiveItem)
       economyService.pushTransaction(target, {
         type: "admin-item-add",
         deltaCoins: 0,
-        details: `Admin adicionou ${qty}x ${effectiveItem}`,
+        details: `Admin adicionou ${qty}x ${itemDisplayName}`,
         meta: { admin: sender, item: effectiveItem, qty },
       })
       await sock.sendMessage(from, {
-        text: `✅ Item adicionado para @${target.split("@")[0]}: *${qty}x ${itemName}*`,
+        text: `✅ Item adicionado para @${target.split("@")[0]}: *${qty}x ${itemDisplayName}*`,
         mentions: targetMentions,
       })
       return true
@@ -4612,14 +4672,22 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       if (!item || !qtyInput || qty <= 0 || qty > limits.maxItemOperation) {
         return sock.sendMessage(from, { text: "Use: !removeitem [@user] <tipo> <quantidade>" })
       }
-      economyService.removeItem(target, item, qty)
+      const normalizedItem = economyService.normalizeItemKey(item)
+      if (!normalizedItem) {
+        return sock.sendMessage(from, { text: "Item inválido." })
+      }
+      economyService.removeItem(target, normalizedItem, qty)
+      const itemDisplayName = formatItemWithId(economyService, normalizedItem)
       economyService.pushTransaction(target, {
         type: "admin-item-remove",
         deltaCoins: 0,
-        details: `Admin removeu ${qty}x ${item}`,
-        meta: { admin: sender, item, qty },
+        details: `Admin removeu ${qty}x ${itemDisplayName}`,
+        meta: { admin: sender, item: normalizedItem, qty },
       })
-      await sock.sendMessage(from, { text: `✅ Item removido de @${target.split("@")[0]}.`, mentions: targetMentions })
+      await sock.sendMessage(from, {
+        text: `✅ Item removido de @${target.split("@")[0]}: *${qty}x ${itemDisplayName}*`,
+        mentions: targetMentions,
+      })
       return true
     }
   }

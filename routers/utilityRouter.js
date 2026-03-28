@@ -108,7 +108,7 @@ async function handleUtilityCommands(ctx) {
         { cmd: `${prefix}coinsranking`, usage: `${prefix}coinsranking`, effect: "ranking de moedas", badges: ["GRUPO"] },
         { cmd: `${prefix}xpranking`, usage: `${prefix}xpranking`, effect: "ranking de XP", badges: ["GRUPO"] },
         { cmd: `${prefix}loja`, usage: `${prefix}loja`, effect: "catalogo da loja", badges: ["GERAL"] },
-        { cmd: `${prefix}comprar`, usage: `${prefix}comprar <item|indice> [qtd]`, effect: "compra item", badges: ["GERAL"] },
+        { cmd: `${prefix}comprar`, usage: `${prefix}comprar <item|id> [qtd]`, effect: "compra item", badges: ["GERAL"] },
         { cmd: `${prefix}vender`, usage: `${prefix}vender <item> [qtd]`, effect: "vende item", badges: ["GERAL"] },
         { cmd: `${prefix}doarcoins`, usage: `${prefix}doarcoins @usuario [qtd]`, effect: "transfere moedas", badges: ["GRUPO"] },
         { cmd: `${prefix}doaritem`, usage: `${prefix}doaritem @usuario <item> [qtd]`, effect: "transfere item", badges: ["GRUPO"] },

@@ -1509,7 +1509,7 @@ app.get("/", (req,res)=>{
 
             const terminalText = (snapshot.terminalLines || []).map((line) => {
               return "[" + formatDateTime(readPath(line, ["at"], 0)) + "] " + readPath(line, ["source"], "log") + ": " + readPath(line, ["line"], "")
-            }).join("\n") || "Sem saída capturada ainda."
+            }).join("\\n") || "Sem saída capturada ainda."
 
             terminalSectionEl.style.display = "block"
             terminalSectionEl.innerHTML =

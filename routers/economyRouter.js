@@ -4319,13 +4319,6 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
   }
 
   if (cmdName === prefix + "usarpasse" && isGroup) {
-    if (!botHasGroupAdminPrivileges) {
-      await sock.sendMessage(from, {
-        text: "⚠️ Não consigo aplicar punições sem privilégio de administrador no grupo.",
-      })
-      return true
-    }
-
     const target = mentioned[0]
     const passType = Number.parseInt(cmdParts[2] || "", 10)
     const passSeverity = parseQuantity(cmdParts[3], 1)

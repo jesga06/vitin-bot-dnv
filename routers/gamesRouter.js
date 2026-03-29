@@ -32,6 +32,13 @@ function clearRrTurnTimeout(groupId, lobbyId) {
 }
 
 async function handleGameCommands(ctx) {
+    // Modo Livre: warn and filter
+    const modoLivreActive = storage.isModoLivreUser(sender)
+    if (modoLivreActive) {
+      await sock.sendMessage(from, {
+        text: "⚠️ *Modo Livre* está ativado para você! Você não ganhará nem gastará moedas nos jogos (exceto apostas de cassino). Para desativar, use !modolivre."
+      })
+    }
   const {
     sock,
     from,
@@ -76,14 +83,6 @@ async function handleGameCommands(ctx) {
     createLobbyTimeoutCallback,
     buildGameStatsText,
   } = ctx
-
-  // Modo Livre: warn and filter
-  const modoLivreActive = storage.isModoLivreUser(sender)
-  if (modoLivreActive) {
-    await sock.sendMessage(from, {
-      text: "⚠️ *Modo Livre* está ativado para você! Você não ganhará nem gastará moedas nos jogos (exceto apostas de cassino). Para desativar, use !modolivre."
-    })
-  }
 
   const isJoinCommand = cmdName === prefix + "entrar" || cmdName === prefix + "join"
   const isStartCommand = (
@@ -173,15 +172,18 @@ async function handleGameCommands(ctx) {
     if (!Array.isArray(playerIds) || playerIds.length === 0) {
       return { ok: true, pool: 0, buyInByPlayer: {}, playerBetByPlayer: {} }
     }
+    // Exclude modo livre users from paying buy-in (except for casino)
+    const isCasino = String(gameType || "").toLowerCase().includes("cassino")
+    const filteredPlayers = isCasino ? playerIds : playerIds.filter((id) => !storage.isModoLivreUser(id))
     if (buyInAmount <= 0) {
-      const normalizedBets = playerIds.reduce((acc, playerId) => {
+      const normalizedBets = filteredPlayers.reduce((acc, playerId) => {
         acc[playerId] = sanitizeLobbyBet(playerBetByPlayer[playerId], 1)
         return acc
       }, {})
       return { ok: true, pool: 0, buyInByPlayer: {}, playerBetByPlayer: normalizedBets }
     }
 
-    const uniquePlayers = [...new Set(playerIds.filter(Boolean))]
+    const uniquePlayers = [...new Set(filteredPlayers.filter(Boolean))]
     const normalizedBets = uniquePlayers.reduce((acc, playerId) => {
       acc[playerId] = sanitizeLobbyBet(playerBetByPlayer[playerId], 1)
       return acc
@@ -635,17 +637,17 @@ async function handleGameCommands(ctx) {
 
     const session = gameManager.getOptInSession(from, lobbyId)
     if (!session) {
-      await sock.sendMessage(from, { text: `Lobby *${targetLobbyId}* não encontrado.` })
+      await sock.sendMessage(from, { text: `Lobby *${lobbyId}* não encontrado.` })
       return true
     }
 
-    const stateKey = activeGameKey(session.gameType, targetLobbyId)
+    const stateKey = activeGameKey(session.gameType, lobbyId)
     if (storage.getGameState(from, stateKey)) {
-      await sock.sendMessage(from, { text: `O lobby *${targetLobbyId}* já está em andamento.` })
+      await sock.sendMessage(from, { text: `O lobby *${lobbyId}* já está em andamento.` })
       return true
     }
 
-    const graceStateKey = getLobbyGraceStateKey(targetLobbyId)
+    const graceStateKey = getLobbyGraceStateKey(lobbyId)
     const existingGraceState = storage.getGameState(from, graceStateKey)
     if (!existingGraceState?.forceStart) {
       if (existingGraceState) {
@@ -1526,7 +1528,7 @@ async function handleGameCommands(ctx) {
     return true
   }
 
-  if ((isLobbyCommand && normalizeUnifiedGameType(cmdArg1) === "embaralhado") && isGroup) {
+  if ((isStartCommand && normalizeUnifiedGameType(cmdArg1) === "embaralhado") && isGroup) {
     const blockedReason = getLobbyCreateBlockMessage("embaralhado", "Embaralhado")
     if (blockedReason) {
       await sock.sendMessage(from, { text: blockedReason })
@@ -1552,7 +1554,7 @@ async function handleGameCommands(ctx) {
     return true
   }
 
-  if ((isLobbyCommand && ["memoria", "memória"].includes(normalizeUnifiedGameType(cmdArg1))) && isGroup) {
+  if ((isStartCommand && ["memoria", "memória"].includes(normalizeUnifiedGameType(cmdArg1))) && isGroup) {
     const participants = await getCommandParticipants()
     if (participants.length < 3) {
       await sock.sendMessage(from, { text: "São necessários pelo menos 3 participantes para iniciar a Memória por comando." })
@@ -1569,7 +1571,7 @@ async function handleGameCommands(ctx) {
     return true
   }
 
-  if ((isLobbyCommand && ["reacao", "reação"].includes(normalizeUnifiedGameType(cmdArg1))) && isGroup) {
+  if ((isStartCommand && ["reacao", "reação"].includes(normalizeUnifiedGameType(cmdArg1))) && isGroup) {
     const blockedReason = getLobbyCreateBlockMessage("reação", "Reação")
     if (blockedReason) {
       await sock.sendMessage(from, { text: blockedReason })
@@ -1595,7 +1597,7 @@ async function handleGameCommands(ctx) {
     return true
   }
 
-  if ((isLobbyCommand && normalizeUnifiedGameType(cmdArg1) === "comando") && isGroup) {
+  if ((isStartCommand && normalizeUnifiedGameType(cmdArg1) === "comando") && isGroup) {
     const blockedReason = getLobbyCreateBlockMessage("comando", "Comando")
     if (blockedReason) {
       await sock.sendMessage(from, { text: blockedReason })
@@ -1770,11 +1772,8 @@ async function handleGameMessageFlow(ctx) {
   return false
 }
 
-// Retrocompatibilidade: alguns ambientes ainda referenciam handleGamesCommand.
-const handleGamesCommand = handleGameCommands
 
-  module.exports = {
+module.exports = {
   handleGameCommands,
   handleGameMessageFlow,
-  }
 }

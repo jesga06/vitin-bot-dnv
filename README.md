@@ -97,6 +97,7 @@ Observações de lobby:
 - O buy-in (quando existir) é cobrado ao iniciar a partida de todos os jogadores no lobby, incluindo o criador.
 - O LobbyID pode ser informado em maiúsculas ou minúsculas para entrar/iniciar.
 
+
 ### Economia
 - !register / !unregister
 - !perfil / !perfil @user / !perfil stats

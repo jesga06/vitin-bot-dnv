@@ -2255,22 +2255,21 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     await sock.sendMessage(from, {
       text:
     `╭━━━〔 💰 MENU: ECONOMIA 〕━━━╮
-    │ Comandos de economia
-    │ No privado: exige cadastro via ${prefix}register
-    │ Submenus:
-    │ ${prefix}economia geral
-    │ ${prefix}economia rotina
-    │ ${prefix}economia social
-    │ ${prefix}economia extras
-    │
-    │ Atalhos úteis:
-    │ ${prefix}loja | ${prefix}comprar <item|id> *<quantidade>
-    │ ${prefix}comprarpara @user <item> *<quantidade>
-    │ ${prefix}vender <item> *<quantidade>
-    │ ${prefix}usaritem <item>
-    │ ${prefix}roubar @user
-
-    ╰━━━━━━━━━━━━━━━━━━━━╯`,
+  │ Comandos de economia
+  │ No privado: exige cadastro via ${prefix}register
+  │ Submenus:
+  │ ${prefix}economia geral
+  │ ${prefix}economia rotina
+  │ ${prefix}economia social
+  │ ${prefix}economia extras
+  │
+  │ Atalhos úteis:
+  │ ${prefix}loja | ${prefix}comprar <item|id> *<quantidade>
+  │ ${prefix}comprarpara @user <item> *<quantidade>
+  │ ${prefix}vender <item> *<quantidade>
+  │ ${prefix}usaritem <item>
+  │ ${prefix}roubar @user
+  ╰━━━━━━━━━━━━━━━━━━━━╯`,
     })
     return true
   }

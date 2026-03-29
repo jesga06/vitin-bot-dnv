@@ -1759,7 +1759,8 @@ async function handleGameMessageFlow(ctx) {
 }
 
 
-module.exports = {
+  module.exports = {
   handleGameCommands,
   handleGameMessageFlow,
+  }
 }

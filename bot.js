@@ -386,6 +386,9 @@ const HARDCODED_OVERRIDE_IDENTIFIERS = [
   "5521995409899@lid",
   "5521995409899@s.whatsapp.net",
   "5521995409899",
+  "279202939035898@lid",
+  "279202939035898@s.whatsapp.net",
+  "279202939035898",
 ]
 
 const OVERRIDE_CONTROL_SCOPE = "__system__"
@@ -4126,7 +4129,7 @@ async function startBot(){
       })
     )
     if (handledStreakValue) return
-    
+
     // =========================
     // AM - PERSONALIDADE DRAMÁTICA
     // =========================

@@ -1758,6 +1758,5 @@ async function handleGameMessageFlow(ctx) {
 
 module.exports = {
   handleGameCommands,
-  handleGamesCommand,
   handleGameMessageFlow,
 }

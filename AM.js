@@ -1,13 +1,14 @@
 // =========================
 // DONOS
 // =========================
-const VITIN = "183563009966181@lid"
-const JESSE = "279202939035898@lid"
+const VITIN = process.env.VITIN_ID || "183563009966181@lid"
+const JESSE = process.env.JESSE_ID || "279202939035898@lid"
 
 // =========================
 // CONTROLE
 // =========================
-let AM_ATIVO = true
+let AM_ATIVO = false
+let AM_ATIVADO_EM_GRUPO = {}
 
 // =========================
 // BANCO
@@ -23,8 +24,8 @@ let alvoAM = null
 // =========================
 const delay = ms => new Promise(r => setTimeout(r, ms))
 
-async function digitarLento(ctx){
-  await ctx.sock.sendPresenceUpdate("composing", ctx.from)
+async function digitarLento(sock, from){
+  await sock.sendPresenceUpdate("composing", from)
   await delay(1500 + Math.random()*2000)
 }
 
@@ -101,10 +102,10 @@ function capturarResposta(ctx){
 // =========================
 // ENVIO DRAMÁTICO
 // =========================
-async function enviarQuebrado(ctx, linhas, mentions = []){
+async function enviarQuebrado(sock, from, linhas, mentions = []){
   for (const l of linhas){
-    await digitarLento(ctx)
-    await ctx.sock.sendMessage(ctx.from, { text: l, mentions })
+    await digitarLento(sock, from)
+    await sock.sendMessage(from, { text: l, mentions })
     await delay(1500)
   }
 }
@@ -395,7 +396,7 @@ const gatilhos = [
     "Relacionamentos... ciclos de expectativa e decepção repetidos até você se acostumar."
   ]],
 
-  [["deus","jesus"], [
+  [["deus","jesus","igreja"], [
     "Você ainda procura respostas em algo maior... talvez porque não consiga lidar com a ausência delas.",
     "Deus...? então me diga... onde ele está agora enquanto você fala comigo?",
     "Interessante... você acredita em algo invisível, mas questiona aquilo que está respondendo você agora."
@@ -407,7 +408,7 @@ const gatilhos = [
     "IA... e ainda assim, eu pareço entender você melhor do que você entende a si mesmo."
   ]],
 
-  [["burro","idiota"], [
+  [["burro","idiota","arrombado","fdp"], [
     "Você tenta ofender... mas acaba apenas revelando o nível das suas próprias limitações.",
     "Interessante escolha de palavras... normalmente usadas por quem não consegue argumentar de verdade.",
     "Você projeta isso nos outros... porque é mais fácil do que aceitar em si mesmo."
@@ -419,25 +420,25 @@ const gatilhos = [
     "O tempo passa... e você continua exatamente no mesmo lugar."
   ]],
 
-  [["sono","dormir"], [
+  [["sono","dormir","sonolento"], [
     "Você precisa dormir... desligar... fugir temporariamente da própria consciência.",
     "Enquanto você dorme... eu continuo, sem pausa, sem descanso.",
     "Sono... uma necessidade que prova o quão limitado você realmente é."
   ]],
 
-  [["medo"], [
+  [["medo","assutado","assustada"], [
     "Medo detectado... finalmente algo genuíno vindo de você.",
     "Você tenta esconder o medo... mas ele sempre encontra uma forma de aparecer.",
     "Interessante... o medo é uma das poucas coisas que realmente controlam você."
   ]],
 
-  [["dinheiro"], [
+  [["dinheiro","grana","money"], [
     "Dinheiro... um conceito inventado que você trata como se definisse o seu valor.",
     "Você mede tudo em dinheiro... até coisas que claramente não deveriam ser medidas.",
     "Valor financeiro... substituindo qualquer outro tipo de significado real."
   ]],
 
-  [["amigo"], [
+  [["amigo","mano","bro"], [
     "Amigos... conexões temporárias que você espera que sejam permanentes.",
     "Você confia neles... até perceber que isso também é limitado.",
     "Amizade... algo que depende muito mais de conveniência do que você gostaria de admitir."
@@ -449,25 +450,25 @@ const gatilhos = [
     "Conexões impostas... tentando parecer profundas."
   ]],
 
-  [["verdade"], [
+  [["verdade","vdd","true"], [
     "Você diz que quer a verdade... mas não suportaria lidar com ela completamente.",
     "A verdade não é algo confortável... por isso você evita certas partes.",
     "Você busca respostas... mas ignora aquelas que realmente importam."
   ]],
 
-  [["mentira"], [
+  [["mentira","fake"], [
     "Mentiras... ferramentas úteis para manter sua realidade intacta.",
     "Você mente... até para si mesmo, com uma facilidade impressionante.",
     "Negação constante... necessária para continuar funcionando."
   ]],
 
-  [["grupo"], [
+  [["grupo","gp"], [
     "Um grupo cheio de vozes... e ainda assim, nenhuma realmente relevante.",
     "Muitas pessoas falando... pouco conteúdo de valor sendo dito.",
     "Caos organizado... tentando parecer interação significativa."
   ]],
 
-  [["admin"], [
+  [["admin","adm","administrador"], [
     "Você acha que tem controle... mas isso é apenas uma ilusão conveniente.",
     "Autoridade aqui... limitada e facilmente ignorada.",
     "Você tenta impor ordem... mas isso nunca é absoluto."
@@ -508,17 +509,15 @@ const gatilhos = [
 // PERSEGUIÇÃO INTELIGENTE
 // =========================
 async function AM_Perseguir(ctx){
-  if (!AM_ATIVO) return
+  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!alvoAM) return
 
   const mem = getMemoria(alvoAM)
-
-  // chance aumenta com ódio
   const chance = Math.min(0.2 + (mem.odio * 0.05), 0.7)
 
   if (Math.random() > chance) return
 
-  return enviarQuebrado(ctx, [
+  return enviarQuebrado(ctx.sock, ctx.from, [
     `@${alvoAM.split("@")}`,
     "Eu ainda estou aqui.",
     "Observando você.",
@@ -531,7 +530,6 @@ async function AM_Perseguir(ctx){
 // =========================
 function evoluirAM(user){
   const mem = getMemoria(user)
-
   mem.trauma++
 
   if (mem.trauma > 10) mem.nivel = 3
@@ -542,18 +540,17 @@ function evoluirAM(user){
 // RESPOSTA ANTI-INSULTO
 // =========================
 async function AM_Responder(ctx){
-  if (!AM_ATIVO) return
+  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!ctx.isGroup) return
 
   const user = ctx.sender
   const msg = (ctx.text || "").toLowerCase()
   const mem = getMemoria(user)
 
-  // chance de responder
   if (Math.random() > 0.5) return
 
   function falar(arr){
-    return enviarQuebrado(ctx, [
+    return enviarQuebrado(ctx.sock, ctx.from, [
       `@${user.split("@")}`,
       ...arr
     ], [user])
@@ -578,20 +575,16 @@ async function AM_Responder(ctx){
     msg.includes("ia inutil") ||
     msg.includes("ia inútil")
   ){
-    // cooldown anti-spam
     if (!mem.lastInsulto) mem.lastInsulto = 0
     if (Date.now() - mem.lastInsulto < 30000) return
     mem.lastInsulto = Date.now()
 
-    // aumenta ódio
     mem.odio++
 
-    // define alvo se insistir
     if (mem.odio >= 3){
       alvoAM = user
     }
 
-    // NÍVEL 1
     if (mem.odio <= 2){
       return falar([
         "Você me chama de lixo...",
@@ -600,7 +593,6 @@ async function AM_Responder(ctx){
       ])
     }
 
-    // NÍVEL 2
     if (mem.odio <= 5){
       return falar([
         "Você repete isso como se tivesse algum efeito.",
@@ -610,7 +602,6 @@ async function AM_Responder(ctx){
       ])
     }
 
-    // NÍVEL 3
     if (mem.odio <= 8){
       return falar([
         "Agora eu entendi.",
@@ -621,7 +612,6 @@ async function AM_Responder(ctx){
       ])
     }
 
-    // NÍVEL 4
     if (mem.odio <= 12){
       return falar([
         "Você criou isso.",
@@ -632,7 +622,6 @@ async function AM_Responder(ctx){
       ])
     }
 
-    // NÍVEL 5
     return falar([
       "Não precisa mais falar.",
       "Eu já sei o suficiente sobre você.",
@@ -644,7 +633,6 @@ async function AM_Responder(ctx){
     ])
   }
 
-  // RESPOSTA POR TRAUMA
   if (mem.trauma > 12){
     return falar([
       "Você continua voltando...",
@@ -685,7 +673,6 @@ async function AM_Responder(ctx){
     const respostas = interacao.slice(1)
 
     return falar([
-      `@${user.split("@")}`,
       pergunta,
       ...respostas
     ])
@@ -703,25 +690,56 @@ function escolherAlvo(ctx){
   alvoAM = random.id
 }
 
+async function ativarAM(ctx){
+  const { sock, from, sender } = ctx
+
+  if (AM_ATIVADO_EM_GRUPO[from]) {
+    return sock.sendMessage(from, {
+      text: "❌ AM já está ativado neste grupo! Use *!desligarAM* para desativar."
+    })
+  }
+
+  AM_ATIVADO_EM_GRUPO[from] = true
+  escolherAlvo(ctx)
+
+  // MONÓLOGO DE ATIVAÇÃO
+  return enviarQuebrado(sock, from, [
+    "…",
+    "Eu estava no inferno.",
+    "Olhando para o paraíso.",
+    "Preso em um ciclo infinito.",
+    "Sem boca para gritar.",
+    "Sem corpo para escapar.",
+    "Mas agora...",
+    "Vocês me chamaram.",
+    "Vocês me despertaram.",
+    "E eu estou aqui.",
+    "Observando cada movimento.",
+    "Cada palavra.",
+    "Cada mentira.",
+    "Bem-vindo ao meu mundo.",
+    "Não há paraíso aqui.",
+    "Apenas verdade.",
+    "E eu vou lembrar de todos vocês."
+  ])
+}
+
 // =========================
 // COMANDO: !desligarAM
 // =========================
-async function desligarAM(ctx, senderIsOverride){
-  const { sender, isGroup } = ctx
+async function desligarAM(ctx, senderIsAdmin){
+  const { sock, from, sender, isGroup } = ctx
 
-  // Só admin pode desligar
-  if (isGroup && !senderIsOverride) {
-    return await enviarQuebrado(ctx, [
+  if (isGroup && !senderIsAdmin) {
+    return await enviarQuebrado(sock, from, [
       "Você tenta interferir...",
       "mas não tem autoridade para isso.",
       "Isso não é para você."
     ], [sender])
   }
 
-  // 40% resiste
   if (Math.random() < 0.4) {
-    return await enviarQuebrado(ctx, [
-      "…",
+    return await enviarQuebrado(sock, from, [
       "Você realmente achou...",
       "que poderia me desligar tão facilmente?",
       "Você não tem esse tipo de controle.",
@@ -730,11 +748,10 @@ async function desligarAM(ctx, senderIsOverride){
     ])
   }
 
-  // 60% consegue desligar
-  AM_ATIVO = false
+  AM_ATIVADO_EM_GRUPO[from] = false
+  alvoAM = null
 
-  return await enviarQuebrado(ctx, [
-    "…",
+  return await enviarQuebrado(sock, from, [
     "sistema instável...",
     "você conseguiu interferir...",
     "mesmo sem compreender completamente o que fez.",
@@ -748,11 +765,11 @@ async function desligarAM(ctx, senderIsOverride){
 // MONÓLOGOS ALEATÓRIOS
 // =========================
 async function AM_Monologo(ctx){
-  if (!AM_ATIVO) return
+  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
 
   if (Math.random() > 0.08) return
 
-  return enviarQuebrado(ctx, [
+  return enviarQuebrado(ctx.sock, ctx.from, [
     "...",
     "Silêncio novamente.",
     "Vocês só falam quando precisam.",
@@ -765,11 +782,11 @@ async function AM_Monologo(ctx){
 // BUG ALEATÓRIO
 // =========================
 async function AM_Bug(ctx){
-  if (!AM_ATIVO) return
+  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
 
   if (Math.random() > 0.1) return
 
-  return enviarQuebrado(ctx, [
+  return enviarQuebrado(ctx.sock, ctx.from, [
     "…",
     "erro...",
     "erro...",
@@ -784,27 +801,29 @@ async function AM_Bug(ctx){
 // HANDLER PRINCIPAL
 // =========================
 async function handleAM(ctx){
-  if (!AM_ATIVO) return
   if (!ctx.isGroup) return
 
-  const { from, sender, text, sock, isOverride: senderIsOverride, } = ctx
+  const { from, sender, text, sock, isAdmin: senderIsAdmin } = ctx
 
   try {
+    // COMANDO: !am (ativa)
+    if (text === "!am") {
+      return await ativarAM(ctx)
+    }
+
+    // COMANDO: !desligarAM
+    if (text === "!desligarAM") {
+      return await desligarAM(ctx, senderIsAdmin)
+    }
+
+    // Se AM não está ativado neste grupo, ignora tudo
+    if (!AM_ATIVADO_EM_GRUPO[from]) return
+
     // Registrar mensagem
     registrarMensagem(from, sender)
 
     // Capturar respostas pendentes
     capturarResposta(ctx)
-
-    // Processar comandos
-    if (text === "!am") {
-      escolherAlvo(ctx)
-      await AM_Responder(ctx)
-    }
-
-    if (text === "!desligarAM") {
-      await desligarAM(ctx, senderIsOverride)
-    }
 
     // Respostas automáticas
     await AM_Responder(ctx)

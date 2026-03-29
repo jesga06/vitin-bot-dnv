@@ -26,7 +26,7 @@ const delay = ms => new Promise(r => setTimeout(r, ms))
 
 async function digitarLento(sock, from){
   await sock.sendPresenceUpdate("composing", from)
-  await delay(1500 + Math.random()*2000)
+  await delay(1000 + Math.random()*1000)
 }
 
 // =========================

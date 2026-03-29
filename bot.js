@@ -4126,7 +4126,10 @@ async function startBot(){
       })
     )
     if (handledStreakValue) return
-
+    
+    // =========================
+    // AM - PERSONALIDADE DRAMÁTICA
+    // =========================
     const handledAM = await AM.handleAM({
       sock,
       from,
@@ -4159,19 +4162,7 @@ async function startBot(){
       })
       return
     }
-    // =========================
-    // AM - PERSONALIDADE DRAMÁTICA
-    // =========================
-    await AM.handleAM({
-      sock,
-      from,
-      sender,
-      text,
-      cmd,
-      cmdName,
-      isGroup,
-      isOverride: isOverrideSender,
-    })
+    
 
     } catch (err) {
       perfStats.messagesErrored += 1

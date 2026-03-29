@@ -807,14 +807,16 @@ async function handleAM(ctx){
 
   try {
     // COMANDO: !am (ativa)
-    if (cmd === "am") {
+    if (cmdName === "!am") {
       console.log("AM ativo")
-      return await ativarAM(ctx)
+      await ativarAM(ctx)
+      return true
     }
 
     // COMANDO: !desligarAM
-    if (cmd === "desligaram") {
-      return await desligarAM(ctx)
+    if (cmdName === "!desligaram") {
+      await desligarAM(ctx)
+      return true
     }
 
     // Se AM não está ativado neste grupo, ignora tudo

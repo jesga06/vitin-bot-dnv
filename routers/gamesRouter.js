@@ -620,21 +620,19 @@ async function handleGameCommands(ctx) {
     })
     return true
   }
-
-
-    const session = gameManager.getOptInSession(from, lobbyId)
+    const session = gameManager.getOptInSession(from, targetLobbyId)
     if (!session) {
-      await sock.sendMessage(from, { text: `Lobby *${lobbyId}* não encontrado.` })
+      await sock.sendMessage(from, { text: `Lobby *${targetLobbyId}* não encontrado.` })
       return true
     }
 
-    const stateKey = activeGameKey(session.gameType, lobbyId)
+    const stateKey = activeGameKey(session.gameType, targetLobbyId)
     if (storage.getGameState(from, stateKey)) {
-      await sock.sendMessage(from, { text: `O lobby *${lobbyId}* já está em andamento.` })
+      await sock.sendMessage(from, { text: `O lobby *${targetLobbyId}* já está em andamento.` })
       return true
     }
 
-    const graceStateKey = getLobbyGraceStateKey(lobbyId)
+    const graceStateKey = getLobbyGraceStateKey(targetLobbyId)
     const existingGraceState = storage.getGameState(from, graceStateKey)
     if (!existingGraceState?.forceStart) {
       if (existingGraceState) {

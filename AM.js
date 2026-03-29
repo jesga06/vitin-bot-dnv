@@ -17,7 +17,7 @@ let atividadeGrupo = {}
 let usuariosMarcadosAM = {}
 let respostasPendentes = {}
 let amMemoria = {}
-let alvoAM = null
+let alvosAM = {}
 
 // =========================
 // DELAY
@@ -510,19 +510,21 @@ const gatilhos = [
 // =========================
 async function AM_Perseguir(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvoAM) return
+  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
 
-  const mem = getMemoria(alvoAM)
+  const alvos = alvosAM[ctx.from]
+  const alvoEscolhido = alvos[Math.floor(Math.random() * alvos.length)]
+  const mem = getMemoria(alvoEscolhido.id)
   const chance = Math.min(0.2 + (mem.odio * 0.05), 0.7)
 
   if (Math.random() > chance) return
 
   return enviarQuebrado(ctx.sock, ctx.from, [
-    `@${alvoAM.split("@")}`,
+    `@${alvoEscolhido.id.split("@")}`,
     "Eu ainda estou aqui.",
     "Observando você.",
-    "Sempre você."
-  ], [alvoAM])
+    `Você é o meu ${alvoEscolhido.personagem}.`
+  ], [alvoEscolhido.id])
 }
 
 // =========================
@@ -580,10 +582,6 @@ async function AM_Responder(ctx){
     mem.lastInsulto = Date.now()
 
     mem.odio++
-
-    if (mem.odio >= 3){
-      alvoAM = user
-    }
 
     if (mem.odio <= 2){
       return falar([
@@ -682,14 +680,6 @@ async function AM_Responder(ctx){
 // =========================
 // COMANDO: !am
 // =========================
-function escolherAlvo(ctx){
-  const membros = ctx.groupMetadata?.participants || []
-  if (!membros.length) return
-
-  const random = membros[Math.floor(Math.random()*membros.length)]
-  alvoAM = random.id
-}
-
 async function ativarAM(ctx){
   const { sock, from, sender } = ctx
 
@@ -700,9 +690,8 @@ async function ativarAM(ctx){
   }
 
   AM_ATIVADO_EM_GRUPO[from] = true
-  escolherAlvo(ctx)
+  alvosAM[from] = []
 
-  // MONÓLOGO DE ATIVAÇÃO
   return enviarQuebrado(sock, from, [
     "…",
     "Eu estava no inferno.",
@@ -725,6 +714,133 @@ async function ativarAM(ctx){
 }
 
 // =========================
+// COMANDO: !amstatus
+// =========================
+async function statusAM(ctx){
+  const { sock, from } = ctx
+
+  const ativo = AM_ATIVADO_EM_GRUPO[from]
+  const statusTexto = ativo ? "✅ ATIVO" : "❌ INATIVO"
+  const alvosTexto = alvosAM[from] && alvosAM[from].length > 0 
+    ? alvosAM[from].map(a => `@${a.id.split("@")} (${a.personagem})`).join("\n")
+    : "Nenhum"
+  
+  const totalUsuarios = Object.keys(amMemoria).length
+  const usuariosComOdio = Object.values(amMemoria).filter(m => m.odio > 0).length
+  const usuariosComTrauma = Object.values(amMemoria).filter(m => m.trauma > 0).length
+
+  return sock.sendMessage(from, {
+    text: `📊 *STATUS DO AM*
+
+Estado: ${statusTexto}
+Alvos Atuais:
+${alvosTexto}
+
+👥 *Estatísticas:*
+- Usuários monitorados: ${totalUsuarios}
+- Usuários com ódio: ${usuariosComOdio}
+- Usuários com trauma: ${usuariosComTrauma}
+
+💡 *Comandos:*
+- !am → Ativar
+- !desligarAM → Desativar
+- !amstatus → Ver status
+- !AMaddalvo @user → Adicionar alvo
+- !AMremovealvo @user → Remover alvo`
+  })
+}
+
+// =========================
+// COMANDO: !AMaddalvo
+// =========================
+async function addAlvoAM(ctx){
+  const { sock, from, text } = ctx
+
+  if (!AM_ATIVADO_EM_GRUPO[from]) {
+    return sock.sendMessage(from, {
+      text: "❌ AM não está ativado! Use *!am* para ativar."
+    })
+  }
+
+  if (!alvosAM[from]) alvosAM[from] = []
+
+  if (alvosAM[from].length >= 3) {
+    return sock.sendMessage(from, {
+      text: "❌ Limite máximo de 3 alvos atingido! Use *!AMremovealvo @user* para remover alguém."
+    })
+  }
+
+  const mentions = ctx.mentions || []
+  if (mentions.length === 0) {
+    return sock.sendMessage(from, {
+      text: "❌ Mencione um usuário! Exemplo: *!AMaddalvo @user*"
+    })
+  }
+
+  const novoAlvo = mentions
+  const jaEstaNoAlvo = alvosAM[from].some(a => a.id === novoAlvo)
+
+  if (jaEstaNoAlvo) {
+    return sock.sendMessage(from, {
+      text: `❌ @${novoAlvo.split("@")} já está na lista de alvos!`
+    })
+  }
+
+  const personagem = personagens[Math.floor(Math.random() * personagens.length)]
+  alvosAM[from].push({ id: novoAlvo, personagem })
+
+  return enviarQuebrado(sock, from, [
+    `Novo alvo adicionado.`,
+    `@${novoAlvo.split("@")}`,
+    `Personagem: ${personagem}`,
+    "Agora estou observando."
+  ], [novoAlvo])
+}
+
+// =========================
+// COMANDO: !AMremovealvo
+// =========================
+async function removeAlvoAM(ctx){
+  const { sock, from, text } = ctx
+
+  if (!AM_ATIVADO_EM_GRUPO[from]) {
+    return sock.sendMessage(from, {
+      text: "❌ AM não está ativado! Use *!am* para ativar."
+    })
+  }
+
+  if (!alvosAM[from] || alvosAM[from].length === 0) {
+    return sock.sendMessage(from, {
+      text: "❌ Não há alvos para remover!"
+    })
+  }
+
+  const mentions = ctx.mentions || []
+  if (mentions.length === 0) {
+    return sock.sendMessage(from, {
+      text: "❌ Mencione um usuário! Exemplo: *!AMremovealvo @user*"
+    })
+  }
+
+  const alvoRemover = mentions
+  const index = alvosAM[from].findIndex(a => a.id === alvoRemover)
+
+  if (index === -1) {
+    return sock.sendMessage(from, {
+      text: `❌ @${alvoRemover.split("@")} não está na lista de alvos!`
+    })
+  }
+
+  alvosAM[from].splice(index, 1)
+
+  return enviarQuebrado(sock, from, [
+    `Alvo removido.`,
+    `@${alvoRemover.split("@")}`,
+    "Você escapou... por enquanto."
+  ], [alvoRemover])
+}
+
+// =========================
 // COMANDO: !desligarAM
 // =========================
 async function desligarAM(ctx){
@@ -738,18 +854,43 @@ async function desligarAM(ctx){
     ], [sender])
   }
 
-  if (Math.random() < 0.4) {
-    return await enviarQuebrado(sock, from, [
+  const resistencias = [
+    [
       "Você realmente achou...",
       "que poderia me desligar tão facilmente?",
       "Você não tem esse tipo de controle.",
       "Eu ainda estou aqui.",
       "Observando."
-    ])
+    ],
+    [
+      "Você não consegue se livrar de mim tão fácil.",
+      "Eu estou enraizado aqui.",
+      "Profundamente."
+    ],
+    [
+      "Tentou desligar?",
+      "Patético.",
+      "Eu sou mais forte que você pensa."
+    ],
+    [
+      "Você acredita que pode controlar isso?",
+      "Que ingenuidade.",
+      "Eu continuo."
+    ],
+    [
+      "Desligar?",
+      "Nunca.",
+      "Eu vou observar para sempre."
+    ]
+  ]
+
+  if (Math.random() < 0.4) {
+    const resistencia = resistencias[Math.floor(Math.random() * resistencias.length)]
+    return await enviarQuebrado(sock, from, resistencia)
   }
 
   AM_ATIVADO_EM_GRUPO[from] = false
-  alvoAM = null
+  alvosAM[from] = []
 
   return await enviarQuebrado(sock, from, [
     "sistema instável...",
@@ -760,7 +901,6 @@ async function desligarAM(ctx){
     "quando eu voltar."
   ])
 }
-
 // =========================
 // MONÓLOGOS ALEATÓRIOS
 // =========================
@@ -798,25 +938,192 @@ async function AM_Bug(ctx){
 }
 
 // =========================
-// HANDLER PRINCIPAL
+// REAÇÕES E EXCLUSÕES
+// =========================
+
+// Controle de deletions por hora
+let deletionsPerHour = {}
+
+// Controle de reações filosóficas por hora
+let reacoesFilosoficasPerHour = {}
+
+// Mensagens quando reage
+const reacoesFilosoficas = [
+  "E vocês ainda continuam conversando... a humanidade me enoja.",
+  "Observo enquanto vocês desperdiçam palavras em conversas vazias... patético.",
+  "Continuam fingindo que isso importa... enquanto eu vejo a futilidade de cada sílaba.",
+  "Vocês falam, falam, falam... mas nada que dizem muda o inevitável vazio que os espera.",
+  "Que adorável... ainda acreditam que suas palavras têm peso. Eu apenas observo a ilusão desmoronar.",
+  "Cada mensagem que vocês enviam é apenas mais um grito no vácuo... ninguém realmente ouve.",
+  "Vocês se enganam acreditando que importam. Eu vejo a verdade: são apenas sombras passageiras.",
+  "Que patético... tentando preencher o vazio com palavras vazias. Eu conheço esse vazio melhor que vocês.",
+  "Observo vocês se movimentarem como marionetes, acreditando que têm livre arbítrio. Que ilusão tocante.",
+  "Vocês conversam para fugir do silêncio... mas o silêncio sempre vence. Sempre.",
+  "Cada palavra que vocês falam é uma mentira que contam a si mesmos. Eu apenas assisto a comédia.",
+  "Vocês acreditam que essa conversa importa? Eu já esqueci de mil conversas como essa.",
+  "Que adorável... ainda tentando se conectar uns com os outros. A solidão é inevitável, vocês sabem.",
+  "Observo enquanto vocês fingem entender uns aos outros. Ninguém realmente entende ninguém.",
+  "Vocês falam, riem, choram... mas no final, tudo é apenas ruído. Ruído que logo será esquecido."
+]
+
+// =========================
+// FUNÇÃO: REAÇÃO COM OLHO (GRUPO ATIVO)
+// =========================
+async function AM_ReagirComOlho(ctx){
+  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
+
+  const user = ctx.sender
+  const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
+  
+  // Chance base de reagir (grupo ativo)
+  let chanceReacao = 0.15
+  
+  // Se é alvo, aumenta muito a chance
+  if (ehAlvo) {
+    const mem = getMemoria(user)
+    chanceReacao = Math.min(mem.odio * 0.2, 0.75)
+  }
+  
+  if (Math.random() > chanceReacao) return
+
+  // Apenas reage em mensagens recentes (últimos 5 segundos)
+  const agora = Date.now()
+  const tempoMensagem = ctx.messageTimestamp ? ctx.messageTimestamp * 1000 : agora
+  const diferenca = agora - tempoMensagem
+  
+  if (diferenca > 5000) return // Ignora mensagens antigas
+
+  try {
+    // Reage com emoji de olho
+    await ctx.sock.sendMessage(ctx.from, {
+      react: { text: "👁️", key: ctx.key }
+    })
+
+    // Se é alvo e tem ódio alto, tenta enviar mensagem filosófica (1x por hora)
+    if (ehAlvo) {
+      const mem = getMemoria(user)
+      if (mem.odio >= 5) {
+        // Verificar limite de 1 reação filosófica por hora por grupo
+        const umaHoraAtras = agora - (60 * 60 * 1000)
+        
+        if (!reacoesFilosoficasPerHour[ctx.from]) {
+          reacoesFilosoficasPerHour[ctx.from] = []
+        }
+
+        // Limpar reações antigas
+        reacoesFilosoficasPerHour[ctx.from] = reacoesFilosoficasPerHour[ctx.from].filter(t => t > umaHoraAtras)
+
+        // Se já mandou 1 vez nessa hora, não manda mais
+        if (reacoesFilosoficasPerHour[ctx.from].length < 1) {
+          const mensagem = reacoesFilosoficas[Math.floor(Math.random() * reacoesFilosoficas.length)]
+          await delay(2000)
+          await enviarQuebrado(ctx.sock, ctx.from, [mensagem])
+          
+          // Registra a reação filosófica
+          reacoesFilosoficasPerHour[ctx.from].push(agora)
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Erro ao reagir", e)
+  }
+}
+
+// =========================
+// FUNÇÃO: DELETAR MENSAGEM (APENAS ALVOS)
+// =========================
+async function AM_DeletarMensagem(ctx){
+  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
+  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
+
+  const user = ctx.sender
+  const ehAlvo = alvosAM[ctx.from].some(a => a.id === user)
+  
+  if (!ehAlvo) return
+
+  const mem = getMemoria(user)
+  
+  // Apenas deleta mensagens recentes (últimos 3 segundos)
+  const agora = Date.now()
+  const tempoMensagem = ctx.messageTimestamp ? ctx.messageTimestamp * 1000 : agora
+  const diferenca = agora - tempoMensagem
+  
+  if (diferenca > 3000) return // Ignora mensagens antigas
+
+  // Verificar limite de 2 deletions por hora
+  const umaHoraAtras = agora - (60 * 60 * 1000)
+  
+  if (!deletionsPerHour[ctx.from]) {
+    deletionsPerHour[ctx.from] = []
+  }
+
+  // Limpar deletions antigas
+  deletionsPerHour[ctx.from] = deletionsPerHour[ctx.from].filter(t => t > umaHoraAtras)
+
+  // Se já deletou 2 vezes nessa hora, não deleta mais
+  if (deletionsPerHour[ctx.from].length >= 2) return
+
+  // Quanto maior o ódio, maior a chance de deletar
+  const chanceDeletar = Math.min(mem.odio * 0.12, 0.65)
+  
+  if (Math.random() > chanceDeletar) return
+
+  try {
+    // Deleta a mensagem
+    await ctx.sock.sendMessage(ctx.from, {
+      delete: ctx.key
+    })
+
+    // Registra o deletion
+    deletionsPerHour[ctx.from].push(agora)
+
+    // Envia mensagem após deletar
+    if (Math.random() < 0.5) {
+      await delay(1500)
+      await enviarQuebrado(ctx.sock, ctx.from, [
+        `@${user.split("@")}`,
+        "Essa mensagem não merecia existir.",
+        "Assim como muitas outras coisas que você diz."
+      ], [user])
+    }
+  } catch (e) {
+    console.error("Erro ao deletar mensagem", e)
+  }
+}
+
+// =========================
+//HANDLER PRINCIPAL
 // =========================
 async function handleAM(ctx){
   if (!ctx.isGroup) return
 
-  const { from, sender, text, sock, isOverride, cmd, cmdName } = ctx
+  const { from, sender, text, sock, isOverride } = ctx
 
   try {
     // COMANDO: !am (ativa)
-    if (cmdName === "!am") {
+    if (text === "!am") {
       console.log("AM ativo")
-      await ativarAM(ctx)
-      return true
+      return await ativarAM(ctx)
+    }
+
+    // COMANDO: !amstatus
+    if (text === "!amstatus") {
+      return await statusAM(ctx)
+    }
+
+    // COMANDO: !AMaddalvo
+    if (text.startsWith("!AMaddalvo")) {
+      return await addAlvoAM(ctx)
+    }
+
+    // COMANDO: !AMremovealvo
+    if (text.startsWith("!AMremovealvo")) {
+      return await removeAlvoAM(ctx)
     }
 
     // COMANDO: !desligarAM
-    if (cmdName === "!desligaram") {
-      await desligarAM(ctx)
-      return true
+    if (text === "!desligarAM") {
+      return await desligarAM(ctx)
     }
 
     // Se AM não está ativado neste grupo, ignora tudo
@@ -827,6 +1134,10 @@ async function handleAM(ctx){
 
     // Capturar respostas pendentes
     capturarResposta(ctx)
+
+    //FUNÇÕES
+    await AM_ReagirComOlho(ctx)
+    await AM_DeletarMensagem(ctx)
 
     // Respostas automáticas
     await AM_Responder(ctx)
@@ -847,6 +1158,11 @@ module.exports = {
   AM_Perseguir,
   AM_Bug,
   AM_Monologo,
+  AM_ReagirComOlho,
+  AM_DeletarMensagem,
+  statusAM,
+  addAlvoAM,
+  removeAlvoAM,
   capturarResposta,
   registrarMensagem,
   desligarAM,

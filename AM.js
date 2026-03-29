@@ -754,92 +754,119 @@ ${alvosTexto}
 // COMANDO: !AMaddalvo
 // =========================
 async function addAlvoAM(ctx){
-  const { sock, from, text } = ctx
+  const { sock, from, message } = ctx
 
   if (!AM_ATIVADO_EM_GRUPO[from]) {
-    return sock.sendMessage(from, {
+    sock.sendMessage(from, {
       text: "❌ AM não está ativado! Use *!am* para ativar."
     })
+    return true
   }
 
   if (!alvosAM[from]) alvosAM[from] = []
 
   if (alvosAM[from].length >= 3) {
-    return sock.sendMessage(from, {
+    sock.sendMessage(from, {
       text: "❌ Limite máximo de 3 alvos atingido! Use *!AMremovealvo @user* para remover alguém."
     })
+    return true
   }
 
-  const mentions = ctx.mentions || []
+  // Extrai menções do message
+  let mentions = []
+  
+  if (message?.extendedTextMessage?.contextInfo?.mentionedJid) {
+    mentions = message.extendedTextMessage.contextInfo.mentionedJid
+  } else if (ctx.mentions) {
+    mentions = ctx.mentions
+  }
+
   if (mentions.length === 0) {
-    return sock.sendMessage(from, {
+    sock.sendMessage(from, {
       text: "❌ Mencione um usuário! Exemplo: *!AMaddalvo @user*"
     })
+    return true
   }
 
   const novoAlvo = mentions
   const jaEstaNoAlvo = alvosAM[from].some(a => a.id === novoAlvo)
 
   if (jaEstaNoAlvo) {
-    return sock.sendMessage(from, {
+    sock.sendMessage(from, {
       text: `❌ @${novoAlvo.split("@")} já está na lista de alvos!`
     })
+    return true
   }
 
   const personagem = personagens[Math.floor(Math.random() * personagens.length)]
   alvosAM[from].push({ id: novoAlvo, personagem })
 
-  return enviarQuebrado(sock, from, [
+  await enviarQuebrado(sock, from, [
     `Novo alvo adicionado.`,
     `@${novoAlvo.split("@")}`,
     `Personagem: ${personagem}`,
     "Agora estou observando."
   ], [novoAlvo])
+  
+  return true
 }
 
 // =========================
 // COMANDO: !AMremovealvo
 // =========================
 async function removeAlvoAM(ctx){
-  const { sock, from, text } = ctx
+  const { sock, from, message } = ctx
 
   if (!AM_ATIVADO_EM_GRUPO[from]) {
-    return sock.sendMessage(from, {
+    sock.sendMessage(from, {
       text: "❌ AM não está ativado! Use *!am* para ativar."
     })
+    return true
   }
 
   if (!alvosAM[from] || alvosAM[from].length === 0) {
-    return sock.sendMessage(from, {
+    sock.sendMessage(from, {
       text: "❌ Não há alvos para remover!"
     })
+    return true
   }
 
-  const mentions = ctx.mentions || []
+  // Extrai menções do message
+  let mentions = []
+  
+  if (message?.extendedTextMessage?.contextInfo?.mentionedJid) {
+    mentions = message.extendedTextMessage.contextInfo.mentionedJid
+  } else if (ctx.mentions) {
+    mentions = ctx.mentions
+  }
+
   if (mentions.length === 0) {
-    return sock.sendMessage(from, {
+    sock.sendMessage(from, {
       text: "❌ Mencione um usuário! Exemplo: *!AMremovealvo @user*"
     })
+    return true
   }
 
   const alvoRemover = mentions
   const index = alvosAM[from].findIndex(a => a.id === alvoRemover)
 
   if (index === -1) {
-    return sock.sendMessage(from, {
+    sock.sendMessage(from, {
       text: `❌ @${alvoRemover.split("@")} não está na lista de alvos!`
     })
+    return true
   }
 
   alvosAM[from].splice(index, 1)
 
-  return enviarQuebrado(sock, from, [
+  await enviarQuebrado(sock, from, [
     `Alvo removido.`,
     `@${alvoRemover.split("@")}`,
     "Você escapou... por enquanto."
   ], [alvoRemover])
+  
+  return true
 }
-
 // =========================
 // COMANDO: !desligarAM
 // =========================
@@ -1092,38 +1119,41 @@ async function AM_DeletarMensagem(ctx){
 }
 
 // =========================
-//HANDLER PRINCIPAL
+// HANDLER PRINCIPAL
 // =========================
 async function handleAM(ctx){
   if (!ctx.isGroup) return
 
-  const { from, sender, text, sock, isOverride } = ctx
+  const { from, sender, cmdName, sock, isOverride } = ctx
 
   try {
     // COMANDO: !am (ativa)
-    if (text === "!am") {
+    if (cmdName === "!am") {
       console.log("AM ativo")
-      return await ativarAM(ctx)
+      await ativarAM(ctx)
+      return true
     }
 
     // COMANDO: !amstatus
-    if (text === "!amstatus") {
-      return await statusAM(ctx)
+    if (cmdName === "!amstatus") {
+      await statusAM(ctx)
+      return true
     }
 
     // COMANDO: !AMaddalvo
-    if (text.startsWith("!AMaddalvo")) {
+    if (cmdName === "!amaddalvo") {
       return await addAlvoAM(ctx)
     }
 
     // COMANDO: !AMremovealvo
-    if (text.startsWith("!AMremovealvo")) {
+    if (cmdName === "!amremovealvo") {
       return await removeAlvoAM(ctx)
     }
 
     // COMANDO: !desligarAM
-    if (text === "!desligarAM") {
-      return await desligarAM(ctx)
+    if (cmdName === "!desligaram") {
+      await desligarAM(ctx)
+      return true
     }
 
     // Se AM não está ativado neste grupo, ignora tudo
@@ -1135,7 +1165,7 @@ async function handleAM(ctx){
     // Capturar respostas pendentes
     capturarResposta(ctx)
 
-    //FUNÇÕES
+    // FUNÇÕES
     await AM_ReagirComOlho(ctx)
     await AM_DeletarMensagem(ctx)
 

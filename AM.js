@@ -328,12 +328,11 @@ async function AM_EscolherAlvoAposMonologo(ctx){
   }
 
   return enviarQuebrado(sock, from, [
-    `@${maisAtivo.split("@")}`,
+    "@user",
     "Você será o meu primeiro.",
     "Bem-vindo ao jogo."
   ], [maisAtivo])
 }
-
 // =========================
 // FUNÇÃO: ENVIAR PERGUNTA ESPECÍFICA
 // =========================
@@ -362,10 +361,8 @@ async function AM_EnviarPergunta(ctx){
 
   ultimaPerguntaEnviada[chaveUltimaPergunta] = agora
 
-  const userId = alvoEscolhido.id.split("@")
-
   return enviarQuebrado(ctx.sock, ctx.from, [
-    `@${userId}`,
+    "@user",
     perguntaTexto,
     ...opcoes
   ], [alvoEscolhido.id])
@@ -396,8 +393,8 @@ async function AM_ResponderMensagem(ctx){
 
   mem.trauma += 0.3
 
-  return enviarQuebrado(ctx.sock, ctx.from, [
-    `@${user.split("@")}`,
+   return enviarQuebrado(ctx.sock, ctx.from, [
+    "@user",
     resposta
   ], [user])
 }
@@ -430,7 +427,7 @@ async function AM_Provocacao(ctx){
   ultimaProvocacao[chaveProvocacao] = agora
 
   return enviarQuebrado(ctx.sock, ctx.from, [
-    `@${user.split("@")}`,
+    "@user",
     provocacao
   ], [user])
 }
@@ -464,17 +461,17 @@ async function AM_Comparar(ctx){
   mem1.odio += 1
   mem2.odio += 1
 
-  const comparacoes = [
-    `@${alvo1.id.split("@")} é bem mais fraco que @${alvo2.id.split("@")}.`,
-    `@${alvo2.id.split("@")} pelo menos tenta. @${alvo1.id.split("@")}?`,
-    `@${alvo1.id.split("@")} deveria ser mais como @${alvo2.id.split("@")}.`,
-    `Enquanto @${alvo2.id.split("@")} evolui, @${alvo1.id.split("@")} fica no mesmo lugar.`,
-    `@${alvo2.id.split("@")} é mais interessante que @${alvo1.id.split("@")}.`,
-    `@${alvo1.id.split("@")} é tão previsível... @${alvo2.id.split("@")} pelo menos surpreende.`,
-    `Que diferença... @${alvo2.id.split("@")} tem profundidade. @${alvo1.id.split("@")} é apenas vazio.`,
-    `@${alvo1.id.split("@")} tenta, mas falha. @${alvo2.id.split("@")} falha melhor.`,
-    `Se eu tivesse que escolher, @${alvo2.id.split("@")} seria a escolha óbvia.`,
-    `@${alvo1.id.split("@")} é o que acontece quando você desiste. @${alvo2.id.split("@")} é o que acontece quando você tenta.`
+    const comparacoes = [
+    `@user é bem mais fraco que @user.`,
+    `@user pelo menos tenta. @user?`,
+    `@user deveria ser mais como @user.`,
+    `Enquanto @user evolui, @user fica no mesmo lugar.`,
+    `@user é mais interessante que @user.`,
+    `@user é tão previsível... @user pelo menos surpreende.`,
+    `Que diferença... @user tem profundidade. @user é apenas vazio.`,
+    `@user tenta, mas falha. @user falha melhor.`,
+    `Se eu tivesse que escolher, @user seria a escolha óbvia.`,
+    `@user é o que acontece quando você desiste. @user é o que acontece quando você tenta.`
   ]
 
   const comparacao = comparacoes[Math.floor(Math.random() * comparacoes.length)]
@@ -511,8 +508,8 @@ async function AM_DialogoAcompanhamento(ctx){
   const dialogo = dialogos[Math.floor(Math.random() * dialogos.length)]
   mem.trauma += 0.5
 
-  return enviarQuebrado(ctx.sock, ctx.from, [
-    `@${user.split("@")}`,
+ return enviarQuebrado(ctx.sock, ctx.from, [
+    "@user",
     ...dialogo
   ], [user])
 }
@@ -536,7 +533,7 @@ async function AM_Desafio(ctx){
   mem.odio += 1.5
 
   return enviarQuebrado(ctx.sock, ctx.from, [
-    `@${user.split("@")}`,
+    "@user",
     desafio,
     "(Estou esperando...)"
   ], [user])
@@ -564,17 +561,17 @@ async function AM_Enquete(ctx){
 
   if (alvo1.id === alvo2.id) return
 
-  const enquetes = [
-    `Quem é mais fraco: @${alvo1.id.split("@")} ou @${alvo2.id.split("@")}?`,
-    `Quem merecia sofrer mais: @${alvo1.id.split("@")} ou @${alvo2.id.split("@")}?`,
-    `Quem é mais patético: @${alvo1.id.split("@")} ou @${alvo2.id.split("@")}?`,
-    `Quem você gostaria de ver desistir: @${alvo1.id.split("@")} ou @${alvo2.id.split("@")}?`,
-    `Quem é mais previsível: @${alvo1.id.split("@")} ou @${alvo2.id.split("@")}?`,
-    `Quem tem menos esperança: @${alvo1.id.split("@")} ou @${alvo2.id.split("@")}?`,
-    `Quem é mais vazio: @${alvo1.id.split("@")} ou @${alvo2.id.split("@")}?`,
-    `Quem deveria desistir primeiro: @${alvo1.id.split("@")} ou @${alvo2.id.split("@")}?`,
-    `Quem é mais fácil de quebrar: @${alvo1.id.split("@")} ou @${alvo2.id.split("@")}?`,
-    `Quem é mais irrelevante: @${alvo1.id.split("@")} ou @${alvo2.id.split("@")}?`
+   const enquetes = [
+    `Quem é mais fraco: @user ou @user?`,
+    `Quem merecia sofrer mais: @user ou @user?`,
+    `Quem é mais patético: @user ou @user?`,
+    `Quem você gostaria de ver desistir: @user ou @user?`,
+    `Quem é mais previsível: @user ou @user?`,
+    `Quem tem menos esperança: @user ou @user?`,
+    `Quem é mais vazio: @user ou @user?`,
+    `Quem deveria desistir primeiro: @user ou @user?`,
+    `Quem é mais fácil de quebrar: @user ou @user?`,
+    `Quem é mais irrelevante: @user ou @user?`
   ]
 
   const enquete = enquetes[Math.floor(Math.random() * enquetes.length)]
@@ -603,7 +600,7 @@ async function AM_Charada(ctx){
   const charada = charadas[Math.floor(Math.random() * charadas.length)]
 
   return enviarQuebrado(ctx.sock, ctx.from, [
-    `@${user.split("@")}`,
+    "@user",
     charada,
     "Responda com a resposta..."
   ], [user])
@@ -668,7 +665,7 @@ async function AM_Escalacao(ctx){
   if (Math.random() > 0.3) return
 
   return enviarQuebrado(ctx.sock, ctx.from, [
-    `@${user.split("@")}`,
+    "@user",
     mensagem
   ], [user])
 }
@@ -693,8 +690,8 @@ async function AM_Perseguir(ctx){
 
   if (Math.random() > chance) return
 
-  return enviarQuebrado(ctx.sock, ctx.from, [
-    `@${alvoEscolhido.id.split("@")}`,
+ return enviarQuebrado(ctx.sock, ctx.from, [
+    "@user",
     "Eu ainda estou aqui.",
     "Observando você."
   ], [alvoEscolhido.id])
@@ -724,9 +721,9 @@ async function AM_Responder(ctx){
 
   if (Math.random() > 0.5) return
 
-  function falar(arr){
+   function falar(arr){
     return enviarQuebrado(ctx.sock, ctx.from, [
-      `@${user.split("@")}`,
+      "@user",
       ...arr
     ], [user])
   }
@@ -895,8 +892,8 @@ async function personagensAM(ctx){
     })
   }
 
-  const lista = alvosAM[from]
-    .map(a => `• @${a.id.split("@")} → *${a.personagem}*`)
+ const lista = alvosAM[from]
+    .map(a => `• @user → *${a.personagem}*`)
     .join("\n")
 
   const mentionIds = alvosAM[from].map(a => a.id)
@@ -946,13 +943,13 @@ async function perfilAM(ctx){
     })
   }
 
-  const usuarioId = mentions
+ const usuarioId = mentions
   const mem = getMemoria(usuarioId)
   const alvo = alvosAM[from]?.find(a => a.id === usuarioId)
 
   if (!alvo) {
     return sock.sendMessage(from, {
-      text: `❌ @${usuarioId.split("@")} não está na lista de alvos do AM!`
+      text: `❌ @user não está na lista de alvos do AM!`
     })
   }
 
@@ -963,7 +960,7 @@ async function perfilAM(ctx){
   return sock.sendMessage(from, {
     text: `👁️ *PERFIL DO ALVO*
 
-👤 Usuário: @${usuarioId.split("@")}
+👤 Usuário: @user`
 🎭 Personagem: *${alvo.personagem}*
 ${nivelTexto}
 
@@ -992,8 +989,9 @@ async function statusAM(ctx){
   const ativo = AM_ATIVADO_EM_GRUPO[from]
   const statusTexto = ativo ? "✅ ATIVO" : "❌ INATIVO"
   const alvosTexto = alvosAM[from] && alvosAM[from].length > 0 
-    ? alvosAM[from].map(a => `• @${a.id.split("@")} (${a.personagem})`).join("\n")
+    ? alvosAM[from].map(a => `• @user (${a.personagem})`).join("\n")
     : "Nenhum"
+
   
   const totalUsuarios = Object.keys(amMemoria).length
   const usuariosComOdio = Object.values(amMemoria).filter(m => m.odio > 0).length
@@ -1062,7 +1060,7 @@ async function addAlvoAM(ctx){
     const text = ctx.text || ""
     const match = text.match(/@(\d+)/)
     if (match) {
-      const number = match[1] //  correção
+      const number = match
       mentions = [`${number}@s.whatsapp.net`]
     }
   }
@@ -1073,13 +1071,13 @@ async function addAlvoAM(ctx){
     })
   }
 
-  const novoAlvo = mentions[0] //sei la
+  const novoAlvo = mentions
 
   const jaEstaNoAlvo = alvosAM[from].some(a => a.id === novoAlvo)
 
   if (jaEstaNoAlvo) {
     return sock.sendMessage(from, {
-      text: `❌ @${novoAlvo.split("@")[0]} já está na lista de alvos!`,
+      text: `❌ @user já está na lista de alvos!`,
       mentions: [novoAlvo]
     })
   }
@@ -1096,9 +1094,8 @@ async function addAlvoAM(ctx){
   perguntasUsadas[novoAlvo] = []
 
   await enviarQuebrado(sock, from, [
-    `Novo alvo adicionado.`,
-    `@${novoAlvo.split("@")[0]}`,
-    `Personagem: ${personagem}`,
+    "Novo alvo adicionado.",
+    "@user",
     "Agora estou observando."
   ], [novoAlvo])
 
@@ -1141,7 +1138,7 @@ async function removeAlvoAM(ctx){
     const text = ctx.text || ""
     const match = text.match(/@(\d+)/)
     if (match) {
-      const number = match[1] // CORREÇÃO 
+      const number = match
       mentions = [`${number}@s.whatsapp.net`]
     }
   }
@@ -1153,30 +1150,29 @@ async function removeAlvoAM(ctx){
     return true
   }
 
-  const alvoRemover = mentions[0] // CORREÇÃO
+  const alvoRemover = mentions
 
   const index = alvosAM[from].findIndex(a => a.id === alvoRemover)
 
   if (index === -1) {
     await sock.sendMessage(from, {
-      text: `❌ @${alvoRemover.split("@")[0]} não está na lista de alvos!`,
+      text: `❌ @user não está na lista de alvos!`,
       mentions: [alvoRemover]
     })
     return true
   }
 
   alvosAM[from].splice(index, 1)
-  delete perguntasUsadas[alvoRemover] // (opcional)
+  delete perguntasUsadas[alvoRemover]
 
   await enviarQuebrado(sock, from, [
-    `Alvo removido.`,
-    `@${alvoRemover.split("@")[0]}`,
+    "Alvo removido.",
+    "@user",
     "Você escapou... por enquanto."
   ], [alvoRemover])
   
   return true
 }
-
 // =========================
 // COMANDO: !desligarAM
 // =========================
@@ -1310,6 +1306,7 @@ const reacoesFilosoficas = [
 // =========================
 async function AM_ReagirComOlho(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
+  if (!ctx.key) return  // validação adicionada
 
   const user = ctx.sender
   const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
@@ -1364,6 +1361,7 @@ async function AM_ReagirComOlho(ctx){
 async function AM_DeletarMensagem(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
+  if (!ctx.key) return  // validação adicionada
 
   const user = ctx.sender
   const ehAlvo = alvosAM[ctx.from].some(a => a.id === user)
@@ -1402,7 +1400,7 @@ async function AM_DeletarMensagem(ctx){
     if (Math.random() < 0.5) {
       await delay(1500)
       await enviarQuebrado(ctx.sock, ctx.from, [
-        `@${user.split("@")}`,
+        "@user",
         "Essa mensagem não merecia existir.",
         "Assim como muitas outras coisas que você diz."
       ], [user])

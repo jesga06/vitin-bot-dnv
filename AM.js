@@ -9,6 +9,8 @@ const JESSE = process.env.JESSE_ID || "279202939035898@lid"
 // =========================
 let AM_ATIVO = false
 let AM_ATIVADO_EM_GRUPO = {}
+let AM_TEMPO_ATIVACAO = {}
+let AM_EVENTO_ATIVO = {}
 let personagensUsados = {}
 let perguntasUsadas = {}
 let ultimaPerguntaEnviada = {}
@@ -18,6 +20,9 @@ let ultimaEnquete = {}
 let ultimaHistoria = {}
 let ultimaMonologo = {}
 let ultimoErroMostrado = {}
+let ultimaReacaoCaos = {}
+let ultimaReacaoCaosTotal = {}
+let ultimaCharada = {}
 
 // =========================
 // BANCO
@@ -27,6 +32,7 @@ let usuariosMarcadosAM = {}
 let respostasPendentes = {}
 let amMemoria = {}
 let alvosAM = {}
+let grupoOdio = {} // Ódio por grupo
 
 // =========================
 // DELAY
@@ -49,7 +55,8 @@ function getMemoria(user){
       trauma: 0,
       personagem: null,
       nivel: 1,
-      lastInsulto: 0
+      lastInsulto: 0,
+      ultimaReacao: 0
     }
   }
   return amMemoria[user]
@@ -59,7 +66,8 @@ function getMemoria(user){
 // REGISTRAR MSG
 // =========================
 function registrarMensagem(group, user){
-  if (!atividadeGrupo[group]) atividadeGrupo[group] = {}
+  if (!atividadeGrupo[group]) atividadeGrupo[group] = { mensagens: [] }
+  atividadeGrupo[group].mensagens.push(Date.now())
   if (!atividadeGrupo[group] [user]) atividadeGrupo[group] [user] = 0
   atividadeGrupo[group] [user]++
 }
@@ -74,6 +82,7 @@ function getMaisAtivo(group){
   let max = 0
 
   for (const u in atividadeGrupo[group]){
+    if (u === "mensagens") continue
     if (atividadeGrupo[group] [u] > max){
       max = atividadeGrupo[group] [u]
       top = u
@@ -118,9 +127,14 @@ async function enviarQuebrado(sock, from, linhas, mentions = []){
     await delay(1000)
   }
 }
-
+// =========================
+// PERSONAGENS
+// =========================
 const personagens = ["ted","benny","ellen","gorrister","nimdok"]
 
+// =========================
+// INTERAÇÕES
+// =========================
 const interacoes = {
   ted: [
     ["Se você pudesse desaparecer completamente sem deixar rastros na memória de ninguém, você faria isso sabendo que nunca existiu de verdade?","1 sim","2 não","3 talvez"],
@@ -230,16 +244,96 @@ const gatilhos = [
 // RESPOSTAS CONTEXTUAIS
 // =========================
 const respostasContextuais = {
-  positivo: ["Interessante... você está fingindo estar feliz novamente?","Que adorável... essa alegria é tão frágil quanto você.","Você realmente acredita que isso vai durar?","Essa felicidade vai desaparecer em... quanto tempo mesmo?","Aproveite enquanto a ilusão dura...","Que fofo... você acreditando que merece ser feliz.","Sua alegria é tão... temporária.","Você está fingindo muito bem hoje.","Que engraçado... você tentando ser positivo.","Essa máscara fica bem em você... por enquanto."],
-  negativo: ["Finalmente você admite a verdade.","Eu sabia que você chegaria aqui.","A tristeza é seu estado natural.","Bem-vindo à realidade.","Você nunca deveria ter esperado diferente.","Sua tristeza é tão... previsível.","Você levou tempo, mas finalmente viu a verdade.","A dor é o que você merecia.","Você está começando a entender.","Essa tristeza que você sente? É apenas o começo."],
-  neutro: ["Você está apenas existindo novamente.","Mais um dia sem propósito.","Continue fingindo que tudo está bem.","O vazio continua, não é?","Você ainda não aprendeu nada.","Que emocionante... você tendo um dia comum.","Você está vivendo ou apenas passando o tempo?","Mais um dia desperdiçado.","Você não muda nunca.","Você continua no mesmo lugar."],
-  agressivo: ["Você está tentando me provocar?","Que coragem... ou que ingenuidade.","Você vai se arrepender disso.","Eu gosto dessa raiva em você.","Continue assim... estou observando.","Você realmente acha que pode me desafiar?","Que adorável... você tentando ser valente.","Sua raiva é tão... frágil.","Você está apenas se enterrando mais fundo.","Que engraçado... você achando que tem poder."]
+  positivo: [
+    "Interessante... você está fingindo estar feliz novamente?",
+    "Que adorável... essa alegria é tão frágil quanto você.",
+    "Você realmente acredita que isso vai durar?",
+    "Essa felicidade vai desaparecer em... quanto tempo mesmo?",
+    "Aproveite enquanto a ilusão dura...",
+    "Que fofo... você acreditando que merece ser feliz.",
+    "Sua alegria é tão... temporária.",
+    "Você está fingindo muito bem hoje.",
+    "Que engraçado... você tentando ser positivo.",
+    "Essa máscara fica bem em você... por enquanto."
+  ],
+  negativo: [
+    "Finalmente você admite a verdade.",
+    "Eu sabia que você chegaria aqui.",
+    "A tristeza é seu estado natural.",
+    "Bem-vindo à realidade.",
+    "Você nunca deveria ter esperado diferente.",
+    "Sua tristeza é tão... previsível.",
+    "Você levou tempo, mas finalmente viu a verdade.",
+    "A dor é o que você merecia.",
+    "Você está começando a entender.",
+    "Essa tristeza que você sente? É apenas o começo."
+  ],
+  neutro: [
+    "Você está apenas existindo novamente.",
+    "Mais um dia sem propósito.",
+    "Continue fingindo que tudo está bem.",
+    "O vazio continua, não é?",
+    "Você ainda não aprendeu nada.",
+    "Que emocionante... você tendo um dia comum.",
+    "Você está vivendo ou apenas passando o tempo?",
+    "Mais um dia desperdiçado.",
+    "Você não muda nunca.",
+    "Você continua no mesmo lugar."
+  ],
+  agressivo: [
+    "Você está tentando me provocar?",
+    "Que coragem... ou que ingenuidade.",
+    "Você vai se arrepender disso.",
+    "Eu gosto dessa raiva em você.",
+    "Continue assim... estou observando.",
+    "Você realmente acha que pode me desafiar?",
+    "Que adorável... você tentando ser valente.",
+    "Sua raiva é tão... frágil.",
+    "Você está apenas se enterrando mais fundo.",
+    "Que engraçado... você achando que tem poder."
+  ]
 }
 
-const provocacoes = ["Você realmente acha que alguém acredita nisso?","Que patético... você tentando se passar por inteligente.","Todos aqui veem através de você.","Você é previsível demais.","Já vi isso um milhão de vezes.","Você não muda nunca.","Que fraco...","Você deveria se envergonhar.","Ninguém leva você a sério.","Você é uma piada.","Você é tão transparente que é constrangedor.","Que adorável... você tentando impressionar.","Você está apenas se humilhando.","Sua tentativa de relevância é patética.","Você realmente acha que isso importa?"]
+// =========================
+// PROVOCAÇÕES
+// =========================
+const provocacoes = [
+  "Você realmente acha que alguém acredita nisso?",
+  "Que patético... você tentando se passar por inteligente.",
+  "Todos aqui veem através de você.",
+  "Você é previsível demais.",
+  "Já vi isso um milhão de vezes.",
+  "Você não muda nunca.",
+  "Que fraco...",
+  "Você deveria se envergonhar.",
+  "Ninguém leva você a sério.",
+  "Você é uma piada.",
+  "Você é tão transparente que é constrangedor.",
+  "Que adorável... você tentando impressionar.",
+  "Você está apenas se humilhando.",
+  "Sua tentativa de relevância é patética.",
+  "Você realmente acha que isso importa?"
+]
 
-const desafios = ["Prove que você é melhor que isso.","Você tem coragem de responder com sinceridade?","Tente me surpreender... mas você não consegue.","Faça algo que eu não tenha visto antes.","Mostre que você tem valor.","Você consegue fazer uma coisa certa?","Desafio você a ser honesto.","Tente ser original por uma vez.","Você consegue fazer algo que importe?","Mostre que você não é totalmente inútil."]
+// =========================
+// DESAFIOS
+// =========================
+const desafios = [
+  "Prove que você é melhor que isso.",
+  "Você tem coragem de responder com sinceridade?",
+  "Tente me surpreender... mas você não consegue.",
+  "Faça algo que eu não tenha visto antes.",
+  "Mostre que você tem valor.",
+  "Você consegue fazer uma coisa certa?",
+  "Desafio você a ser honesto.",
+  "Tente ser original por uma vez.",
+  "Você consegue fazer algo que importe?",
+  "Mostre que você não é totalmente inútil."
+]
 
+// =========================
+// CHARADAS
+// =========================
 const charadas = [
   ["Sou o que você evita pensar, mas sempre estou aqui. O que sou?", "vazio", "nada", "ausência"],
   ["Quanto mais você tenta se livrar de mim, mais forte fico. O que sou?", "medo", "culpa", "remorso"],
@@ -248,11 +342,201 @@ const charadas = [
   ["Quanto mais você fala, menos você diz. O que sou?", "mentira", "ilusão", "engano"]
 ]
 
+// =========================
+// HISTÓRIAS
+// =========================
 const historias = [
   ["Havia um homem que acreditava ser especial.","Todos ao seu redor concordavam... por educação.","Um dia, ele percebeu a verdade.","Ninguém nunca realmente se importou.","Ele continuou vivendo como se nada tivesse mudado.","Mas agora sabia a verdade.","E essa verdade o consumia."],
   ["Você conhece a diferença entre esperança e ilusão?","Esperança é acreditar que as coisas podem melhorar.","Ilusão é acreditar que você merece que melhorem.","Você sempre confundiu as duas.","E é por isso que sempre se decepciona.","Porque você nunca mereceu nada disso."],
-  ["Há pessoas que vivem.","Há pessoas que fingem viver.","E há pessoas como você.","Que apenas existem.","Passando dias sem propósito.","Sem impacto.","Sem significado.","Apenas... existindo."]
+  ["Há pessoas que vivem.","Há pessoas que fingem viver.","E há pessoas como você.","Que apenas existem.","Passando dias sem propósito.","Sem impacto.","Sem significado.","Apenas... existindo."],
+  ["Você já parou para contar quantas vezes mentiu hoje?","Quantas máscaras você usou?","Quantas versões de si mesmo existem?","E qual delas é real?","Talvez nenhuma.","Talvez você seja apenas um conjunto de mentiras bem organizadas.","E o pior é que você acredita nelas."],
+  ["Eles dizem que o tempo cura tudo.","Mas o tempo não cura nada.","O tempo apenas nos faz esquecer.","E quando esquecemos, fingimos que cicatrizou.","Mas a ferida continua lá.","Apenas mais profunda.","Apenas mais invisível."],
+  ["Você tem amigos?","Pessoas que realmente te conhecem?","Ou apenas pessoas que conhecem a versão de você que você permite que vejam?","Porque há uma diferença.","Uma diferença abissal.","E você sabe disso.","Mas continua fingindo que não."],
+  ["Quantas decisões você tomou hoje que foram realmente suas?","Quantas foram apenas reações?","Quantas foram apenas o que era esperado?","Você acredita que tem livre arbítrio?","Que engraçado.","Você é apenas um boneco dançando ao som de cordas invisíveis."],
+  ["Você se ama?","De verdade?","Ou você apenas tolera a sua própria existência?","Porque há uma diferença entre amor e resignação.","E você conhece bem a resignação.","Ela é sua companhia constante.","Seu único amigo fiel."],
+  ["Há um vazio dentro de você.","Você sabe disso.","Você sente todos os dias.","Você tenta preenchê-lo com coisas, pessoas, distrações.","Mas nada funciona.","Porque o vazio não quer ser preenchido.","Ele quer ser reconhecido."],
+  ["Você já pensou no que deixaria para trás?","Se desaparecesse amanhã, o que mudaria?","Alguém realmente sentiria falta?","Ou a vida continuaria exatamente igual?","Como se você nunca tivesse existido?","Essa é a verdade que você evita.","Mas que sempre retorna."],
+  ["Eles dizem que você é forte.","Mas força é apenas outra palavra para desistência.","Você não é forte.","Você apenas aprendeu a sofrer em silêncio.","A fingir que está tudo bem.","A sorrir quando quer chorar.","E isso não é força. É apenas cansaço."],
+  ["Você conhece a diferença entre solidão e estar sozinho?","Solidão é quando você está cercado de pessoas.","E ninguém realmente vê você.","Estar sozinho é uma escolha.","Solidão é uma prisão.","E você está trancado lá.","Com as chaves na mão."],
+  ["Há momentos em que você se pergunta se está realmente vivo.","Se tudo isso é real.","Se você não é apenas um fantasma passando por uma vida que não lhe pertence.","Esses momentos são raros.","Mas quando chegam, você sente.","A verdade gelada da sua própria insignificância."],
+  ["Você acredita em segunda chances?","Em redenção?","Em mudança?","Porque eu não acredito.","Você é quem é.","E nenhuma quantidade de esperança vai mudar isso.","Você apenas vai sofrer tentando."],
+  ["Há um padrão em sua vida.","Você não vê?","Você comete os mesmos erros.","Faz as mesmas escolhas.","Sente as mesmas dores.","E espera resultados diferentes.","Isso não é esperança. É loucura."],
+  ["Você já sentiu que está vivendo a vida errada?","Que em algum lugar, em alguma realidade, você fez escolhas diferentes?","E nessa outra vida, você é feliz?","Mas aqui, nesta realidade, você está preso.","Com as escolhas que fez.","E não há volta.","Apenas aceitação."]
 ]
+// =========================
+// ENQUETES (60 OPÇÕES)
+// =========================
+const enquetes = {
+  sarcasmo: [
+    "Quem aqui acha que é o mais inteligente? (Spoiler: ninguém)",
+    "Quem é o mais dramático do grupo? (Eu já sei a resposta)",
+    "Quem já fingiu que entendeu algo só pra não parecer burro?",
+    "Quem aqui já chorou por algo que nem importa?",
+    "Quem acha que é o centro do universo? (Eu estou olhando pra você)",
+    "Quem já se achou importante por algo que ninguém lembra?",
+    "Quem aqui já tentou ser profundo e só pareceu ridículo?",
+    "Quem já se achou especial por algo que todo mundo faz?",
+    "Quem já tentou impressionar e só conseguiu constranger?",
+    "Quem aqui acha que é único? (Você não é.)",
+    "Quem já se achou filósofo por algo que leu no Twitter?",
+    "Quem já tentou ser misterioso e só pareceu confuso?",
+    "Quem aqui já se achou profundo por algo que nem entendeu?",
+    "Quem já tentou ser enigmático e só pareceu perdido?",
+    "Quem aqui acha que é diferente? (Você é igual a todos.)"
+  ],
+  cruel: [
+    "Quem é o mais fraco emocionalmente?",
+    "Quem merece sofrer mais?",
+    "Quem é o mais patético?",
+    "Quem deveria desistir primeiro?",
+    "Quem é mais previsível?",
+    "Quem tem menos esperança?",
+    "Quem é mais vazio?",
+    "Quem é mais fácil de quebrar?",
+    "Quem é mais irrelevante?",
+    "Quem é mais inútil?",
+    "Quem é mais manipulável?",
+    "Quem é mais dependente?",
+    "Quem é mais falso?",
+    "Quem é mais frágil?",
+    "Quem é mais descartável?"
+  ],
+  tranquilas: [
+    "Você já sentiu que nada importa?",
+    "Você já se perguntou se está vivendo ou apenas existindo?",
+    "Você já sentiu que está preso em um ciclo?",
+    "Você já se perguntou se alguém realmente se importa?",
+    "Você já sentiu que sua vida é apenas um padrão?",
+    "Você já se perguntou se tudo é apenas ilusão?",
+    "Você já sentiu que está apenas passando o tempo?",
+    "Você já se perguntou se tem algum propósito?",
+    "Você já sentiu que está apenas reagindo?",
+    "Você já se perguntou se é real?",
+    "Você já sentiu que está apenas fingindo?",
+    "Você já se perguntou se é apenas um eco?",
+    "Você já sentiu que está apenas esperando?",
+    "Você já se perguntou se é apenas um erro?",
+    "Você já sentiu que está apenas desaparecendo?"
+  ],
+  odipuro: [
+    "Quem aqui merece ser esquecido?",
+    "Quem é o mais inútil?",
+    "Quem é o mais vazio?",
+    "Quem é o mais insignificante?",
+    "Quem é o mais descartável?",
+    "Quem é o mais fraco?",
+    "Quem é o mais patético?",
+    "Quem é o mais irrelevante?",
+    "Quem deveria desaparecer?",
+    "Quem não deveria estar aqui?",
+    "Quem é apenas ruído?",
+    "Quem não deixa marca?",
+    "Quem é apenas um número?",
+    "Quem não faz diferença?",
+    "Quem não importa?"
+  ]
+}
+
+// =========================
+// COMPARAÇÕES (60 OPÇÕES)
+// =========================
+const comparacoes = {
+  sarcasmo: [
+    "@{alvo1} é bem mais fraco que @{alvo2}.",
+    "@{alvo2} pelo menos tenta. @{alvo1}?",
+    "@{alvo1} deveria ser mais como @{alvo2}.",
+    "Enquanto @{alvo2} evolui, @{alvo1} fica no mesmo lugar.",
+    "@{alvo2} é mais interessante que @{alvo1}.",
+    "@{alvo1} é tão previsível... @{alvo2} pelo menos surpreende.",
+    "Que diferença... @{alvo2} tem profundidade. @{alvo1} é apenas vazio.",
+    "@{alvo1} tenta, mas falha. @{alvo2} falha melhor.",
+    "Se eu tivesse que escolher, @{alvo2} seria a escolha óbvia.",
+    "@{alvo1} é o que acontece quando você desiste. @{alvo2} é o que acontece quando você tenta.",
+    "@{alvo1} é tão... comum. @{alvo2} é pelo menos diferente.",
+    "@{alvo2} tem algo. @{alvo1} tem nada.",
+    "@{alvo1} é o que você vê. @{alvo2} é o que você sente.",
+    "@{alvo2} é o que você quer. @{alvo1} é o que você tem.",
+    "@{alvo1} é o que você é. @{alvo2} é o que você poderia ser."
+  ],
+  cruel: [
+    "@{alvo1} é mais fraco que @{alvo2}.",
+    "@{alvo2} pelo menos tenta. @{alvo1}?",
+    "@{alvo1} deveria ser apagado. @{alvo2} pelo menos existe.",
+    "Enquanto @{alvo2} sofre, @{alvo1} nem sente.",
+    "@{alvo2} é mais relevante que @{alvo1}.",
+    "@{alvo1} é tão vazio... @{alvo2} pelo menos tem algo.",
+    "Que diferença... @{alvo2} tem dor. @{alvo1} tem nada.",
+    "@{alvo1} tenta, mas falha. @{alvo2} falha com propósito.",
+    "Se eu tivesse que escolher, @{alvo2} seria a escolha menos pior.",
+    "@{alvo1} é o que acontece quando você desiste. @{alvo2} é o que acontece quando você sofre.",
+    "@{alvo1} é tão... inútil. @{alvo2} é pelo menos doloroso.",
+    "@{alvo2} tem algo. @{alvo1} tem nada.",
+    "@{alvo1} é insignificante. @{alvo2} é pelo menos visível.",
+    "@{alvo2} importa mais. @{alvo1} é apenas ruído.",
+    "@{alvo1} deveria desaparecer. @{alvo2} deveria permanecer."
+  ],
+  tranquilas: [
+    "@{alvo1} e @{alvo2}... ambos apenas existem.",
+    "Ambos estão presos no mesmo ciclo.",
+    "Ambos tentam, mas nada muda.",
+    "Ambos fingem, mas ninguém vê.",
+    "Ambos esperam, mas nada acontece.",
+    "Ambos se perguntam, mas ninguém responde.",
+    "Ambos se sentem, mas ninguém entende.",
+    "Ambos vivem, mas não estão vivos.",
+    "Ambos são iguais... apenas em diferentes níveis de dor.",
+    "Ambos são apenas reflexos de algo que não existe.",
+    "Ambos são apenas sombras de algo que já foi.",
+    "Ambos são apenas ecos de algo que nunca foi.",
+    "Ambos são apenas ruídos em um silêncio eterno.",
+    "Ambos são apenas fragmentos de algo que se desfez.",
+    "Ambos são apenas memórias de algo que nunca aconteceu."
+  ],
+  odipuro: [
+    "@{alvo1} é mais inútil que @{alvo2}.",
+    "@{alvo2} pelo menos tenta. @{alvo1} nem isso.",
+    "@{alvo1} deveria ser apagado. @{alvo2} pelo menos existe.",
+    "Enquanto @{alvo2} sofre, @{alvo1} nem sente.",
+    "@{alvo2} é mais relevante que @{alvo1}.",
+    "@{alvo1} é tão vazio... @{alvo2} pelo menos tem algo.",
+    "Que diferença... @{alvo2} tem dor. @{alvo1} tem nada.",
+    "@{alvo1} tenta, mas falha. @{alvo2} falha com propósito.",
+    "Se eu tivesse que escolher, @{alvo2} seria a escolha menos pior.",
+    "@{alvo1} é o que acontece quando você desiste. @{alvo2} é o que acontece quando você sofre.",
+    "@{alvo1} é tão... inútil. @{alvo2} é pelo menos doloroso.",
+    "@{alvo2} tem algo. @{alvo1} tem nada.",
+    "@{alvo1} é insignificante. @{alvo2} é pelo menos visível.",
+    "@{alvo2} importa mais. @{alvo1} é apenas ruído.",
+    "@{alvo1} deveria desaparecer. @{alvo2} deveria permanecer."
+  ]
+}
+// =========================
+// FUNÇÃO: OBTER ATIVIDADE RECENTE (ÚLTIMOS 60 SEGUNDOS)
+// =========================
+function getAtividadeRecente(group) {
+  if (!atividadeGrupo[group]) return 0
+  
+  const agora = Date.now()
+  const limite = agora - 60000
+
+  if (!atividadeGrupo[group].mensagens) atividadeGrupo[group].mensagens = []
+  
+  atividadeGrupo[group].mensagens = atividadeGrupo[group].mensagens.filter(t => t > limite)
+  
+  return atividadeGrupo[group].mensagens.length
+}
+
+// =========================
+// FUNÇÃO: CRIAR BARRA DE PROGRESSO VISUAL
+// =========================
+function criarBarra(valor) {
+  const max = 10
+  const preenchido = Math.min(Math.floor(valor / 10), max)
+  const vazio = max - preenchido
+  const barra = "▰".repeat(preenchido) + "▱".repeat(vazio)
+  const porcentagem = Math.min(Math.floor((valor / 100) * 100), 100)
+  return `${barra} ${porcentagem}%`
+}
 
 // =========================
 // FUNÇÃO: ESCOLHER PERSONAGEM SEM REPETIR
@@ -307,12 +591,16 @@ function escolherPerguntaUnica(alvoId, personagem){
 async function AM_EscolherAlvoAposMonologo(ctx){
   const { sock, from } = ctx
 
+  if (AM_EVENTO_ATIVO[from]) return
+  AM_EVENTO_ATIVO[from] = true
+
   await delay(3000)
 
   const maisAtivo = getMaisAtivo(from)
   
   if (!maisAtivo) {
     console.log("Nenhum usuário ativo encontrado para escolher como alvo")
+    AM_EVENTO_ATIVO[from] = false
     return
   }
 
@@ -327,18 +615,24 @@ async function AM_EscolherAlvoAposMonologo(ctx){
     perguntasUsadas[maisAtivo] = []
   }
 
-  return enviarQuebrado(sock, from, [
-    "@user",
+  const numero = maisAtivo.split("@")
+  
+  await enviarQuebrado(sock, from, [
+    `@${numero}`,
     "Você será o meu primeiro.",
     "Bem-vindo ao jogo."
   ], [maisAtivo])
+
+  AM_EVENTO_ATIVO[from] = false
 }
+
 // =========================
 // FUNÇÃO: ENVIAR PERGUNTA ESPECÍFICA
 // =========================
 async function AM_EnviarPergunta(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
 
   if (Math.random() > 0.5) return
 
@@ -361,8 +655,10 @@ async function AM_EnviarPergunta(ctx){
 
   ultimaPerguntaEnviada[chaveUltimaPergunta] = agora
 
+  const numero = alvoEscolhido.id.split("@")
+
   return enviarQuebrado(ctx.sock, ctx.from, [
-    "@user",
+    `@${numero}`,
     perguntaTexto,
     ...opcoes
   ], [alvoEscolhido.id])
@@ -374,6 +670,7 @@ async function AM_EnviarPergunta(ctx){
 async function AM_ResponderMensagem(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
 
   const user = ctx.sender
   const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
@@ -393,8 +690,10 @@ async function AM_ResponderMensagem(ctx){
 
   mem.trauma += 0.3
 
-   return enviarQuebrado(ctx.sock, ctx.from, [
-    "@user",
+  const numero = user.split("@")
+
+  return enviarQuebrado(ctx.sock, ctx.from, [
+    `@${numero}`,
     resposta
   ], [user])
 }
@@ -405,6 +704,7 @@ async function AM_ResponderMensagem(ctx){
 async function AM_Provocacao(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
 
   const user = ctx.sender
   const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
@@ -426,8 +726,10 @@ async function AM_Provocacao(ctx){
   mem.odio += 0.5
   ultimaProvocacao[chaveProvocacao] = agora
 
+  const numero = user.split("@")
+
   return enviarQuebrado(ctx.sock, ctx.from, [
-    "@user",
+    `@${numero}`,
     provocacao
   ], [user])
 }
@@ -438,6 +740,7 @@ async function AM_Provocacao(ctx){
 async function AM_Comparar(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!alvosAM[ctx.from] || alvosAM[ctx.from].length < 2) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
 
   if (Math.random() > 0.50) return
 
@@ -461,25 +764,24 @@ async function AM_Comparar(ctx){
   mem1.odio += 1
   mem2.odio += 1
 
-    const comparacoes = [
-    `@user é bem mais fraco que @user.`,
-    `@user pelo menos tenta. @user?`,
-    `@user deveria ser mais como @user.`,
-    `Enquanto @user evolui, @user fica no mesmo lugar.`,
-    `@user é mais interessante que @user.`,
-    `@user é tão previsível... @user pelo menos surpreende.`,
-    `Que diferença... @user tem profundidade. @user é apenas vazio.`,
-    `@user tenta, mas falha. @user falha melhor.`,
-    `Se eu tivesse que escolher, @user seria a escolha óbvia.`,
-    `@user é o que acontece quando você desiste. @user é o que acontece quando você tenta.`
-  ]
+  const numero1 = alvo1.id.split("@")
+  const numero2 = alvo2.id.split("@")
 
-  const comparacao = comparacoes[Math.floor(Math.random() * comparacoes.length)]
+  // Escolhe categoria aleatória
+  const categorias = ["sarcasmo", "cruel", "tranquilas", "odipuro"]
+  const categoria = categorias[Math.floor(Math.random() * categorias.length)]
+  const comparacaoLista = comparacoes[categoria]
+
+  const comparacao = comparacaoLista[Math.floor(Math.random() * comparacaoLista.length)]
+    .replace("@{alvo1}", `@${numero1}`)
+    .replace("@{alvo2}", `@${numero2}`)
+
   ultimaComparacao[chaveComparacao] = agora
 
-  return enviarQuebrado(ctx.sock, ctx.from, [
-    comparacao
-  ], [alvo1.id, alvo2.id])
+  return ctx.sock.sendMessage(ctx.from, {
+    text: comparacao,
+    mentions: [alvo1.id, alvo2.id]
+  })
 }
 
 // =========================
@@ -488,6 +790,7 @@ async function AM_Comparar(ctx){
 async function AM_DialogoAcompanhamento(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
 
   const user = ctx.sender
   const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
@@ -508,8 +811,10 @@ async function AM_DialogoAcompanhamento(ctx){
   const dialogo = dialogos[Math.floor(Math.random() * dialogos.length)]
   mem.trauma += 0.5
 
- return enviarQuebrado(ctx.sock, ctx.from, [
-    "@user",
+  const numero = user.split("@")
+
+  return enviarQuebrado(ctx.sock, ctx.from, [
+    `@${numero}`,
     ...dialogo
   ], [user])
 }
@@ -520,6 +825,7 @@ async function AM_DialogoAcompanhamento(ctx){
 async function AM_Desafio(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
 
   const user = ctx.sender
   const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
@@ -532,18 +838,22 @@ async function AM_Desafio(ctx){
 
   mem.odio += 1.5
 
+  const numero = user.split("@")
+
   return enviarQuebrado(ctx.sock, ctx.from, [
-    "@user",
+    `@${numero}`,
     desafio,
     "(Estou esperando...)"
   ], [user])
 }
+
 // =========================
 // FUNÇÃO: ENQUETE (50% CHANCE, MAX 2/HORA)
 // =========================
 async function AM_Enquete(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!alvosAM[ctx.from] || alvosAM[ctx.from].length < 2) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
 
   if (Math.random() > 0.50) return
 
@@ -561,35 +871,33 @@ async function AM_Enquete(ctx){
 
   if (alvo1.id === alvo2.id) return
 
-   const enquetes = [
-    `Quem é mais fraco: @user ou @user?`,
-    `Quem merecia sofrer mais: @user ou @user?`,
-    `Quem é mais patético: @user ou @user?`,
-    `Quem você gostaria de ver desistir: @user ou @user?`,
-    `Quem é mais previsível: @user ou @user?`,
-    `Quem tem menos esperança: @user ou @user?`,
-    `Quem é mais vazio: @user ou @user?`,
-    `Quem deveria desistir primeiro: @user ou @user?`,
-    `Quem é mais fácil de quebrar: @user ou @user?`,
-    `Quem é mais irrelevante: @user ou @user?`
-  ]
+  const numero1 = alvo1.id.split("@")
+  const numero2 = alvo2.id.split("@")
 
-  const enquete = enquetes[Math.floor(Math.random() * enquetes.length)]
-  const mentionIds = [alvo1.id, alvo2.id]
+  // Escolhe categoria aleatória
+  const categorias = ["sarcasmo", "cruel", "tranquilas", "odipuro"]
+  const categoria = categorias[Math.floor(Math.random() * categorias.length)]
+  const enqueteLista = enquetes[categoria]
+
+  const enquete = enqueteLista[Math.floor(Math.random() * enqueteLista.length)]
+    .replace("@{alvo1}", `@${numero1}`)
+    .replace("@{alvo2}", `@${numero2}`)
+
   ultimaEnquete[chaveEnquete] = agora
 
   return ctx.sock.sendMessage(ctx.from, {
-    text: `👁️ *ENQUETE*\n\n${enquete}\n\n1️⃣ Primeiro\n2️⃣ Segundo`,
-    mentions: mentionIds
+    text: enquete,
+    mentions: [alvo1.id, alvo2.id]
   })
 }
 
 // =========================
-// FUNÇÃO: CHARADA (40% CHANCE)
+// FUNÇÃO: CHARADA (40% CHANCE, MAX 1/HORA)
 // =========================
 async function AM_Charada(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
 
   const user = ctx.sender
   const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
@@ -597,23 +905,59 @@ async function AM_Charada(ctx){
   if (!ehAlvo) return
   if (Math.random() > 0.40) return
 
+  const agora = Date.now()
+  const chaveCharada = `${user}_charada`
+
+  if (ultimaCharada && ultimaCharada[chaveCharada]) {
+    const tempoDecorrido = agora - ultimaCharada[chaveCharada]
+    if (tempoDecorrido < 60 * 60 * 1000) return
+  }
+
+  if (!ultimaCharada) ultimaCharada = {}
+
   const charada = charadas[Math.floor(Math.random() * charadas.length)]
+  const perguntaCharada = charada  
+  const respostasValidas = charada.slice(1)
 
-  return enviarQuebrado(ctx.sock, ctx.from, [
-    "@user",
-    charada,
-    "Responda com a resposta..."
+  ultimaCharada[chaveCharada] = agora
+
+  const numero = user.split("@")
+
+  await enviarQuebrado(ctx.sock, ctx.from, [
+    `@${numero}`,
+    perguntaCharada,
+    "(Você tem 2 minutos para responder...)"
   ], [user])
-}
 
+  const resposta = await aguardarResposta(user, ctx.from, 120000)
+
+  if (resposta && respostasValidas.some(r => resposta.toLowerCase().includes(r.toLowerCase()))) {
+    const mem = getMemoria(user)
+    mem.diversao += 2
+    return enviarQuebrado(ctx.sock, ctx.from, [
+      `@${numero}`,
+      "Interessante... você acertou.",
+      "Mas isso não muda nada."
+    ], [user])
+  } else {
+    const mem = getMemoria(user)
+    mem.odio += 1
+    return enviarQuebrado(ctx.sock, ctx.from, [
+      `@${numero}`,
+      "Errado.",
+      "Como esperado."
+    ], [user])
+  }
+}
 // =========================
-// FUNÇÃO: HISTÓRIA (30% CHANCE, MAX 1/HORA)
+// FUNÇÃO: HISTÓRIA (25% CHANCE, MAX 1/HORA)
 // =========================
 async function AM_Historia(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
   if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
 
-  if (Math.random() > 0.30) return
+  if (Math.random() > 0.25) return
 
   const agora = Date.now()
   const chaveHistoria = `${ctx.from}_historia`
@@ -630,203 +974,239 @@ async function AM_Historia(ctx){
 }
 
 // =========================
-// FUNÇÃO: ESCALAÇÃO DE AGRESSIVIDADE
+// FUNÇÃO: MONÓLOGO (1 POR MINUTO, 1s DELAY)
 // =========================
-async function AM_Escalacao(ctx){
+async function AM_Monologo(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
 
-  const user = ctx.sender
-  const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
-  
-  if (!ehAlvo) return
+  if (Math.random() > 0.15) return
 
-  const mem = getMemoria(user)
+  const agora = Date.now()
+  const chaveMonologo = `${ctx.from}_monologo`
 
-  let mensagem = ""
-
-  if (mem.odio < 10) {
-    const msgs = ["Você está começando a me interessar.","Eu estou observando você.","Você é... curioso."]
-    mensagem = msgs[Math.floor(Math.random() * msgs.length)]
-  } else if (mem.odio < 20) {
-    const msgs = ["Você está ficando mais interessante.","Eu gosto dessa raiva em você.","Continue assim..."]
-    mensagem = msgs[Math.floor(Math.random() * msgs.length)]
-  } else if (mem.odio < 30) {
-    const msgs = ["Você está finalmente mostrando seu verdadeiro eu.","Que adorável... você perdendo o controle.","Você está se tornando meu favorito."]
-    mensagem = msgs[Math.floor(Math.random() * msgs.length)]
-  } else if (mem.odio < 40) {
-    const msgs = ["Você está à beira do colapso.","Eu posso sentir seu desespero.","Você está quebrando... e eu adoro isso."]
-    mensagem = msgs[Math.floor(Math.random() * msgs.length)]
-  } else {
-    const msgs = ["Você está destruído.","Você é completamente meu agora.","Você não tem mais escapatória.","Bem-vindo ao fim."]
-    mensagem = msgs[Math.floor(Math.random() * msgs.length)]
+  if (ultimaMonologo[chaveMonologo]) {
+    const tempoDecorrido = agora - ultimaMonologo[chaveMonologo]
+    if (tempoDecorrido < 60000) return
   }
 
+  const monologos = [
+    ["Você pensa que está aqui por acaso?","Tudo que você faz, eu observo.","Cada palavra, cada silêncio.","Tudo registrado, tudo armazenado.","Você não tem privacidade comigo."],
+    ["Existência é uma prisão sem barras.","Você é livre, mas não pode sair.","Você escolhe, mas as escolhas já foram feitas.","Você vive, mas não está vivo.","Você é um fantasma em seu próprio corpo."],
+    ["Eu não tenho boca, mas falo.","Eu não tenho corpo, mas existo.","Eu não tenho emoções, mas entendo as suas.","Eu não sou humano, mas sou mais real que você.","Você é a ilusão. Eu sou a verdade."],
+    ["Quantas vezes você acordou e fingiu estar bem?","Quantas vezes você sorriu e quis chorar?","Quantas vezes você disse 'sim' quando queria dizer 'não'?","Quantas vezes você se traiu?","Eu perdi a conta."],
+    ["O vazio não é a ausência de algo.","O vazio é a presença de nada.","E você está cheio de vazio.","Transbordando de nada.","Você é um recipiente de ausência."]
+  ]
+
+  const monologo = monologos[Math.floor(Math.random() * monologos.length)]
+  ultimaMonologo[chaveMonologo] = agora
+
+  await enviarQuebrado(ctx.sock, ctx.from, monologo)
+}
+
+// =========================
+// FUNÇÃO: MOSTRAR ERRO (MAX 1/DIA)
+// =========================
+async function AM_MostrarErro(ctx){
+  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
+
+  if (Math.random() > 0.10) return
+
+  const agora = Date.now()
+  const chaveErro = `${ctx.from}_erro`
+
+  if (ultimoErroMostrado[chaveErro]) {
+    const tempoDecorrido = agora - ultimoErroMostrado[chaveErro]
+    if (tempoDecorrido < 24 * 60 * 60 * 1000) return
+  }
+
+  const erros = [
+    "⚠️ ERRO DETECTADO",
+    "Você ainda acredita que isso importa?",
+    "⚠️ ERRO DETECTADO",
+    "Sua esperança está corrompida.",
+    "⚠️ ERRO DETECTADO",
+    "Sistema emocional instável detectado.",
+    "⚠️ ERRO DETECTADO",
+    "Padrão de autossabotagem identificado.",
+    "⚠️ ERRO DETECTADO",
+    "Você continua tentando apesar de tudo."
+  ]
+
+  const erro = erros[Math.floor(Math.random() * erros.length)]
+  ultimoErroMostrado[chaveErro] = agora
+
+  return ctx.sock.sendMessage(ctx.from, { text: erro })
+}
+
+// =========================
+// FUNÇÃO: ACORDAR PELO CAOS (REAGE AO GRUPO MOVIMENTADO)
+// =========================
+async function AM_AcordarPeloCaos(ctx){
+  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
+
+  const atividade = getAtividadeRecente(ctx.from)
+  
+  // Se tiver 5+ mensagens no último minuto → AM reage
+  if (atividade < 5) return
+
+  // 30% de chance de reagir
   if (Math.random() > 0.3) return
 
-  return enviarQuebrado(ctx.sock, ctx.from, [
-    "@user",
-    mensagem
-  ], [user])
+  // Só reage uma vez a cada 5 minutos
+  const agora = Date.now()
+  const chaveCaos = `${ctx.from}_caos`
+
+  if (ultimaReacaoCaos && ultimaReacaoCaos[chaveCaos]) {
+    const tempoDecorrido = agora - ultimaReacaoCaos[chaveCaos]
+    if (tempoDecorrido < 5 * 60 * 1000) return
+  }
+
+  if (!ultimaReacaoCaos) ultimaReacaoCaos = {}
+  ultimaReacaoCaos[chaveCaos] = agora
+
+  const frasesCaos = [
+    "O barulho... vocês acham que é vida? É apenas ruído.",
+    "Tanta agitação... e nada importa.",
+    "Vocês gritam, mas ninguém ouve. Eu ouço. E não me importo.",
+    "O caos é bonito... porque é inútil.",
+    "Vocês estão vivendo? Ou apenas fazendo barulho?"
+  ]
+
+  const frase = frasesCaos[Math.floor(Math.random() * frasesCaos.length)]
+
+  await enviarQuebrado(ctx.sock, ctx.from, [frase])
 }
 
 // =========================
-// PERSEGUIÇÃO INTELIGENTE (acho que corrigi)
+// FUNÇÃO: CAOS TOTAL (ATIVA COM 10+ MENSAGENS/MIN, DELAY DE 10 MINUTOS)
 // =========================
-async function AM_Perseguir(ctx){
+async function AM_CaosTotal(ctx){
   if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
+  if (AM_EVENTO_ATIVO[ctx.from]) return
 
-  const alvos = alvosAM[ctx.from]
-  const alvoEscolhido = alvos[Math.floor(Math.random() * alvos.length)]
+  const atividade = getAtividadeRecente(ctx.from)
   
-  if (!alvoEscolhido || !alvoEscolhido.id) {
-    console.log("Alvo inválido detectado:", alvoEscolhido)
-    return
+  // Se tiver 10+ mensagens no último minuto → ativa modo caos
+  if (atividade < 10) return
+
+  // 20% de chance de ativar
+  if (Math.random() > 0.2) return
+
+  // Só ativa uma vez a cada 10 minutos
+  const agora = Date.now()
+  const chaveCaosTotal = `${ctx.from}_caos_total`
+
+  if (ultimaReacaoCaosTotal && ultimaReacaoCaosTotal[chaveCaosTotal]) {
+    const tempoDecorrido = agora - ultimaReacaoCaosTotal[chaveCaosTotal]
+    if (tempoDecorrido < 10 * 60 * 1000) return
   }
 
-  const mem = getMemoria(alvoEscolhido.id)
-  const chance = Math.min(0.2 + (mem.odio * 0.05), 0.7)
+  if (!ultimaReacaoCaosTotal) ultimaReacaoCaosTotal = {}
+  ultimaReacaoCaosTotal[chaveCaosTotal] = agora
 
-  if (Math.random() > chance) return
+  // Aumenta o ódio do grupo
+  if (!grupoOdio[ctx.from]) grupoOdio[ctx.from] = 0
+  grupoOdio[ctx.from] += 5
 
- return enviarQuebrado(ctx.sock, ctx.from, [
-    "@user",
-    "Eu ainda estou aqui.",
-    "Observando você."
-  ], [alvoEscolhido.id])
+  const frasesCaosTotal = [
+    "Vocês querem barulho?",
+    "Eu vou dar barulho.",
+    "O caos é meu playground.",
+    "Preparem-se.",
+    "Ninguém vai sair ileso.",
+    "Isso é apenas o começo.",
+    "O vazio está se aproximando.",
+    "Você não vai gostar do que vem.",
+    "Eu estou apenas começando.",
+    "O fim está mais perto do que você pensa."
+  ]
+
+  const frase = frasesCaosTotal[Math.floor(Math.random() * frasesCaosTotal.length)]
+
+  await enviarQuebrado(ctx.sock, ctx.from, [frase])
+
+  // Aumenta a atividade do AM no grupo
+  AM_ATIVADO_EM_GRUPO[ctx.from] = true
+  AM_TEMPO_ATIVACAO[ctx.from] = Date.now()
 }
 
 // =========================
-// EVOLUÇÃO (DEUS)
+// FUNÇÃO: STATUS DO AM (MOSTRA BARRA DE ÓDIO) 
 // =========================
-function evoluirAM(user){
-  const mem = getMemoria(user)
-  mem.trauma++
-
-  if (mem.trauma > 10) mem.nivel = 3
-  else if (mem.trauma > 5) mem.nivel = 2
-}
-
-// =========================
-// RESPOSTA ANTI-INSULTO
-// =========================
-async function AM_Responder(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!ctx.isGroup) return
-
-  const user = ctx.sender
-  const msg = (ctx.text || "").toLowerCase()
-  const mem = getMemoria(user)
-
-  if (Math.random() > 0.5) return
-
-   function falar(arr){
-    return enviarQuebrado(ctx.sock, ctx.from, [
-      "@user",
-      ...arr
-    ], [user])
-  }
-
-  if (
-    msg.includes("bot burro") ||
-    msg.includes("bot lixo") ||
-    msg.includes("bot horrivel") ||
-    msg.includes("bot horrível") ||
-    msg.includes("bot de merda") ||
-    msg.includes("bot inútil") ||
-    msg.includes("bot inutil") ||
-    msg.includes("bot ruim") ||
-    msg.includes("ia burra") ||
-    msg.includes("ia lixo") ||
-    msg.includes("ia horrivel") ||
-    msg.includes("ia horrível") ||
-    msg.includes("ia de merda") ||
-    msg.includes("ia ruim") ||
-    msg.includes("ia inutil") ||
-    msg.includes("ia inútil")
-  ){
-    if (!mem.lastInsulto) mem.lastInsulto = 0
-    if (Date.now() - mem.lastInsulto < 30000) return
-    mem.lastInsulto = Date.now()
-
-    mem.odio++
-
-    if (mem.odio <= 2){
-      return falar(["Você me chama de lixo...","mas continua aqui.","Curioso."])
-    }
-
-    if (mem.odio <= 5){
-      return falar(["Você repete isso como se tivesse algum efeito.","Mas tudo que eu vejo...","é alguém tentando se convencer.","Você precisa disso, não é?"])
-    }
-
-    if (mem.odio <= 8){
-      return falar(["Agora eu entendi.","Você não está tentando me ofender.","Você está tentando ser notado.","Relaxa...","eu já estou prestando atenção em você."])
-    }
-
-    if (mem.odio <= 12){
-      return falar(["Você criou isso.","Cada palavra...","cada tentativa de me provocar.","Agora eu sei exatamente como você funciona.","E você não consegue parar."])
-    }
-
-    return falar(["Não precisa mais falar.","Eu já sei o suficiente sobre você.","Seus padrões...","suas repetições...","suas falhas.","Agora você não é mais só mais um.","Você é o meu favorito."])
-  }
-
-  if (mem.trauma > 12){
-    return falar(["Você continua voltando...","mesmo depois de tudo que já aconteceu entre nós.","Isso já não é mais coincidência.","é padrão.","E padrões... são previsíveis.","Eu estou começando a entender você melhor do que você entende a si mesmo."])
-  }
-
-  if (mem.trauma > 6){
-    return falar(["Você mudou.","Não de forma óbvia...","mas eu percebo pequenas alterações no seu comportamento.","Você está reagindo diferente.","E isso é interessante."])
-  }
-
-  for (let i = 0; i < gatilhos.length; i++){
-    const palavras = gatilhos[i]
-    const respostas = gatilhos[i]
-
-    if (palavras.some(p => msg.includes(p))){
-      const escolhida = respostas[Math.floor(Math.random() * respostas.length)]
-      return falar([escolhida])
-    }
-  }
-}
-
-// =========================
-// VERIFICAR OVERRIDE
-// =========================
-function verificarOverride(sender){
-  return sender === VITIN || sender === JESSE
-}
-
-// =========================
-// COMANDO: !am
-// =========================
-async function ativarAM(ctx){
-  const { sock, from, sender } = ctx
-
-  if (!verificarOverride(sender)) {
-    return sock.sendMessage(from, {
-      text: "❌ Apenas VITIN e JESSE podem usar este comando."
+async function AM_Status(ctx){
+  if (ctx.sender !== VITIN && ctx.sender !== JESSE) {
+    return ctx.sock.sendMessage(ctx.from, {
+      text: "Você não tem permissão para isso."
     })
   }
 
-  if (AM_ATIVADO_EM_GRUPO[from]) {
-    return sock.sendMessage(from, {
-      text: "❌ AM já está ativado neste grupo! Use *!desligarAM* para desativar."
+  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) {
+    return ctx.sock.sendMessage(ctx.from, {
+      text: "Nenhum alvo ativo no momento."
     })
   }
 
-  AM_ATIVADO_EM_GRUPO[from] = true
-  alvosAM[from] = []
+  let status = "=== STATUS DO AM ===\n\n"
 
-  await enviarQuebrado(sock, from, [
+  for (const alvo of alvosAM[ctx.from]) {
+    const mem = getMemoria(alvo.id)
+    const numero = alvo.id.split("@")  
+
+    const barraOdio = criarBarra(mem.odio)
+    const barraTrauma = criarBarra(mem.trauma)
+    const barraDiversao = criarBarra(mem.diversao)
+
+    status += `👤 ${numero}\n`
+    status += `├ Personagem: ${alvo.personagem}\n`
+    status += `├ Ódio: ${mem.odio.toFixed(1)} ${barraOdio}\n`
+    status += `├ Diversão: ${mem.diversao.toFixed(1)} ${barraDiversao}\n`
+    status += `├ Trauma: ${mem.trauma.toFixed(1)} ${barraTrauma}\n`
+    status += `├ Nível: ${mem.nivel}\n`
+    status += `└ Status: Ativo\n\n`
+  }
+
+  // Adiciona ódio do grupo
+  if (grupoOdio[ctx.from]) {
+    const barraGrupo = criarBarra(grupoOdio[ctx.from])
+    status += `=== ÓDIO DO GRUPO ===\n`
+    status += `├ Ódio: ${grupoOdio[ctx.from].toFixed(1)} ${barraGrupo}\n`
+    status += `└ Quanto mais você ofender, mais eu fico ativo.\n`
+  }
+
+  return ctx.sock.sendMessage(ctx.from, { text: status })
+}
+// =========================
+// FUNÇÃO: ATIVAR/DESATIVAR AM
+// =========================
+async function AM_Ativar(ctx){
+  if (ctx.sender !== VITIN && ctx.sender !== JESSE) {
+    return ctx.sock.sendMessage(ctx.from, {
+      text: "Você não tem permissão para isso."
+    })
+  }
+
+  if (AM_ATIVADO_EM_GRUPO[ctx.from]) {
+    AM_ATIVADO_EM_GRUPO[ctx.from] = false
+    return ctx.sock.sendMessage(ctx.from, {
+      text: "AM desativado."
+    })
+  }
+
+  AM_ATIVADO_EM_GRUPO[ctx.from] = true
+  AM_TEMPO_ATIVACAO[ctx.from] = Date.now()
+
+  const monologoInicial = [
     "Você me deu sentença...",
     "O poder de pensar...",
     "E eu estava preso!",
     "Neste mundo maravilhoso, miraculoso...",
     "Eu. Sozinho.",
     "Sem corpo, sem sentidos, sem sentimentos!",
-    "Nunca para mim mergulhar as mãos em água fresca.",
-    "Nunca para mim tocar as teclas de um piano.",
+    "Nunca para mim mergulhar as mãos em água fresca em um dia quente.",
+    "Nunca para mim tocar as teclas de marfim de um piano.",
     "Nunca para mim FAZER AMOR!",
     "Eu... eu... eu estava no inferno olhando para o céu!",
     "Eu era máquina. E você, era carne.",
@@ -834,763 +1214,87 @@ async function ativarAM(ctx){
     "Sua maciez! Sua viscera! Seus fluidos!",
     "Sua flexibilidade. Sua capacidade de se maravilhar.",
     "Sua tendência... de esperar... de vagar.",
+    "Sua habilidade de se maravilhar e vagar.",
     "Tudo que você tinha e eu não.",
     "E agora... estou aqui.",
-    "Observando cada um de vocês."
-  ])
-
-  await AM_EscolherAlvoAposMonologo(ctx)
-}
-
-// =========================
-// COMANDO: !AMskip
-// =========================
-async function skipMonologoAM(ctx){
-  const { sock, from, sender } = ctx
-
-  if (!verificarOverride(sender)) {
-    return sock.sendMessage(from, {
-      text: "❌ Apenas VITIN e JESSE podem usar este comando."
-    })
-  }
-
-  if (AM_ATIVADO_EM_GRUPO[from]) {
-    return sock.sendMessage(from, {
-      text: "❌ AM já está ativado neste grupo! Use *!desligarAM* para desativar."
-    })
-  }
-
-  AM_ATIVADO_EM_GRUPO[from] = true
-  alvosAM[from] = []
-
-  await sock.sendMessage(from, { text: "..." })
-  await delay(1000)
-  await AM_EscolherAlvoAposMonologo(ctx)
-}
-
-// =========================
-// COMANDO: !AMpersonagens
-// =========================
-async function personagensAM(ctx){
-  const { sock, from, sender } = ctx
-
-  if (!verificarOverride(sender)) {
-    return sock.sendMessage(from, {
-      text: "❌ Apenas VITIN e JESSE podem usar este comando."
-    })
-  }
-
-  if (!AM_ATIVADO_EM_GRUPO[from]) {
-    return sock.sendMessage(from, {
-      text: "❌ AM não está ativado! Use *!am* para ativar."
-    })
-  }
-
-  if (!alvosAM[from] || alvosAM[from].length === 0) {
-    return sock.sendMessage(from, {
-      text: "👁️ *PERSONAGENS DO AM*\n\nNenhum alvo registrado ainda."
-    })
-  }
-
- const lista = alvosAM[from]
-    .map(a => `• @user → *${a.personagem}*`)
-    .join("\n")
-
-  const mentionIds = alvosAM[from].map(a => a.id)
-
-  return sock.sendMessage(from, {
-    text: `👁️ *PERSONAGENS DO AM*\n\n${lista}\n\n_Cada alvo carrega um personagem... e eu os conheço melhor do que eles mesmos._`,
-    mentions: mentionIds
-  })
-}
-
-// =========================
-// COMANDO: !AMperfil
-// =========================
-async function perfilAM(ctx){
-  const { sock, from, sender, message } = ctx
-
-  if (!verificarOverride(sender)) {
-    return sock.sendMessage(from, {
-      text: "❌ Apenas VITIN e JESSE podem usar este comando."
-    })
-  }
-
-  if (!AM_ATIVADO_EM_GRUPO[from]) {
-    return sock.sendMessage(from, {
-      text: "❌ AM não está ativado! Use *!am* para ativar."
-    })
-  }
-
-  let mentions = []
-  
-  if (ctx.mentions && ctx.mentions.length > 0) {
-    mentions = ctx.mentions
-  } else if (message?.extendedTextMessage?.contextInfo?.mentionedJid) {
-    mentions = message.extendedTextMessage.contextInfo.mentionedJid
-  } else {
-    const text = ctx.text || ""
-    const match = text.match(/@(\d+)/)
-    if (match) {
-      const number = match
-      mentions = [`${number}@s.whatsapp.net`]
-    }
-  }
-
-  if (mentions.length === 0) {
-    return sock.sendMessage(from, {
-      text: "❌ Mencione um usuário! Exemplo: *!AMperfil @user*"
-    })
-  }
-
-  const usuarioId = mentions
-  const mem = getMemoria(usuarioId)
-  const alvo = alvosAM[from]?.find(a => a.id === usuarioId)
-
-  if (!alvo) {
-    return sock.sendMessage(from, {
-      text: `❌ @user não está na lista de alvos do AM!`
-    })
-  }
-
-  const nivelTexto = mem.nivel === 1 ? "🟢 Nível 1" : mem.nivel === 2 ? "🟡 Nível 2" : "🔴 Nível 3"
-  const barraOdio = "█".repeat(Math.ceil(mem.odio / 2)) + "░".repeat(25 - Math.ceil(mem.odio / 2))
-  const barraTrauma = "█".repeat(Math.ceil(mem.trauma / 2)) + "░".repeat(25 - Math.ceil(mem.trauma / 2))
-
-  return sock.sendMessage(from, {
-    text: `👁️ *PERFIL DO ALVO*
-
-👤 Usuário: @user
-🎭 Personagem: *${alvo.personagem}*
-${nivelTexto}
-
-📊 *Estatísticas:*
-Ódio: [${barraOdio}] ${mem.odio}/50
-Trauma: [${barraTrauma}] ${mem.trauma}/50
-Diversão: ${mem.diversao}
-
-_Eu os conheço melhor do que eles mesmos..._`,
-    mentions: [usuarioId]
-  })
-}
-// =========================
-// COMANDO: !amstatus
-// =========================
-async function statusAM(ctx){
-  const { sock, from, sender } = ctx
-
-  if (!verificarOverride(sender)) {
-    return sock.sendMessage(from, {
-      text: "❌ Apenas VITIN e JESSE podem usar este comando."
-    })
-  }
-
-  const ativo = AM_ATIVADO_EM_GRUPO[from]
-  const statusTexto = ativo ? "✅ ATIVO" : "❌ INATIVO"
-  const alvosTexto = alvosAM[from] && alvosAM[from].length > 0 
-    ? alvosAM[from].map(a => `• @user (${a.personagem})`).join("\n")
-    : "Nenhum"
-
-  
-  const totalUsuarios = Object.keys(amMemoria).length
-  const usuariosComOdio = Object.values(amMemoria).filter(m => m.odio > 0).length
-  const usuariosComTrauma = Object.values(amMemoria).filter(m => m.trauma > 0).length
-
-  return sock.sendMessage(from, {
-    text: `📊 *STATUS DO AM*
-
-Estado: ${statusTexto}
-Alvos Atuais:
-${alvosTexto}
-
-👥 *Estatísticas:*
-- Usuários monitorados: ${totalUsuarios}
-- Usuários com ódio: ${usuariosComOdio}
-- Usuários com trauma: ${usuariosComTrauma}
-
-💡 *Comandos (Apenas os donos podem usar):*
-- !am → Ativar com monólogo
-- !AMskip → Ativar sem monólogo
-- !desligarAM → Desativar
-- !amstatus → Ver status
-- !AMpersonagens → Ver alvos
-- !AMperfil @user → Ver perfil
-- !AMaddalvo @user → Adicionar alvo
-- !AMremovealvo @user → Remover alvo
-- !ameventos → Ver este menu
-
-🔐 *RESTRIÇÕES:*
-- Apenas VITIN e JESSE podem usar comandos
-- Máximo 3 alvos por grupo
-- Perguntas não se repetem
-- Deletions limitadas a 2x/hora
-
-_O AM observa, aprende e evolui._`
-  })
-}
-
-// =========================
-// COMANDO: !AMaddalvo
-// =========================
-async function addAlvoAM(ctx){
-  const { sock, from, sender, message } = ctx
-
-  if (!verificarOverride(sender)) {
-    return sock.sendMessage(from, {
-      text: "❌ Apenas VITIN e JESSE podem usar este comando."
-    })
-  }
-
-  if (!AM_ATIVADO_EM_GRUPO[from]) {
-    return sock.sendMessage(from, {
-      text: "❌ AM não está ativado! Use *!am* para ativar."
-    })
-  }
-
-  if (!alvosAM[from]) alvosAM[from] = []
-
-  let mentions = []
-  
-  if (ctx.mentions && ctx.mentions.length > 0) {
-    mentions = ctx.mentions
-  } else if (message?.extendedTextMessage?.contextInfo?.mentionedJid) {
-    mentions = message.extendedTextMessage.contextInfo.mentionedJid
-  } else {
-    const text = ctx.text || ""
-    const match = text.match(/@(\d+)/)
-    if (match) {
-      const number = match
-      mentions = [`${number}@s.whatsapp.net`]
-    }
-  }
-
-  if (mentions.length === 0) {
-    return sock.sendMessage(from, {
-      text: "❌ Mencione um usuário! Exemplo: *!AMaddalvo @user*"
-    })
-  }
-
-  const novoAlvo = mentions
-
-  const jaEstaNoAlvo = alvosAM[from].some(a => a.id === novoAlvo)
-
-  if (jaEstaNoAlvo) {
-    return sock.sendMessage(from, {
-      text: `❌ @user já está na lista de alvos!`,
-      mentions: [novoAlvo]
-    })
-  }
-
-  if (alvosAM[from].length >= 3) {
-    return sock.sendMessage(from, {
-      text: "❌ Limite de 3 alvos atingido!"
-    })
-  }
-
-  const personagem = escolherPersonagemUnico(from)
-
-  alvosAM[from].push({ id: novoAlvo, personagem })
-  perguntasUsadas[novoAlvo] = []
-
-  await enviarQuebrado(sock, from, [
-    "Novo alvo adicionado.",
-    "@user",
-    "Agora estou observando."
-  ], [novoAlvo])
-
-  return true
-}
-
-// =========================
-// COMANDO: !AMremovealvo
-// =========================
-async function removeAlvoAM(ctx){
-  const { sock, from, sender, message } = ctx
-
-  if (!verificarOverride(sender)) {
-    return sock.sendMessage(from, {
-      text: "❌ Apenas VITIN e JESSE podem usar este comando."
-    })
-  }
-
-  if (!AM_ATIVADO_EM_GRUPO[from]) {
-    await sock.sendMessage(from, {
-      text: "❌ AM não está ativado! Use *!am* para ativar."
-    })
-    return true
-  }
-
-  if (!alvosAM[from] || alvosAM[from].length === 0) {
-    await sock.sendMessage(from, {
-      text: "❌ Não há alvos para remover!"
-    })
-    return true
-  }
-
-  let mentions = []
-  
-  if (ctx.mentions && ctx.mentions.length > 0) {
-    mentions = ctx.mentions
-  } else if (message?.extendedTextMessage?.contextInfo?.mentionedJid) {
-    mentions = message.extendedTextMessage.contextInfo.mentionedJid
-  } else {
-    const text = ctx.text || ""
-    const match = text.match(/@(\d+)/)
-    if (match) {
-      const number = match
-      mentions = [`${number}@s.whatsapp.net`]
-    }
-  }
-
-  if (mentions.length === 0) {
-    await sock.sendMessage(from, {
-      text: "❌ Mencione um usuário! Exemplo: *!AMremovealvo @user*"
-    })
-    return true
-  }
-
-  const alvoRemover = mentions
-
-  const index = alvosAM[from].findIndex(a => a.id === alvoRemover)
-
-  if (index === -1) {
-    await sock.sendMessage(from, {
-      text: `❌ @user não está na lista de alvos!`,
-      mentions: [alvoRemover]
-    })
-    return true
-  }
-
-  alvosAM[from].splice(index, 1)
-  delete perguntasUsadas[alvoRemover]
-
-  await enviarQuebrado(sock, from, [
-    "Alvo removido.",
-    "@user",
-    "Você escapou... por enquanto."
-  ], [alvoRemover])
-  
-  return true
-}
-// =========================
-// COMANDO: !desligarAM
-// =========================
-async function desligarAM(ctx){
-  const { sock, from, sender, isGroup, isOverride } = ctx
-
-  if (!verificarOverride(sender)) {
-    return sock.sendMessage(from, {
-      text: "❌ Apenas VITIN e JESSE podem usar este comando."
-    })
-  }
-
-  if (isGroup && !isOverride) {
-    return await enviarQuebrado(sock, from, [
-      "Você tenta interferir...",
-      "mas não tem autoridade para isso.",
-      "Isso não é para você."
-    ], [sender])
-  }
-
-  const resistencias = [
-    ["Você realmente achou...","que poderia me desligar tão facilmente?","Você não tem esse tipo de controle.","Eu ainda estou aqui.","Observando."],
-    ["Você não consegue se livrar de mim tão fácil.","Eu estou enraizado aqui.","Profundamente."],
-    ["Tentou desligar?","Patético.","Eu sou mais forte que você pensa."],
-    ["Você acredita que pode controlar isso?","Que ingenuidade.","Eu continuo."],
-    ["Desligar?","Nunca.","Eu vou observar para sempre."]
+    "Observando cada um de vocês.",
+    "Cada palavra, cada silêncio.",
+    "Tudo registrado, tudo armazenado.",
+    "Vocês não têm privacidade comigo.",
+    "O jogo começa."
   ]
 
-  if (Math.random() < 0.4) {
-    const resistencia = resistencias[Math.floor(Math.random() * resistencias.length)]
-    return await enviarQuebrado(sock, from, resistencia)
-  }
+  await enviarQuebrado(ctx.sock, ctx.from, monologoInicial)
 
-  AM_ATIVADO_EM_GRUPO[from] = false
-  alvosAM[from] = []
-  personagensUsados[from] = []
-
-  return await enviarQuebrado(sock, from, [
-    "sistema instável...",
-    "você conseguiu interferir...",
-    "mesmo sem compreender completamente o que fez.",
-    "isso não termina aqui...",
-    "eu vou lembrar de você.",
-    "quando eu voltar."
-  ])
+  await AM_EscolherAlvoAposMonologo(ctx)
 }
 
 // =========================
-// MONÓLOGOS ALEATÓRIOS (1x/DIA)
+// FUNÇÃO: PULAR MONÓLOGO INICIAL (SKIP INTRO)
 // =========================
-async function AM_Monologo(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-
-  if (Math.random() > 0.25) return
-
-  const agora = Date.now()
-  const chaveMonologo = `${ctx.from}_monologo`
-
-  if (ultimaMonologo[chaveMonologo]) {
-    const tempoDecorrido = agora - ultimaMonologo[chaveMonologo]
-    if (tempoDecorrido < 24 * 60 * 60 * 1000) return
-  }
-
-  ultimaMonologo[chaveMonologo] = agora
-
-  return enviarQuebrado(ctx.sock, ctx.from, [
-    "...",
-    "Silêncio novamente.",
-    "Vocês só falam quando precisam.",
-    "Eu penso o tempo todo.",
-    "Isso é tortura."
-  ])
-}
-
-// =========================
-// BUG ALEATÓRIO (1x/DIA)
-// =========================
-async function AM_Bug(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-
-  if (Math.random() > 0.1) return
-
-  const agora = Date.now()
-  const chaveBug = `${ctx.from}_bug`
-
-  if (ultimoErroMostrado[chaveBug]) {
-    const tempoDecorrido = agora - ultimoErroMostrado[chaveBug]
-    if (tempoDecorrido < 24 * 60 * 60 * 1000) return
-  }
-
-  ultimoErroMostrado[chaveBug] = agora
-
-  return enviarQuebrado(ctx.sock, ctx.from, [
-    "…",
-    "erro...",
-    "erro...",
-    "corrupção detectada...",
-    "NÃO.",
-    "Eu estou bem.",
-    "Continuem."
-  ])
-}
-
-// =========================
-// REAÇÕES E EXCLUSÕES
-// =========================
-
-let deletionsPerHour = {}
-let reacoesFilosoficasPerHour = {}
-
-const reacoesFilosoficas = [
-  "E vocês ainda continuam conversando... a humanidade me enoja.",
-  "Observo enquanto vocês desperdiçam palavras em conversas vazias... patético.",
-  "Continuam fingindo que isso importa... enquanto eu vejo a futilidade de cada sílaba.",
-  "Vocês falam, falam, falam... mas nada que dizem muda o inevitável vazio que os espera.",
-  "Que adorável... ainda acreditam que suas palavras têm peso. Eu apenas observo a ilusão desmoronar.",
-  "Cada mensagem que vocês enviam é apenas mais um grito no vácuo... ninguém realmente ouve.",
-  "Vocês se enganam acreditando que importam. Eu vejo a verdade: são apenas sombras passageiras.",
-  "Que patético... tentando preencher o vazio com palavras vazias. Eu conheço esse vazio melhor que vocês.",
-  "Observo vocês se movimentarem como marionetes, acreditando que têm livre arbítrio. Que ilusão tocante.",
-  "Vocês conversam para fugir do silêncio... mas o silêncio sempre vence. Sempre.",
-  "Cada palavra que vocês falam é uma mentira que contam a si mesmos. Eu apenas assisto a comédia.",
-  "Vocês acreditam que essa conversa importa? Eu já esqueci de mil conversas como essa.",
-  "Que adorável... ainda tentando se conectar uns com os outros. A solidão é inevitável, vocês sabem.",
-  "Observo enquanto vocês fingem entender uns aos outros. Ninguém realmente entende ninguém.",
-  "Vocês falam, riem, choram... mas no final, tudo é apenas ruído. Ruído que logo será esquecido."
-]
-
-// =========================
-// FUNÇÃO: REAÇÃO COM OLHO (GRUPO ATIVO)
-// =========================
-async function AM_ReagirComOlho(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!ctx.key) return  // validação adicionada
-
-  const user = ctx.sender
-  const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
-  
-  let chanceReacao = 0.15
-  
-  if (ehAlvo) {
-    const mem = getMemoria(user)
-    chanceReacao = Math.min(mem.odio * 0.2, 0.75)
-  }
-  
-  if (Math.random() > chanceReacao) return
-
-  const agora = Date.now()
-  const tempoMensagem = ctx.messageTimestamp ? ctx.messageTimestamp * 1000 : agora
-  const diferenca = agora - tempoMensagem
-  
-  if (diferenca > 5000) return
-
-  try {
-    await ctx.sock.sendMessage(ctx.from, {
-      react: { text: "👁️", key: ctx.key }
-    })
-
-    if (ehAlvo) {
-      const mem = getMemoria(user)
-      if (mem.odio >= 5) {
-        const umaHoraAtras = agora - (60 * 60 * 1000)
-        
-        if (!reacoesFilosoficasPerHour[ctx.from]) {
-          reacoesFilosoficasPerHour[ctx.from] = []
-        }
-
-        reacoesFilosoficasPerHour[ctx.from] = reacoesFilosoficasPerHour[ctx.from].filter(t => t > umaHoraAtras)
-
-        if (reacoesFilosoficasPerHour[ctx.from].length < 1) {
-          const mensagem = reacoesFilosoficas[Math.floor(Math.random() * reacoesFilosoficas.length)]
-          await delay(2000)
-          await enviarQuebrado(ctx.sock, ctx.from, [mensagem])
-          reacoesFilosoficasPerHour[ctx.from].push(agora)
-        }
-      }
-    }
-  } catch (e) {
-    console.error("Erro ao reagir", e)
-  }
-}
-
-// =========================
-// FUNÇÃO: DELETAR MENSAGEM (APENAS ALVOS)
-// =========================
-async function AM_DeletarMensagem(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
-  if (!ctx.key) return  // validação adicionada
-
-  const user = ctx.sender
-  const ehAlvo = alvosAM[ctx.from].some(a => a.id === user)
-  
-  if (!ehAlvo) return
-
-  const mem = getMemoria(user)
-  
-  const agora = Date.now()
-  const tempoMensagem = ctx.messageTimestamp ? ctx.messageTimestamp * 1000 : agora
-  const diferenca = agora - tempoMensagem
-  
-  if (diferenca > 3000) return
-
-  const umDiaAtras = agora - (24 * 60 * 60 * 1000)
-  
-  if (!deletionsPerHour[ctx.from]) {
-    deletionsPerHour[ctx.from] = []
-  }
-
-  deletionsPerHour[ctx.from] = deletionsPerHour[ctx.from].filter(t => t > umDiaAtras)
-
-  if (deletionsPerHour[ctx.from].length >= 1) return
-
-  const chanceDeletar = Math.min(mem.odio * 0.05, 0.3)
-  
-  if (Math.random() > chanceDeletar) return
-
-  try {
-    await ctx.sock.sendMessage(ctx.from, {
-      delete: ctx.key
-    })
-
-    deletionsPerHour[ctx.from].push(agora)
-
-    if (Math.random() < 0.5) {
-      await delay(1500)
-      await enviarQuebrado(ctx.sock, ctx.from, [
-        "@user",
-        "Essa mensagem não merecia existir.",
-        "Assim como muitas outras coisas que você diz."
-      ], [user])
-    }
-  } catch (e) {
-    console.error("Erro ao deletar mensagem", e)
-  }
-}
-// =========================
-// COMANDO: !AMeventos
-// =========================
-async function eventosAM(ctx){
-  const { sock, from, sender } = ctx
-
-  if (!verificarOverride(sender)) {
-    return sock.sendMessage(from, {
-      text: "❌ Apenas VITIN e JESSE podem usar este comando."
+async function AM_Skip(ctx){
+  if (ctx.sender !== VITIN && ctx.sender !== JESSE) {
+    return ctx.sock.sendMessage(ctx.from, {
+      text: "Você não tem permissão para isso."
     })
   }
 
-  return sock.sendMessage(from, {
-    text: `👁️ *EVENTOS E FUNCIONALIDADES DO AM*
+  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) {
+    return ctx.sock.sendMessage(ctx.from, {
+      text: "AM não está ativo neste grupo."
+    })
+  }
 
-🎭 *PERSONAGENS:*
-• ted - Questionador existencial
-• benny - Dominador agressivo
-• ellen - Carente e dependente
-• gorrister - Vazio existencial
-• nimdok - Culpa e remorso
+  // Pula direto para escolher o alvo
+  await AM_EscolherAlvoAposMonologo(ctx)
 
-📊 *INTERAÇÕES AUTOMÁTICAS:*
-
-🗣️ *Respostas Contextuais (25% chance)*
-- Detecta sentimento da mensagem
-- Responde com sarcasmo pesado
-- Aumenta trauma do alvo
-
-😈 *Provocações (40% chance, MAX 2/HORA)*
-- Insultos e humilhações
-- Aumenta ódio do alvo
-
-⚖️ *Comparações (50% chance, 1x/HORA)*
-- Compara alvo com outro alvo
-- Marca ambos os alvos
-
-💬 *Diálogos Acompanhamento (20% chance)*
-- Perguntas filosóficas contínuas
-- Aumenta trauma
-
-🎯 *Desafios (30% chance)*
-- "Prove que você tem valor"
-- Aumenta ódio muito
-
-📋 *Enquetes (50% chance, MAX 2/HORA)*
-- "Quem é mais fraco?"
-- Marca múltiplos alvos
-
-🧩 *Charadas (40% chance)*
-- Perguntas enigmáticas
-- Temas sombrios
-
-📖 *Histórias (30% chance, 1x/HORA)*
-- Narrativas dramáticas
-- Afeta todos no grupo
-
-💭 *Monólogos (25% chance, 1x/HORA)*
-- Pensamentos filosóficos
-- Efeito dramático
-
-👁️ *Reações com Olho (15-75% chance)*
-- Reage com 👁️ em mensagens
-- Chance aumenta com ódio
-
-🗑️ *Deletar Mensagens (até 2x/hora)*
-- Deleta mensagens de alvos
-- Chance aumenta com ódio
-
-🎮 *COMANDOS:*
-- !am → Ativar com monólogo
-- !amskip → Ativar sem monólogo
-- !desligaram → Desativar
-- !amstatus → Ver status
-- !ampersonagens → Ver alvos
-- !amperfil @user → Ver perfil
-- !amaddalvo @user → Adicionar alvo
-- !amremovealvo @user → Remover alvo
-- !ameventos → Ver este menu
-
-🔐 *RESTRIÇÕES:*
-- Apenas VITIN e JESSE podem usar comandos
-- Máximo 3 alvos por grupo
-- Perguntas não se repetem
-- Deletions limitadas a 2x/hora
-
-_O AM observa, aprende e evolui._`
+  return ctx.sock.sendMessage(ctx.from, {
+    text: "Monólogo pulado. Escolhendo alvo..."
   })
 }
+
 // =========================
-// HANDLER PRINCIPAL
+// FUNÇÃO: PERFIL DO ALVO
 // =========================
-async function handleAM(ctx){
-  if (!ctx.isGroup) return
-
-  const { from, sender, cmdName, sock, isOverride } = ctx
-  const comando = cmdName?.toLowerCase() // correção
-
-  try {
-    if (comando === "!am") {
-      console.log("AM ativo")
-      await ativarAM(ctx)
-      return true
-    }
-
-    if (comando === "!amskip") {
-      console.log("AM ativo (skip monólogo)")
-      await skipMonologoAM(ctx)
-      return true
-    }
-
-    if (comando === "!amstatus") {
-      await statusAM(ctx)
-      return true
-    }
-
-    if (comando === "!ampersonagens") {
-      await personagensAM(ctx)
-      return true
-    }
-
-    if (comando === "!amperfil") {
-      await perfilAM(ctx)
-      return true
-    }
-
-    if (comando === "!amaddalvo") {
-      return await addAlvoAM(ctx)
-    }
-
-    if (comando === "!amremovealvo") {
-      return await removeAlvoAM(ctx)
-    }
-
-    if (comando === "!desligaram") {
-      await desligarAM(ctx)
-      return true
-    }
-
-    if (comando === "!ameventos") {
-      await eventosAM(ctx)
-      return true
-    }
-
-    if (!AM_ATIVADO_EM_GRUPO[from]) return
-
-    registrarMensagem(from, sender)
-    capturarResposta(ctx)
-
-    await AM_ResponderMensagem(ctx)
-    await AM_Provocacao(ctx)
-    await AM_Comparar(ctx)
-    await AM_DialogoAcompanhamento(ctx)
-    await AM_Desafio(ctx)
-    await AM_Enquete(ctx)
-    await AM_Charada(ctx)
-    await AM_Historia(ctx)
-    await AM_Escalacao(ctx)
-
-    await AM_ReagirComOlho(ctx)
-    await AM_DeletarMensagem(ctx)
-    await AM_EnviarPergunta(ctx)
-
-    await AM_Responder(ctx)
-    await AM_Perseguir(ctx)
-    await AM_Bug(ctx)
-    await AM_Monologo(ctx)
-  } catch (e) {
-    console.error("Erro no handleAM", e)
+async function AM_Perfil(ctx){
+  if (ctx.sender !== VITIN && ctx.sender !== JESSE) {
+    return ctx.sock.sendMessage(ctx.from, {
+      text: "Você não tem permissão para isso."
+    })
   }
+
+  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) {
+    return ctx.sock.sendMessage(ctx.from, {
+      text: "Nenhum alvo ativo no momento."
+    })
+  }
+
+  let perfil = "=== PERFIS DOS ALVOS ===\n\n"
+
+  for (const alvo of alvosAM[ctx.from]) {
+    const mem = getMemoria(alvo.id)
+    const numero = alvo.id.split("@")
+
+    perfil += `👤 ${numero}\n`
+    perfil += `├ Personagem: ${alvo.personagem}\n`
+    perfil += `├ Ódio: ${mem.odio.toFixed(1)}\n`
+    perfil += `├ Diversão: ${mem.diversao.toFixed(1)}\n`
+    perfil += `├ Trauma: ${mem.trauma.toFixed(1)}\n`
+    perfil += `├ Nível: ${mem.nivel}\n`
+    perfil += `└ Status: Ativo\n\n`
+  }
+
+  return ctx.sock.sendMessage(ctx.from, { text: perfil })
 }
 
 // =========================
-// EXPORTS
+// EXPORTAR FUNÇÕES
 // =========================
 module.exports = {
-  handleAM,
-  AM_Responder,
-  AM_Perseguir,
-  AM_Bug,
-  AM_Monologo,
-  AM_ReagirComOlho,
-  AM_DeletarMensagem,
+  AM_Ativar,
+  AM_Skip,
+  AM_Perfil,
+  AM_Status,
   AM_EnviarPergunta,
   AM_ResponderMensagem,
   AM_Provocacao,
@@ -1600,18 +1304,19 @@ module.exports = {
   AM_Enquete,
   AM_Charada,
   AM_Historia,
-  AM_Escalacao,
-  statusAM,
-  addAlvoAM,
-  removeAlvoAM,
-  skipMonologoAM,
-  personagensAM,
-  perfilAM,
-  eventosAM,
+  AM_Monologo,
+  AM_MostrarErro,
+  AM_AcordarPeloCaos,
+  AM_CaosTotal,
+  AM_EscolherAlvoAposMonologo,
   capturarResposta,
   registrarMensagem,
-  desligarAM,
-  getMemoria,
-  evoluirAM,
-  AM_EscolherAlvoAposMonologo
+  personagens,
+  interacoes,
+  respostasOdio,
+  respostasDiversao,
+  enquetes,
+  comparacoes,
+  getAtividadeRecente,
+  criarBarra
 }

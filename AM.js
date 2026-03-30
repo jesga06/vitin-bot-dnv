@@ -594,9 +594,6 @@ async function AM_Charada(ctx){
     "Responda com a resposta..."
   ], [user])
 }
-javascript
-
-Copiar
 // =========================
 // FUNÇÃO: HISTÓRIA (30% CHANCE, MAX 1/HORA)
 // =========================

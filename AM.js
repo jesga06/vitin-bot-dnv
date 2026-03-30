@@ -327,12 +327,11 @@ async function AM_EscolherAlvoAposMonologo(ctx){
     perguntasUsadas[maisAtivo] = []
   }
 
-  const userId = maisAtivo.split("@")
+  const numero = maisAtivo.split("@")
   
   return enviarQuebrado(sock, from, [
-    `@${userId}`,
+    `@${numero}`,
     "Você será o meu primeiro.",
-    `Seu personagem: ${personagem}`,
     "Bem-vindo ao jogo."
   ], [maisAtivo])
 }

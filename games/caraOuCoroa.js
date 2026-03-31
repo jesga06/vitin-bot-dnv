@@ -82,6 +82,11 @@ async function exitDobroGame(ctx) {
   if (state.streak === 0) {
     storage.clearGameState(from, stateKey)
     await sock.sendMessage(from, { text: "Você saiu sem ganhos.", mentions: [sender] })
+    // Dobro ou Nada exits at 0, 1, or 2 wins count as "safe" plays
+    // This means the user quit before accumulating too many high-risk wins.
+    if (state.streak <= 2) {
+      recordSafeCoinPlay(from, sender)
+    }
     return true
   }
 
@@ -91,6 +96,11 @@ async function exitDobroGame(ctx) {
   incrementUserStat(sender, "gameDobroWin", 1)
   incrementUserStat(sender, "gameDobroStreak", state.streak)
   storage.clearGameState(from, stateKey)
+
+  // Dobro ou Nada exits at 0, 1, or 2 wins count as "safe" plays
+  if (state.streak <= 2) {
+    recordSafeCoinPlay(from, sender)
+  }
   await sock.sendMessage(from, { text: `💰 @${sender.split("@")[0]} saiu e ganhou *${reward}* Epsteincoins com uma sequência de *${state.streak}* vitórias!`, mentions: [sender] })
   return true
 }

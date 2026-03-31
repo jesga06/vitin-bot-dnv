@@ -1629,6 +1629,7 @@ async function handleGameMessageFlow(ctx) {
     isCommand,
     storage,
     gameManager,
+    caraOuCoroa,
     reacao,
     reação,
     embaralhado,

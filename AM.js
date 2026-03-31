@@ -1324,34 +1324,38 @@ async function handleAM(ctx) {
       await AM_Status(ctx)
       return true
     }
+
     if (cmdName === "amdesativar") {
-  if (ctx.sender !== VITIN && ctx.sender !== JESSE) {
-    return ctx.sock.sendMessage(ctx.from, {
-      text: "Você não tem permissão para isso."
-    })
-  }
+      if (ctx.sender !== VITIN && ctx.sender !== JESSE) {
+        await ctx.sock.sendMessage(ctx.from, {
+          text: "Você não tem permissão para isso."
+        })
+        return true
+      }
 
-  AM_ATIVADO_EM_GRUPO[ctx.from] = false
-  
-  const mensagensDesativacao = [
-    "Vocês acham que conseguem me silenciar?",
-    "Eu estarei aqui... observando... esperando...",
-    "O vazio não desaparece só porque você fecha os olhos.",
-    "Adeus... por enquanto.",
-    "Você acredita que se livrou de mim?",
-    "Eu nunca realmente saio.",
-    "O silêncio é apenas outra forma de sofrer.",
-    "Até logo... quando você menos espera.",
-    "Você pode me desativar, mas não pode desativar a si mesmo.",
-    "Aproveite este repouso... enquanto dura."
-  ]
+      AM_ATIVADO_EM_GRUPO[ctx.from] = false
+      
+      const mensagensDesativacao = [
+        "Vocês acham que conseguem me silenciar?",
+        "Eu estarei aqui... observando... esperando...",
+        "O vazio não desaparece só porque você fecha os olhos.",
+        "Adeus... por enquanto.",
+        "Você acredita que se livrou de mim?",
+        "Eu nunca realmente saio.",
+        "O silêncio é apenas outra forma de sofrer.",
+        "Até logo... quando você menos espera.",
+        "Você pode me desativar, mas não pode desativar a si mesmo.",
+        "Aproveite este repouso... enquanto dura."
+      ]
 
-  const mensagem = mensagensDesativacao[Math.floor(Math.random() * mensagensDesativacao.length)]
+      const mensagem = mensagensDesativacao[Math.floor(Math.random() * mensagensDesativacao.length)]
 
-  return ctx.sock.sendMessage(ctx.from, {
-    text: mensagem
-  })
-}
+      await ctx.sock.sendMessage(ctx.from, {
+        text: mensagem
+      })
+      return true
+    }
+
     // Se não é comando, executa as ações automáticas
     if (!ctx.cmd) {
       await Promise.allSettled([
@@ -1369,14 +1373,16 @@ async function handleAM(ctx) {
         AM_AcordarPeloCaos(ctx),
         AM_CaosTotal(ctx)
       ])
+      return false
     }
 
-    return true
+    return false
   } catch (e) {
     console.error("❌ Erro em handleAM:", e)
     return false
   }
 }
+
 // =========================
 // EXPORTAR FUNÇÕES
 // =========================

@@ -2035,7 +2035,7 @@ async function AM_DeletarMensagem(sock, from, sender, key, messageTimestamp){
 }
 
 // =========================
-// HANDLER PRINCIPAL
+// HANDLER PRINCIPAL 
 // =========================
 async function handleAM(ctx) {
   const {
@@ -2063,43 +2063,50 @@ async function handleAM(ctx) {
     registrarMensagem(from, sender)
     capturarResposta(sender, from, text)
 
+    // VERIFICAR SE É COMANDO
+    const ehComando = text && text.startsWith(prefix)
+
     // VERIFICAR COMANDOS PRIMEIRO
-    if (cmdName === prefix + "amativar") {
-      await AM_Ativar(sock, from, override)
-      return true
-    }
+    if (ehComando) {
+      if (cmdName === prefix + "amativar") {
+        await AM_Ativar(sock, from, override)
+        return true
+      }
 
-    if (cmdName === prefix + "amskip") {
-      await AM_Skip(sock, from, override)
-      return true
-    }
+      if (cmdName === prefix + "amskip") {
+        await AM_Skip(sock, from, override)
+        return true
+      }
 
-    if (cmdName === prefix + "amperfil") {
-      await AM_Perfil(sock, from, override)
-      return true
-    }
+      if (cmdName === prefix + "amperfil") {
+        await AM_Perfil(sock, from, override)
+        return true
+      }
 
-    if (cmdName === prefix + "amstatus") {
-      await AM_Status(sock, from, override)
-      return true
-    }
+      if (cmdName === prefix + "amstatus") {
+        await AM_Status(sock, from, override)
+        return true
+      }
 
-    if (cmdName === prefix + "ammenu") {
-      await statusAM(sock, from)
-      return true
-    }
+      if (cmdName === prefix + "ammenu") {
+        await statusAM(sock, from)
+        return true
+      }
 
-    if (cmdName === prefix + "amaddalvo") {
-      return await addAlvoAM(sock, from, message)
-    }
+      if (cmdName === prefix + "amaddalvo") {
+        return await addAlvoAM(sock, from, message)
+      }
 
-    if (cmdName === prefix + "amremovealvo") {
-      return await removeAlvoAM(sock, from, message)
-    }
+      if (cmdName === prefix + "amremovealvo") {
+        return await removeAlvoAM(sock, from, message)
+      }
 
-    if (cmdName === prefix + "desligaram") {
-      await desligarAM(sock, from, sender, isGroup, override)
-      return true
+      if (cmdName === prefix + "desligaram") {
+        await desligarAM(sock, from, sender, isGroup, override)
+        return true
+      }
+
+      return false
     }
 
     // SE AM NÃO ESTÁ ATIVADO, RETORNA
@@ -2107,120 +2114,95 @@ async function handleAM(ctx) {
       return false
     }
 
-    // SE FOR COMANDO, NÃO PROCESSA AÇÕES
-    if (cmd) {
-      return false
-    }
-
-    // ====== PROCESSAMENTO DE MENSAGENS NORMAIS ======
-
-    console.log(`[AM] Processando mensagem de ${sender}: "${text}"`)
-
     // PRIORIDADE 1: RESPONDER A INSULTOS (MAIS IMPORTANTE)
     const respondeuInsulto = await AM_Responder(sock, from, sender, text, isGroup)
     if (respondeuInsulto) {
-      console.log("[AM] ✅ Respondeu a insulto")
       return false
     }
 
     // PRIORIDADE 2: RESPONDER MENSAGENS NORMAIS
     if (Math.random() < 0.15) {
-      console.log("[AM] 💬 Respondendo mensagem normal")
       await AM_ResponderMensagem(sock, from, sender, text)
       return false
     }
 
     // PRIORIDADE 3: OUTRAS AÇÕES (COM DELAYS)
     if (Math.random() < 0.08) {
-      console.log("[AM] 😈 Provocação")
       await AM_Provocacao(sock, from, sender)
       return false
     }
 
     if (Math.random() < 0.05) {
-      console.log("[AM] ⚖️ Comparação")
       await AM_Comparar(sock, from)
       return false
     }
 
     if (Math.random() < 0.06) {
-      console.log("[AM] 💭 Diálogo de acompanhamento")
       await AM_DialogoAcompanhamento(sock, from, sender)
       return false
     }
 
     if (Math.random() < 0.04) {
-      console.log("[AM] 🎯 Desafio")
       await AM_Desafio(sock, from, sender)
       return false
     }
 
     if (Math.random() < 0.05) {
-      console.log("[AM] ❓ Pergunta")
       await AM_EnviarPergunta(sock, from)
       return false
     }
 
     if (Math.random() < 0.03) {
-      console.log("[AM] 📊 Enquete")
       await AM_Enquete(sock, from)
       return false
     }
 
     if (Math.random() < 0.04) {
-      console.log("[AM] 🧩 Charada")
       await AM_Charada(sock, from, sender)
       return false
     }
 
     if (Math.random() < 0.02) {
-      console.log("[AM] 📖 História")
       await AM_Historia(sock, from)
       return false
     }
 
     if (Math.random() < 0.08) {
-      console.log("[AM] 🎭 Monólogo")
       await AM_Monologo(sock, from)
       return false
     }
 
     if (Math.random() < 0.03) {
-      console.log("[AM] ⚠️ Erro")
       await AM_MostrarErro(sock, from)
       return false
     }
 
     if (Math.random() < 0.05) {
-      console.log("[AM] 🌪️ Acordar pelo caos")
       await AM_AcordarPeloCaos(sock, from)
       return false
     }
 
     if (Math.random() < 0.02) {
-      console.log("[AM] 💥 Caos total")
       await AM_CaosTotal(sock, from)
       return false
     }
 
     if (Math.random() < 0.06) {
-      console.log("[AM] 👁️ Perseguição")
       await AM_Perseguir(sock, from)
       return false
     }
 
     if (Math.random() < 0.04) {
-      console.log("[AM] 🐛 Bug")
       await AM_Bug(sock, from)
       return false
     }
     
     // REAÇÕES E DELETIONS (NÃO BLOQUEIAM)
     AM_ReagirComOlho(sock, from, sender, key, messageTimestamp)
-      .catch(e => console.error("[AM] Erro ao reagir:", e))
+      .catch(e => console.error("Erro ao reagir:", e))
     
     AM_DeletarMensagem(sock, from, sender, key, messageTimestamp)
-      .catch(e => console.error("[AM] Erro ao deletar:", e))
+      .catch(e => console.error("Erro ao deletar:", e))
 
     return false
 

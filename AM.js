@@ -1678,9 +1678,18 @@ async function AM_Responder(sock, from, sender, text, isGroup){
 async function statusAM(sock, from){
   const ativo = AM_ATIVADO_EM_GRUPO[from]
   const statusTexto = ativo ? "✅ ATIVO" : "❌ INATIVO"
-  const alvosTexto = alvosAM[from] && alvosAM[from].length > 0 
-    ? alvosAM[from].map(a => `@${extrairNumero(a.id)} (${a.personagem})`).join("\n")
-    : "Nenhum"
+  
+  let alvosTexto = "Nenhum"
+  const mentions = []
+  
+  if (alvosAM[from] && alvosAM[from].length > 0) {
+    alvosTexto = alvosAM[from]
+      .map(a => {
+        mentions.push(a.id)
+        return `@${extrairNumero(a.id)} (${a.personagem})`
+      })
+      .join("\n")
+  }
   
   const totalUsuarios = Object.keys(amMemoria).length
   const usuariosComOdio = Object.values(amMemoria).filter(m => m.odio > 0).length
@@ -1705,14 +1714,14 @@ ${alvosTexto}
 - !amstatus → Ver status detalhado
 - !amperfil → Ver perfil dos alvos
 - !amaddalvo @user → Adicionar alvo
-- !amremovealvo @user → Remover alvo`
+- !amremovealvo @user → Remover alvo`,
+    mentions: mentions.length > 0 ? mentions : undefined
   })
 }
-
 // =========================
 // COMANDO: !AMaddalvo - CORRIGIDA
 // =========================
-async function addAlvoAM(sock, from, message, mentions){
+async function addAlvoAM(sock, from, message, mentions, cmd){
   if (!AM_ATIVADO_EM_GRUPO[from]) {
     sock.sendMessage(from, {
       text: "❌ AM não está ativado! Use *!amativar* para ativar."
@@ -1731,20 +1740,30 @@ async function addAlvoAM(sock, from, message, mentions){
 
   let novoAlvo = null
   
+  // acho que fiz certo agr
   if (message?.extendedTextMessage?.contextInfo?.mentionedJid && 
       message.extendedTextMessage.contextInfo.mentionedJid.length > 0) {
     novoAlvo = message.extendedTextMessage.contextInfo.mentionedJid
   } 
+    
   else if (Array.isArray(mentions) && mentions.length > 0) {
     novoAlvo = mentions
   } 
+  
   else if (mentions && typeof mentions === 'string') {
     novoAlvo = mentions
+  }
+  
+  else if (cmd && cmd.includes('@')) {
+    const match = cmd.match(/(\d+@[a-z.]+)/i)
+    if (match) {
+      novoAlvo = match
+    }
   }
 
   if (!novoAlvo) {
     sock.sendMessage(from, {
-      text: "❌ Mencione um usuário! Exemplo: *!amaddalvo @user*"
+      text: "❌ Mencione um usuário! Exemplo: *!amaddalvo @user* ou *!amaddalvo 5521999999999@s.whatsapp.net*"
     })
     return true
   }
@@ -1764,7 +1783,7 @@ async function addAlvoAM(sock, from, message, mentions){
   const numero = extrairNumero(novoAlvo)
 
   await enviarQuebrado(sock, from, [
-    `Novo alvo adicionado.`,
+    `✅ Novo alvo adicionado.`,
     `@${numero}`,
     `Personagem: ${personagem}`,
     "Agora estou observando."
@@ -1776,7 +1795,7 @@ async function addAlvoAM(sock, from, message, mentions){
 // =========================
 // COMANDO: !AMremovealvo - CORRIGIDA
 // =========================
-async function removeAlvoAM(sock, from, message, mentions){
+async function removeAlvoAM(sock, from, message, mentions, cmd){
   if (!AM_ATIVADO_EM_GRUPO[from]) {
     sock.sendMessage(from, {
       text: "❌ AM não está ativado! Use *!amativar* para ativar."
@@ -1797,16 +1816,25 @@ async function removeAlvoAM(sock, from, message, mentions){
       message.extendedTextMessage.contextInfo.mentionedJid.length > 0) {
     alvoRemover = message.extendedTextMessage.contextInfo.mentionedJid
   } 
+
   else if (Array.isArray(mentions) && mentions.length > 0) {
     alvoRemover = mentions
   } 
+
   else if (mentions && typeof mentions === 'string') {
     alvoRemover = mentions
   }
 
+  else if (cmd && cmd.includes('@')) {
+    const match = cmd.match(/(\d+@[a-z.]+)/i)
+    if (match) {
+      alvoRemover = match
+    }
+  }
+
   if (!alvoRemover) {
     sock.sendMessage(from, {
-      text: "❌ Mencione um usuário! Exemplo: *!amremovealvo @user*"
+      text: "❌ Mencione um usuário! Exemplo: *!amremovealvo @user* ou *!amremovealvo 5521999999999@s.whatsapp.net*"
     })
     return true
   }
@@ -1825,13 +1853,14 @@ async function removeAlvoAM(sock, from, message, mentions){
   const numero = extrairNumero(alvoRemover)
 
   await enviarQuebrado(sock, from, [
-    `Alvo removido.`,
+    `✅ Alvo removido.`,
     `@${numero}`,
     "Você escapou... por enquanto."
   ], [alvoRemover], true)
   
   return true
 }
+
 // =========================
 // COMANDO: !desligaram
 // =========================

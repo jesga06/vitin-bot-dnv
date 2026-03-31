@@ -108,7 +108,7 @@ function aguardarResposta(user, group, tempo = 60000){
   })
 }
 
-function capturarResposta(ctx){
+function capturarResposta(sender, from){
   const key = sender + from
 
   if (respostasPendentes[key]){
@@ -1138,7 +1138,7 @@ async function AM_CaosTotal(ctx){
 // =========================
 async function AM_Status(ctx){
   console.log("AM_Status trigger")
-  if (sender !== VITIN && sender !== JESSE) {
+  if (isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
@@ -1183,7 +1183,7 @@ async function AM_Status(ctx){
 // FUNÇÃO: ATIVAR/DESATIVAR AM
 // =========================
 async function AM_Ativar(ctx){
-  if (sender !== VITIN && sender !== JESSE) {
+  if (isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
@@ -1234,7 +1234,7 @@ async function AM_Ativar(ctx){
 // FUNÇÃO: PULAR MONÓLOGO INICIAL (SKIP INTRO)
 // =========================
 async function AM_Skip(ctx){
-  if (sender !== VITIN && sender !== JESSE) {
+  if (isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
@@ -1258,7 +1258,7 @@ async function AM_Skip(ctx){
 // FUNÇÃO: PERFIL DO ALVO
 // =========================
 async function AM_Perfil(ctx){
-  if (sender !== VITIN && sender !== JESSE) {
+  if (isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
@@ -1297,6 +1297,7 @@ async function handleAM(ctx) {
     from,
     sender,
     text,
+    prefix,
     cmd,
     cmdName,
     isGroup,
@@ -1310,29 +1311,29 @@ async function handleAM(ctx) {
     // Captura resposta pendente (para charadas)
     capturarResposta(ctx)
 
-    if (cmdName === "amativar") {
+    if (cmdName === prefix + "amativar") {
       await AM_Ativar(ctx)
       return true
     }
 
-    if (cmdName === "amskip") {
+    if (cmdName === prefix + "amskip") {
       await AM_Skip(ctx)
       return true
     }
 
-    if (cmdName === "amperfil") {
+    if (cmdName === prefix + "amperfil") {
       await AM_Perfil(ctx)
       return true
     }
 
-    if (cmdName === "amstatus") {
+    if (cmdName === prefix + "amstatus") {
       console.log("caiu no if de \"amstatus\"")
       await AM_Status(ctx)
       return true
     }
 
-    if (cmdName === "amdesativar") {
-      if (sender !== VITIN && sender !== JESSE) {
+    if (cmdName === prefix + "amdesativar") {
+      if (isOverride) {
         await sock.sendMessage(from, {
           text: "Você não tem permissão para isso."
         })

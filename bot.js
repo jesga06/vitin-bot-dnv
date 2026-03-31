@@ -4087,6 +4087,7 @@ setTimeout(() => {
         from,
         sender,
         text,
+        prefix,
         cmd,
         cmdName,
         isGroup,

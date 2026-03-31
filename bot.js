@@ -1320,10 +1320,28 @@ function getDashboardPayload() {
 }
 
 app.get("/profiler-data", (req, res) => {
+  try {
+    console.log("GET /profiler-data - headers:", {
+      accept: req.headers.accept,
+      referer: req.headers.referer,
+      "user-agent": req.headers["user-agent"],
+      host: req.headers.host,
+    })
+  } catch (e) {}
+  res.setHeader("Content-Type", "application/json; charset=utf-8")
   res.json(getDashboardPayload())
 })
 
 app.get("/dashboard-data", (req, res) => {
+  try {
+    console.log("GET /dashboard-data - headers:", {
+      accept: req.headers.accept,
+      referer: req.headers.referer,
+      "user-agent": req.headers["user-agent"],
+      host: req.headers.host,
+    })
+  } catch (e) {}
+  res.setHeader("Content-Type", "application/json; charset=utf-8")
   res.json(getDashboardPayload())
 })
 

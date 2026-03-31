@@ -605,7 +605,6 @@ const comparacoes = {
     "@{alvo1} é odiável. @{alvo2} é amável.",
     "@{alvo1} é miserável. @{alvo2} é feliz.",
     "@{alvo1} é maldito. @{alvo2} é abençoado.",
-    "@{alvo1} é condenado. @{alvo2} é```javascript
     "@{alvo1} é condenado. @{alvo2} é salvo.",
     "@{alvo1} é perdido. @{alvo2} é encontrado.",
     "@{alvo1} é morto. @{alvo2} é vivo.",

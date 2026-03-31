@@ -1287,39 +1287,74 @@ async function AM_Perfil(ctx){
   return ctx.sock.sendMessage(ctx.from, { text: perfil })
 }
 // =========================
-// FUNÇÃO: HANDLER PRINCIPAL 
+// FUNÇÃO: HANDLER PRINCIPAL
 // =========================
 async function handleAM(ctx) {
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
+  try {
+    // Se AM não está ativo, não faz nada
+    if (!AM_ATIVADO_EM_GRUPO[ctx.from]) {
+      return false
+    }
 
-  // Registra a mensagem
-  registrarMensagem(ctx.from, ctx.sender)
+    // Registra a mensagem
+    registrarMensagem(ctx.from, ctx.sender)
 
-  // Captura resposta pendente
-  capturarResposta(ctx)
+    // Captura resposta pendente (para charadas)
+    capturarResposta(ctx)
 
-  // Executa todas as funções em paralelo
-  await Promise.allSettled([
-    AM_ResponderMensagem(ctx),
-    AM_Provocacao(ctx),
-    AM_Comparar(ctx),
-    AM_DialogoAcompanhamento(ctx),
-    AM_Desafio(ctx),
-    AM_EnviarPergunta(ctx),
-    AM_Enquete(ctx),
-    AM_Charada(ctx),
-    AM_Historia(ctx),
-    AM_Monologo(ctx),
-    AM_MostrarErro(ctx),
-    AM_AcordarPeloCaos(ctx),
-    AM_CaosTotal(ctx)
-  ])
+    // Processa comandos do AM
+    const cmdName = ctx.cmdName?.toLowerCase()
+
+    if (cmdName === "amativar") {
+      await AM_Ativar(ctx)
+      return true
+    }
+
+    if (cmdName === "amskip") {
+      await AM_Skip(ctx)
+      return true
+    }
+
+    if (cmdName === "amperfil") {
+      await AM_Perfil(ctx)
+      return true
+    }
+
+    if (cmdName === "amstatus") {
+      await AM_Status(ctx)
+      return true
+    }
+
+    // Se não é comando, executa as ações automáticas
+    if (!ctx.cmd) {
+      await Promise.allSettled([
+        AM_ResponderMensagem(ctx),
+        AM_Provocacao(ctx),
+        AM_Comparar(ctx),
+        AM_DialogoAcompanhamento(ctx),
+        AM_Desafio(ctx),
+        AM_EnviarPergunta(ctx),
+        AM_Enquete(ctx),
+        AM_Charada(ctx),
+        AM_Historia(ctx),
+        AM_Monologo(ctx),
+        AM_MostrarErro(ctx),
+        AM_AcordarPeloCaos(ctx),
+        AM_CaosTotal(ctx)
+      ])
+    }
+
+    return true
+  } catch (e) {
+    console.error("❌ Erro em handleAM:", e)
+    return false
+  }
 }
 // =========================
 // EXPORTAR FUNÇÕES
 // =========================
 module.exports = {
-  handleAM,
+  handleAM,  
   AM_Ativar,
   AM_Skip,
   AM_Perfil,

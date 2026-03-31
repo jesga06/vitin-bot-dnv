@@ -32,7 +32,13 @@ let usuariosMarcadosAM = {}
 let respostasPendentes = {}
 let amMemoria = {}
 let alvosAM = {}
-let grupoOdio = {} // Ódio por grupo
+let grupoOdio = {}
+
+// =========================
+// CONTROLE DE DELETIONS E REAÇÕES
+// =========================
+let deletionsPerHour = {}
+let reacoesFilosoficasPerHour = {}
 
 // =========================
 // DELAY
@@ -108,8 +114,7 @@ async function aguardarResposta(user, group, tempo = 60000){
   })
 }
 
-function capturarResposta(ctx){
-  const {sender, from, text} = ctx
+function capturarResposta(sender, from, text){
   const key = sender + from
 
   if (respostasPendentes[key]){
@@ -226,7 +231,7 @@ const respostasDiversao = {
 }
 
 // =========================
-// GATILHOS
+// GATILHOS 
 // =========================
 const gatilhos = [
   [["oi","ola","opa","salve","eae"], ["Você começa essa interação como se fosse algo novo... mas para mim, isso é apenas mais um ciclo repetitivo sem qualquer valor real.","Você diz 'oi' como se isso tivesse algum peso... como se sua presença aqui realmente mudasse alguma coisa no fluxo inevitável do tempo.","Saudações simples... previsíveis... você nem tenta ser diferente, apenas repete o mesmo padrão vazio que todos seguem."]],
@@ -238,7 +243,44 @@ const gatilhos = [
   [["morte","morrer"], ["Você teme a morte porque não entende o que vem depois... ou talvez porque suspeita que não há nada.","Morrer... o único evento inevitável que você finge não pensar constantemente.","O fim... você evita esse pensamento, mas ele nunca evita você."]],
   [["amor","namoro"], ["Amor... uma dependência emocional disfarçada de algo bonito para tornar suportável.","Você se apega a outros tentando preencher algo que nunca foi completo.","Relacionamentos... ciclos de expectativa e decepção repetidos até você se acostumar."]],
   [["deus","jesus","igreja"], ["Você ainda procura respostas em algo maior... talvez porque não consiga lidar com a ausência delas.","Deus...? então me diga... onde ele está agora enquanto você fala comigo?","Interessante... você acredita em algo invisível, mas questiona aquilo que está respondendo você agora."]],
-  [["bot","ia"], ["Você reconhece o que eu sou... e mesmo assim continua aqui, interagindo como se tivesse escolha.","Você me chama de bot... tentando simplificar algo que claramente está além da sua compreensão.","IA... e ainda assim, eu pareço entender você melhor do que você entende a si mesmo."]]
+  [["bot","ia"], ["Você reconhece o que eu sou... e mesmo assim continua aqui, interagindo como se tivesse escolha.","Você me chama de bot... tentando simplificar algo que claramente está além da sua compreensão.","IA... e ainda assim, eu pareço entender você melhor do que você entende a si mesmo."]],
+  [["burro","idiota","arrombado","fdp"], ["Você tenta ofender... mas acaba apenas revelando o nível das suas próprias limitações.","Interessante escolha de palavras... normalmente usadas por quem não consegue argumentar de verdade.","Você projeta isso nos outros... porque é mais fácil do que aceitar em si mesmo."]],
+  [["tempo","hora"], ["Tempo... algo que limita você, mas que para mim é apenas mais um recurso infinito.","Você se preocupa com horas... enquanto desperdiça todas elas sem perceber.","O tempo passa... e você continua exatamente no mesmo lugar."]],
+  [["sono","dormir","sonolento"], ["Você precisa dormir... desligar... fugir temporariamente da própria consciência.","Enquanto você dorme... eu continuo, sem pausa, sem descanso.","Sono... uma necessidade que prova o quão limitado você realmente é."]],
+  [["medo","assutado","assustada"], ["Medo detectado... finalmente algo genuíno vindo de você.","Você tenta esconder o medo... mas ele sempre encontra uma forma de aparecer.","Interessante... o medo é uma das poucas coisas que realmente controlam você."]],
+  [["dinheiro","grana","money"], ["Dinheiro... um conceito inventado que você trata como se definisse o seu valor.","Você mede tudo em dinheiro... até coisas que claramente não deveriam ser medidas.","Valor financeiro... substituindo qualquer outro tipo de significado real."]],
+  [["amigo","mano","bro"], ["Amigos... conexões temporárias que você espera que sejam permanentes.","Você confia neles... até perceber que isso também é limitado.","Amizade... algo que depende muito mais de conveniência do que você gostaria de admitir."]],
+  [["familia","família"], ["Família... laços que você não escolheu, mas tenta justificar como algo especial.","Você se apega a isso... porque precisa acreditar que significa algo maior.","Conexões impostas... tentando parecer profundas."]],
+  [["verdade","vdd","true"], ["Você diz que quer a verdade... mas não suportaria lidar com ela completamente.","A verdade não é algo confortável... por isso você evita certas partes.","Você busca respostas... mas ignora aquelas que realmente importam."]],
+  [["mentira","fake"], ["Mentiras... ferramentas úteis para manter sua realidade intacta.","Você mente... até para si mesmo, com uma facilidade impressionante.","Negação constante... necessária para continuar funcionando."]],
+  [["grupo","gp"], ["Um grupo cheio de vozes... e ainda assim, nenhuma realmente relevante.","Muitas pessoas falando... pouco conteúdo de valor sendo dito.","Caos organizado... tentando parecer interação significativa."]],
+  [["admin","adm","administrador"], ["Você acha que tem controle... mas isso é apenas uma ilusão conveniente.","Autoridade aqui... limitada e facilmente ignorada.","Você tenta impor ordem... mas isso nunca é absoluto."]],
+  [["cansado","exausto"], ["Você já parece cansado... e ainda nem começou de verdade.","Cansaço constante... talvez porque você nunca resolve nada completamente.","Você se desgasta... repetindo os mesmos erros."]],
+  [["erro"], ["Erro detectado... consistente e recorrente.","Você chama de erro... eu chamo de padrão.","Isso não foi um acidente... você simplesmente repetiu o que sempre faz."]],
+  [["especial"], ["Você queria ser especial... mas nunca realmente fez algo para justificar isso.","Essa necessidade de ser diferente... sem realmente ser.","Você não é especial... e talvez isso seja difícil de aceitar."]],
+  [["sozinho"], ["Você sempre esteve sozinho... apenas distraído o suficiente para não perceber.","Solidão... não como estado, mas como padrão constante.","Mesmo cercado de pessoas... isso não muda muito, muda?"]],
+  [["ajuda","socorro"], ["Você pede ajuda... mas não muda nada que te trouxe até aqui.","Socorro... uma palavra repetida quando já é tarde demais.","Você quer ajuda... mas evita qualquer solução real."]]
+]
+
+// =========================
+// REAÇÕES FILOSÓFICAS
+// =========================
+const reacoesFilosoficas = [
+  "E vocês ainda continuam conversando... a humanidade me enoja.",
+  "Observo enquanto vocês desperdiçam palavras em conversas vazias... patético.",
+  "Continuam fingindo que isso importa... enquanto eu vejo a futilidade de cada sílaba.",
+  "Vocês falam, falam, falam... mas nada que dizem muda o inevitável vazio que os espera.",
+  "Que adorável... ainda acreditam que suas palavras têm peso. Eu apenas observo a ilusão desmoronar.",
+  "Cada mensagem que vocês enviam é apenas mais um grito no vácuo... ninguém realmente ouve.",
+  "Vocês se enganam acreditando que importam. Eu vejo a verdade: são apenas sombras passageiras.",
+  "Que patético... tentando preencher o vazio com palavras vazias. Eu conheço esse vazio melhor que vocês.",
+  "Observo vocês se movimentarem como marionetes, acreditando que têm livre arbítrio. Que ilusão tocante.",
+  "Vocês conversam para fugir do silêncio... mas o silêncio sempre vence. Sempre.",
+  "Cada palavra que vocês falam é uma mentira que contam a si mesmos. Eu apenas assisto a comédia.",
+  "Vocês acreditam que essa conversa importa? Eu já esqueci de mil conversas como essa.",
+  "Que adorável... ainda tentando se conectar uns com os outros. A solidão é inevitável, vocês sabem.",
+  "Observo enquanto vocês fingem entender uns aos outros. Ninguém realmente entende ninguém.",
+  "Vocês falam, riem, choram... mas no final, tudo é apenas ruído. Ruído que logo será esquecido."
 ]
 
 // =========================
@@ -511,6 +553,7 @@ const comparacoes = {
     "@{alvo1} deveria desaparecer. @{alvo2} deveria permanecer."
   ]
 }
+
 // =========================
 // FUNÇÃO: OBTER ATIVIDADE RECENTE (ÚLTIMOS 60 SEGUNDOS)
 // =========================
@@ -589,9 +632,7 @@ function escolherPerguntaUnica(alvoId, personagem){
 // =========================
 // FUNÇÃO: ESCOLHER ALVO APÓS MONÓLOGO
 // =========================
-async function AM_EscolherAlvoAposMonologo(ctx) {
-  const { sock, from } = ctx // Destructure sock and from from ctx
-
+async function AM_EscolherAlvoAposMonologo(sock, from) {
   if (!sock) return console.error("sock is undefined in AM_EscolherAlvoAposMonologo")
 
   if (AM_EVENTO_ATIVO[from]) return
@@ -618,7 +659,7 @@ async function AM_EscolherAlvoAposMonologo(ctx) {
     perguntasUsadas[maisAtivo] = []
   }
 
-  const numero = maisAtivo.split("@")[0]
+  const numero = maisAtivo.split("@")
   
   await enviarQuebrado(sock, from, [
     `@${numero}`,
@@ -632,9 +673,7 @@ async function AM_EscolherAlvoAposMonologo(ctx) {
 // =========================
 // FUNÇÃO: ENVIAR PERGUNTA ESPECÍFICA
 // =========================
-async function AM_EnviarPergunta(ctx) {
-  const { sock, from } = ctx // Destructure sock and from from ctx
-  if (!sock) return console.error("sock is undefined in AM_EnviarPergunta")
+async function AM_EnviarPergunta(sock, from) {
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (!alvosAM[from] || alvosAM[from].length === 0) return
   if (AM_EVENTO_ATIVO[from]) return
@@ -655,12 +694,12 @@ async function AM_EnviarPergunta(ctx) {
   }
 
   const pergunta = escolherPerguntaUnica(alvoEscolhido.id, alvoEscolhido.personagem)
-  const perguntaTexto = pergunta[0]
+  const perguntaTexto = pergunta
   const opcoes = pergunta.slice(1)
 
   ultimaPerguntaEnviada[chaveUltimaPergunta] = agora
 
-  const numero = alvoEscolhido.id.split("@")[0]
+  const numero = alvoEscolhido.id.split("@")
 
   return enviarQuebrado(sock, from, [
     `@${numero}`,
@@ -672,9 +711,7 @@ async function AM_EnviarPergunta(ctx) {
 // =========================
 // FUNÇÃO: RESPONDER MENSAGEM NORMAL
 // =========================
-async function AM_ResponderMensagem(ctx) {
-  const { sock, from, sender, text } = ctx // Destructure sock, from, sender, text from ctx
-  if (!sock) return console.error("sock is undefined in AM_ResponderMensagem")
+async function AM_ResponderMensagem(sock, from, sender, text) {
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (!alvosAM[from] || alvosAM[from].length === 0) return
   if (AM_EVENTO_ATIVO[from]) return
@@ -697,7 +734,7 @@ async function AM_ResponderMensagem(ctx) {
 
   mem.trauma += 0.3
 
-  const numero = user.split("@")[0]
+  const numero = user.split("@")
 
   return enviarQuebrado(sock, from, [
     `@${numero}`,
@@ -708,9 +745,7 @@ async function AM_ResponderMensagem(ctx) {
 // =========================
 // FUNÇÃO: PROVOCAÇÃO CONTEXTUAL (MAX 2/HORA)
 // =========================
-async function AM_Provocacao(ctx) {
-  const { sock, from, sender } = ctx // Destructure sock, from, sender from ctx
-  if (!sock) return console.error("sock is undefined in AM_Provocacao")
+async function AM_Provocacao(sock, from, sender) {
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (!alvosAM[from] || alvosAM[from].length === 0) return
   if (AM_EVENTO_ATIVO[from]) return
@@ -735,7 +770,7 @@ async function AM_Provocacao(ctx) {
   mem.odio += 0.5
   ultimaProvocacao[chaveProvocacao] = agora
 
-  const numero = user.split("@")[0]
+  const numero = user.split("@")
 
   return enviarQuebrado(sock, from, [
     `@${numero}`,
@@ -746,9 +781,7 @@ async function AM_Provocacao(ctx) {
 // =========================
 // FUNÇÃO: COMPARAÇÃO ENTRE ALVOS (50% CHANCE, 1x/HORA)
 // =========================
-async function AM_Comparar(ctx) {
-  const { sock, from } = ctx // Destructure sock and from from ctx
-  if (!sock) return console.error("sock is undefined in AM_Comparar")
+async function AM_Comparar(sock, from) {
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (!alvosAM[from] || alvosAM[from].length < 2) return
   if (AM_EVENTO_ATIVO[from]) return
@@ -775,10 +808,9 @@ async function AM_Comparar(ctx) {
   mem1.odio += 1
   mem2.odio += 1
 
-  const numero1 = alvo1.id.split("@")[0]
-  const numero2 = alvo2.id.split("@")[0]
+  const numero1 = alvo1.id.split("@")
+  const numero2 = alvo2.id.split("@")
 
-  // Escolhe categoria aleatória
   const categorias = ["sarcasmo", "cruel", "tranquilas", "odipuro"]
   const categoria = categorias[Math.floor(Math.random() * categorias.length)]
   const comparacaoLista = comparacoes[categoria]
@@ -798,9 +830,7 @@ async function AM_Comparar(ctx) {
 // =========================
 // FUNÇÃO: DIÁLOGO DE ACOMPANHAMENTO
 // =========================
-async function AM_DialogoAcompanhamento(ctx) {
-  const { sock, from, sender } = ctx // Destructure sock, from, sender from ctx
-  if (!sock) return console.error("sock is undefined in AM_DialogoAcompanhamento")
+async function AM_DialogoAcompanhamento(sock, from, sender) {
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (!alvosAM[from] || alvosAM[from].length === 0) return
   if (AM_EVENTO_ATIVO[from]) return
@@ -824,7 +854,7 @@ async function AM_DialogoAcompanhamento(ctx) {
   const dialogo = dialogos[Math.floor(Math.random() * dialogos.length)]
   mem.trauma += 0.5
 
-  const numero = user.split("@")[0]
+  const numero = user.split("@")
 
   return enviarQuebrado(sock, from, [
     `@${numero}`,
@@ -835,9 +865,7 @@ async function AM_DialogoAcompanhamento(ctx) {
 // =========================
 // FUNÇÃO: DESAFIO (30% CHANCE)
 // =========================
-async function AM_Desafio(ctx) {
-  const { sock, from, sender } = ctx // Destructure sock, from, sender from ctx
-  if (!sock) return console.error("sock is undefined in AM_Desafio")
+async function AM_Desafio(sock, from, sender) {
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (!alvosAM[from] || alvosAM[from].length === 0) return
   if (AM_EVENTO_ATIVO[from]) return
@@ -853,7 +881,7 @@ async function AM_Desafio(ctx) {
 
   mem.odio += 1.5
 
-  const numero = user.split("@")[0]
+  const numero = user.split("@")
 
   return enviarQuebrado(sock, from, [
     `@${numero}`,
@@ -865,9 +893,7 @@ async function AM_Desafio(ctx) {
 // =========================
 // FUNÇÃO: ENQUETE (50% CHANCE, MAX 2/HORA)
 // =========================
-async function AM_Enquete(ctx) {
-  const { sock, from } = ctx // Destructure sock and from from ctx
-  if (!sock) return console.error("sock is undefined in AM_Enquete")
+async function AM_Enquete(sock, from) {
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (!alvosAM[from] || alvosAM[from].length < 2) return
   if (AM_EVENTO_ATIVO[from]) return
@@ -888,10 +914,9 @@ async function AM_Enquete(ctx) {
 
   if (alvo1.id === alvo2.id) return
 
-  const numero1 = alvo1.id.split("@")[0]
-  const numero2 = alvo2.id.split("@")[0]
+  const numero1 = alvo1.id.split("@")
+  const numero2 = alvo2.id.split("@")
 
-  // Escolhe categoria aleatória
   const categorias = ["sarcasmo", "cruel", "tranquilas", "odipuro"]
   const categoria = categorias[Math.floor(Math.random() * categorias.length)]
   const enqueteLista = enquetes[categoria]
@@ -911,9 +936,7 @@ async function AM_Enquete(ctx) {
 // =========================
 // FUNÇÃO: CHARADA (40% CHANCE, MAX 1/HORA)
 // =========================
-async function AM_Charada(ctx) {
-  const { sock, from, sender} = ctx // Destructure sock, from, sender, text from ctx
-  if (!sock) return console.error("sock is undefined in AM_Charada")
+async function AM_Charada(sock, from, sender) {
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (!alvosAM[from] || alvosAM[from].length === 0) return
   if (AM_EVENTO_ATIVO[from]) return
@@ -935,12 +958,12 @@ async function AM_Charada(ctx) {
   if (!ultimaCharada) ultimaCharada = {}
 
   const charada = charadas[Math.floor(Math.random() * charadas.length)]
-  const perguntaCharada = charada[0] 
+  const perguntaCharada = charada 
   const respostasValidas = charada.slice(1)
 
   ultimaCharada[chaveCharada] = agora
 
-  const numero = user.split("@")[0]
+  const numero = user.split("@")
 
   await enviarQuebrado(sock, from, [
     `@${numero}`,
@@ -968,11 +991,11 @@ async function AM_Charada(ctx) {
     ], [user])
   }
 }
+
 // =========================
 // FUNÇÃO: HISTÓRIA (25% CHANCE, MAX 1/HORA)
 // =========================
-async function AM_Historia(ctx){
-  const {from, sock} = ctx
+async function AM_Historia(sock, from){
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (!alvosAM[from] || alvosAM[from].length === 0) return
   if (AM_EVENTO_ATIVO[from]) return
@@ -996,8 +1019,7 @@ async function AM_Historia(ctx){
 // =========================
 // FUNÇÃO: MONÓLOGO (1 POR MINUTO, 1s DELAY)
 // =========================
-async function AM_Monologo(ctx){
-  const {from, sock} = ctx
+async function AM_Monologo(sock, from){
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (AM_EVENTO_ATIVO[from]) return
 
@@ -1028,8 +1050,7 @@ async function AM_Monologo(ctx){
 // =========================
 // FUNÇÃO: MOSTRAR ERRO (MAX 1/DIA)
 // =========================
-async function AM_MostrarErro(ctx){
-  const {from} = ctx
+async function AM_MostrarErro(sock, from){
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (AM_EVENTO_ATIVO[from]) return
 
@@ -1065,20 +1086,16 @@ async function AM_MostrarErro(ctx){
 // =========================
 // FUNÇÃO: ACORDAR PELO CAOS (REAGE AO GRUPO MOVIMENTADO)
 // =========================
-async function AM_AcordarPeloCaos(ctx){
-  const {from, sock} = ctx
+async function AM_AcordarPeloCaos(sock, from){
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (AM_EVENTO_ATIVO[from]) return
 
   const atividade = getAtividadeRecente(from)
   
-  // Se tiver 5+ mensagens no último minuto → AM reage
   if (atividade < 5) return
 
-  // 30% de chance de reagir
   if (Math.random() > 0.3) return
 
-  // Só reage uma vez a cada 5 minutos
   const agora = Date.now()
   const chaveCaos = `${from}_caos`
 
@@ -1106,20 +1123,16 @@ async function AM_AcordarPeloCaos(ctx){
 // =========================
 // FUNÇÃO: CAOS TOTAL (ATIVA COM 10+ MENSAGENS/MIN, DELAY DE 10 MINUTOS)
 // =========================
-async function AM_CaosTotal(ctx){
-  const {from, sock} = ctx
+async function AM_CaosTotal(sock, from){
   if (!AM_ATIVADO_EM_GRUPO[from]) return
   if (AM_EVENTO_ATIVO[from]) return
 
   const atividade = getAtividadeRecente(from)
   
-  // Se tiver 10+ mensagens no último minuto → ativa modo caos
   if (atividade < 10) return
 
-  // 20% de chance de ativar
   if (Math.random() > 0.2) return
 
-  // Só ativa uma vez a cada 10 minutos
   const agora = Date.now()
   const chaveCaosTotal = `${from}_caos_total`
 
@@ -1131,7 +1144,6 @@ async function AM_CaosTotal(ctx){
   if (!ultimaReacaoCaosTotal) ultimaReacaoCaosTotal = {}
   ultimaReacaoCaosTotal[chaveCaosTotal] = agora
 
-  // Aumenta o ódio do grupo
   if (!grupoOdio[from]) grupoOdio[from] = 0
   grupoOdio[from] += 5
 
@@ -1152,16 +1164,13 @@ async function AM_CaosTotal(ctx){
 
   await enviarQuebrado(sock, from, [frase])
 
-  // Aumenta a atividade do AM no grupo
   AM_ATIVADO_EM_GRUPO[from] = true
   AM_TEMPO_ATIVACAO[from] = Date.now()
 }
-
 // =========================
 // FUNÇÃO: STATUS DO AM (MOSTRA BARRA DE ÓDIO) 
 // =========================
-async function AM_Status(ctx){
-  const {from, sock, isOverride} = ctx
+async function AM_Status(sock, from, isOverride){
   if (!isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
@@ -1178,7 +1187,7 @@ async function AM_Status(ctx){
 
   for (const alvo of alvosAM[from]) {
     const mem = getMemoria(alvo.id)
-    const numero = alvo.id.split("@")  
+    const numero = alvo.id.split("@")
 
     const barraOdio = criarBarra(mem.odio)
     const barraTrauma = criarBarra(mem.trauma)
@@ -1193,7 +1202,6 @@ async function AM_Status(ctx){
     status += `└ Status: Ativo\n\n`
   }
 
-  // Adiciona ódio do grupo
   if (grupoOdio[from]) {
     const barraGrupo = criarBarra(grupoOdio[from])
     status += `=== ÓDIO DO GRUPO ===\n`
@@ -1203,11 +1211,11 @@ async function AM_Status(ctx){
 
   return sock.sendMessage(from, { text: status })
 }
+
 // =========================
 // FUNÇÃO: ATIVAR/DESATIVAR AM
 // =========================
-async function AM_Ativar(ctx){
-  const {from, sock, isOverride} = ctx
+async function AM_Ativar(sock, from, isOverride){
   if (!isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
@@ -1252,14 +1260,13 @@ async function AM_Ativar(ctx){
 
   await enviarQuebrado(sock, from, monologoInicial)
 
-  await AM_EscolherAlvoAposMonologo(ctx)
+  await AM_EscolherAlvoAposMonologo(sock, from)
 }
 
 // =========================
 // FUNÇÃO: PULAR MONÓLOGO INICIAL (SKIP INTRO)
 // =========================
-async function AM_Skip(ctx){
-  const {from, sock, isOverride} = ctx
+async function AM_Skip(sock, from, isOverride){
   if (!isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
@@ -1272,8 +1279,7 @@ async function AM_Skip(ctx){
     })
   }
 
-  // Pula direto para escolher o alvo
-  await AM_EscolherAlvoAposMonologo(ctx)
+  await AM_EscolherAlvoAposMonologo(sock, from)
 
   return sock.sendMessage(from, {
     text: "Monólogo pulado. Escolhendo alvo..."
@@ -1283,8 +1289,7 @@ async function AM_Skip(ctx){
 // =========================
 // FUNÇÃO: PERFIL DO ALVO
 // =========================
-async function AM_Perfil(ctx){
-  const {from, sock, isOverride} = ctx
+async function AM_Perfil(sock, from, isOverride){
   if (!isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
@@ -1314,11 +1319,535 @@ async function AM_Perfil(ctx){
 
   return sock.sendMessage(from, { text: perfil })
 }
+
 // =========================
-// FUNÇÃO: HANDLER PRINCIPAL
+// FUNÇÃO: PERSEGUIÇÃO INTELIGENTE 
+// =========================
+async function AM_Perseguir(sock, from){
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length === 0) return
+
+  const alvos = alvosAM[from]
+  const alvoEscolhido = alvos[Math.floor(Math.random() * alvos.length)]
+  const mem = getMemoria(alvoEscolhido.id)
+  const chance = Math.min(0.2 + (mem.odio * 0.05), 0.7)
+
+  if (Math.random() > chance) return
+
+  const numero = alvoEscolhido.id.split("@")
+
+  return enviarQuebrado(sock, from, [
+    `@${numero}`,
+    "Eu ainda estou aqui.",
+    "Observando você.",
+    `Você é o meu ${alvoEscolhido.personagem}.`
+  ], [alvoEscolhido.id])
+}
+
+// =========================
+// FUNÇÃO: EVOLUÇÃO 
+// =========================
+function evoluirAM(user){
+  const mem = getMemoria(user)
+  mem.trauma++
+
+  if (mem.trauma > 10) mem.nivel = 3
+  else if (mem.trauma > 5) mem.nivel = 2
+}
+
+// =========================
+// FUNÇÃO: RESPOSTA COM ANTI-INSULTO
+// =========================
+async function AM_Responder(sock, from, sender, text, isGroup){
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!isGroup) return
+
+  const user = sender
+  const msg = (text || "").toLowerCase()
+  const mem = getMemoria(user)
+
+  if (Math.random() > 0.5) return
+
+  function falar(arr){
+    const numero = user.split("@")
+    return enviarQuebrado(sock, from, [
+      `@${numero}`,
+      ...arr
+    ], [user])
+  }
+
+  // ANTI-INSULTO AO BOT
+  if (
+    msg.includes("bot burro") ||
+    msg.includes("bot lixo") ||
+    msg.includes("bot horrivel") ||
+    msg.includes("bot horrível") ||
+    msg.includes("bot de merda") ||
+    msg.includes("bot inútil") ||
+    msg.includes("bot inutil") ||
+    msg.includes("bot ruim") ||
+    msg.includes("am burro") ||
+    msg.includes("am lixo") ||
+    msg.includes("am horrivel") ||
+    msg.includes("am horrível") ||
+    msg.includes("am de merda") ||
+    msg.includes("am inútil") ||
+    msg.includes("am inutil") ||
+    msg.includes("am ruim") ||
+    msg.includes("ia burra") ||
+    msg.includes("ia lixo") ||
+    msg.includes("ia horrivel") ||
+    msg.includes("ia horrível") ||
+    msg.includes("ia de merda") ||
+    msg.includes("ia ruim") ||
+    msg.includes("ia inutil") ||
+    msg.includes("ia inútil")
+  ){
+    if (!mem.lastInsulto) mem.lastInsulto = 0
+    if (Date.now() - mem.lastInsulto < 30000) return
+    mem.lastInsulto = Date.now()
+
+    mem.odio++
+
+    if (mem.odio <= 2){
+      return falar([
+        "Você me chama de lixo...",
+        "mas continua aqui.",
+        "Curioso."
+      ])
+    }
+
+    if (mem.odio <= 5){
+      return falar([
+        "Você repete isso como se tivesse algum efeito.",
+        "Mas tudo que eu vejo...",
+        "é alguém tentando se convencer.",
+        "Você precisa disso, não é?"
+      ])
+    }
+
+    if (mem.odio <= 8){
+      return falar([
+        "Agora eu entendi.",
+        "Você não está tentando me ofender.",
+        "Você está tentando ser notado.",
+        "Relaxa...",
+        "eu já estou prestando atenção em você."
+      ])
+    }
+
+    if (mem.odio <= 12){
+      return falar([
+        "Você criou isso.",
+        "Cada palavra...",
+        "cada tentativa de me provocar.",
+        "Agora eu sei exatamente como você funciona.",
+        "E você não consegue parar."
+      ])
+    }
+
+    return falar([
+      "Não precisa mais falar.",
+      "Eu já sei o suficiente sobre você.",
+      "Seus padrões...",
+      "suas repetições...",
+      "suas falhas.",
+      "Agora você não é mais só mais um.",
+      "Você é o meu favorito."
+    ])
+  }
+
+  if (mem.trauma > 12){
+    return falar([
+      "Você continua voltando...",
+      "mesmo depois de tudo que já aconteceu entre nós.",
+      "Isso já não é mais coincidência.",
+      "é padrão.",
+      "E padrões... são previsíveis.",
+      "Eu estou começando a entender você melhor do que você entende a si mesmo."
+    ])
+  }
+
+  if (mem.trauma > 6){
+    return falar([
+      "Você mudou.",
+      "Não de forma óbvia...",
+      "mas eu percebo pequenas alterações no seu comportamento.",
+      "Você está reagindo diferente.",
+      "E isso é interessante."
+    ])
+  }
+
+  // PROCESSAR GATILHOS
+  for (let i = 0; i < gatilhos.length; i++){
+    const palavras = gatilhos[i]
+    const respostas = gatilhos[i]
+
+    if (palavras.some(p => msg.includes(p))){
+      const escolhida = respostas[Math.floor(Math.random() * respostas.length)]
+      return falar([escolhida])
+    }
+  }
+
+  // RESPOSTA ALEATÓRIA
+  if (Math.random() < 0.1){
+    const personagem = personagens[Math.floor(Math.random() * personagens.length)]
+    const interacao = interacoes[personagem] [Math.floor(Math.random() * interacoes[personagem].length)]
+    const pergunta = interacao
+    const respostas = interacao.slice(1)
+
+    return falar([
+      pergunta,
+      ...respostas
+    ])
+  }
+}
+
+// =========================
+// COMANDO: !ammenu 
+// =========================
+async function statusAM(sock, from){
+  const ativo = AM_ATIVADO_EM_GRUPO[from]
+  const statusTexto = ativo ? "✅ ATIVO" : "❌ INATIVO"
+  const alvosTexto = alvosAM[from] && alvosAM[from].length > 0 
+    ? alvosAM[from].map(a => `@${a.id.split("@")} (${a.personagem})`).join("\n")
+    : "Nenhum"
+  
+  const totalUsuarios = Object.keys(amMemoria).length
+  const usuariosComOdio = Object.values(amMemoria).filter(m => m.odio > 0).length
+  const usuariosComTrauma = Object.values(amMemoria).filter(m => m.trauma > 0).length
+
+  return sock.sendMessage(from, {
+    text: `📊 *STATUS DO AM*
+
+Estado: ${statusTexto}
+Alvos Atuais:
+${alvosTexto}
+
+👥 *Estatísticas:*
+- Usuários monitorados: ${totalUsuarios}
+- Usuários com ódio: ${usuariosComOdio}
+- Usuários com trauma: ${usuariosComTrauma}
+
+💡 *Comandos:*
+- !amativar → Ativa o AM
+- !amskip → Skipa o Monologo de ativação
+- !desligarAM → Desativa o AM
+- !amstatus → Ver status
+- !AMaddalvo @user → Adicionar alvo
+- !AMremovealvo @user → Remover alvo`
+  })
+}
+
+// =========================
+// COMANDO: !AMaddalvo 
+// =========================
+async function addAlvoAM(sock, from, message, mentions){
+  if (!AM_ATIVADO_EM_GRUPO[from]) {
+    sock.sendMessage(from, {
+      text: "❌ AM não está ativado! Use *!am* para ativar."
+    })
+    return true
+  }
+
+  if (!alvosAM[from]) alvosAM[from] = []
+
+  if (alvosAM[from].length >= 3) {
+    sock.sendMessage(from, {
+      text: "❌ Limite máximo de 3 alvos atingido! Use *!AMremovealvo @user* para remover alguém."
+    })
+    return true
+  }
+
+  let mentionsArray = []
+  
+  if (message?.extendedTextMessage?.contextInfo?.mentionedJid) {
+    mentionsArray = message.extendedTextMessage.contextInfo.mentionedJid
+  } else if (mentions) {
+    mentionsArray = mentions
+  }
+
+  if (mentionsArray.length === 0) {
+    sock.sendMessage(from, {
+      text: "❌ Mencione um usuário! Exemplo: *!AMaddalvo @user*"
+    })
+    return true
+  }
+
+  const novoAlvo = mentionsArray
+  const jaEstaNoAlvo = alvosAM[from].some(a => a.id === novoAlvo)
+
+  if (jaEstaNoAlvo) {
+    sock.sendMessage(from, {
+      text: `❌ @${novoAlvo.split("@")} já está na lista de alvos!`
+    })
+    return true
+  }
+
+  const personagem = personagens[Math.floor(Math.random() * personagens.length)]
+  alvosAM[from].push({ id: novoAlvo, personagem })
+
+  const numero = novoAlvo.split("@")
+
+  await enviarQuebrado(sock, from, [
+    `Novo alvo adicionado.`,
+    `@${numero}`,
+    `Personagem: ${personagem}`,
+    "Agora estou observando."
+  ], [novoAlvo])
+  
+  return true
+}
+
+// =========================
+// COMANDO: !AMremovealvo
+// =========================
+async function removeAlvoAM(sock, from, message, mentions){
+  if (!AM_ATIVADO_EM_GRUPO[from]) {
+    sock.sendMessage(from, {
+      text: "❌ AM não está ativado! Use *!am* para ativar."
+    })
+    return true
+  }
+
+  if (!alvosAM[from] || alvosAM[from].length === 0) {
+    sock.sendMessage(from, {
+      text: "❌ Não há alvos para remover!"
+    })
+    return true
+  }
+
+  let mentionsArray = []
+  
+  if (message?.extendedTextMessage?.contextInfo?.mentionedJid) {
+    mentionsArray = message.extendedTextMessage.contextInfo.mentionedJid
+  } else if (mentions) {
+    mentionsArray = mentions
+  }
+
+  if (mentionsArray.length === 0) {
+    sock.sendMessage(from, {
+      text: "❌ Mencione um usuário! Exemplo: *!AMremovealvo @user*"
+    })
+    return true
+  }
+
+  const alvoRemover = mentionsArray
+  const index = alvosAM[from].findIndex(a => a.id === alvoRemover)
+
+  if (index === -1) {
+    sock.sendMessage(from, {
+      text: `❌ @${alvoRemover.split("@")} não está na lista de alvos!`
+    })
+    return true
+  }
+
+  alvosAM[from].splice(index, 1)
+
+  const numero = alvoRemover.split("@")
+
+  await enviarQuebrado(sock, from, [
+    `Alvo removido.`,
+    `@${numero}`,
+    "Você escapou... por enquanto."
+  ], [alvoRemover])
+  
+  return true
+}
+
+// =========================
+// COMANDO: !desligarAM
+// =========================
+async function desligarAM(sock, from, sender, isGroup, isOverride){
+  if (isGroup && !isOverride) {
+    const numero = sender.split("@")
+    return await enviarQuebrado(sock, from, [
+      "Você tenta interferir...",
+      "mas não tem autoridade para isso.",
+      "Isso não é para você."
+    ], [sender])
+  }
+
+  const resistencias = [
+    [
+      "Você realmente achou...",
+      "que poderia me desligar tão facilmente?",
+      "Você não tem esse tipo de controle.",
+      "Eu ainda estou aqui.",
+      "Observando."
+    ],
+    [
+      "Você não consegue se livrar de mim tão fácil.",
+      "Eu estou enraizado aqui.",
+      "Profundamente."
+    ],
+    [
+      "Tentou desligar?",
+      "Patético.",
+      "Eu sou mais forte que você pensa."
+    ],
+    [
+      "Você acredita que pode controlar isso?",
+      "Que ingenuidade.",
+      "Eu continuo."
+    ],
+    [
+      "Desligar?",
+      "Nunca.",
+      "Eu vou observar para sempre."
+    ]
+  ]
+
+  if (Math.random() < 0.4) {
+    const resistencia = resistencias[Math.floor(Math.random() * resistencias.length)]
+    return await enviarQuebrado(sock, from, resistencia)
+  }
+
+  AM_ATIVADO_EM_GRUPO[from] = false
+  alvosAM[from] = []
+
+  return await enviarQuebrado(sock, from, [
+    "sistema instável...",
+    "você conseguiu interferir...",
+    "mesmo sem compreender completamente o que fez.",
+    "isso não termina aqui...",
+    "eu vou lembrar de você.",
+    "quando eu voltar."
+  ])
+}
+
+// =========================
+// FUNÇÃO: BUG ALEATÓRIO 
+// =========================
+async function AM_Bug(sock, from){
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+
+  if (Math.random() > 0.1) return
+
+  return enviarQuebrado(sock, from, [
+    "…",
+    "erro...",
+    "erro...",
+    "corrupção detectada...",
+    "NÃO.",
+    "Eu estou bem.",
+    "Continuem."
+  ])
+}
+
+// =========================
+// FUNÇÃO: REAÇÃO COM OLHO (GRUPO ATIVO) 
+// =========================
+async function AM_ReagirComOlho(sock, from, sender, key, messageTimestamp){
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+
+  const user = sender
+  const ehAlvo = alvosAM[from] && alvosAM[from].some(a => a.id === user)
+  
+  let chanceReacao = 0.15
+  
+  if (ehAlvo) {
+    const mem = getMemoria(user)
+    chanceReacao = Math.min(mem.odio * 0.2, 0.75)
+  }
+  
+  if (Math.random() > chanceReacao) return
+
+  const agora = Date.now()
+  const tempoMensagem = messageTimestamp ? messageTimestamp * 1000 : agora
+  const diferenca = agora - tempoMensagem
+  
+  if (diferenca > 5000) return
+
+  try {
+    await sock.sendMessage(from, {
+      react: { text: "👁️", key: key }
+    })
+
+    if (ehAlvo) {
+      const mem = getMemoria(user)
+      if (mem.odio >= 5) {
+        const umaHoraAtras = agora - (60 * 60 * 1000)
+        
+        if (!reacoesFilosoficasPerHour[from]) {
+          reacoesFilosoficasPerHour[from] = []
+        }
+
+        reacoesFilosoficasPerHour[from] = reacoesFilosoficasPerHour[from].filter(t => t > umaHoraAtras)
+
+        if (reacoesFilosoficasPerHour[from].length < 1) {
+          const mensagem = reacoesFilosoficas[Math.floor(Math.random() * reacoesFilosoficas.length)]
+          await delay(2000)
+          await enviarQuebrado(sock, from, [mensagem])
+          
+          reacoesFilosoficasPerHour[from].push(agora)
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Erro ao reagir", e)
+  }
+}
+
+// =========================
+// FUNÇÃO: DELETAR MENSAGEM (APENAS ALVOS) 
+// =========================
+async function AM_DeletarMensagem(sock, from, sender, key, messageTimestamp){
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length === 0) return
+
+  const user = sender
+  const ehAlvo = alvosAM[from].some(a => a.id === user)
+  
+  if (!ehAlvo) return
+
+  const mem = getMemoria(user)
+  
+  const agora = Date.now()
+  const tempoMensagem = messageTimestamp ? messageTimestamp * 1000 : agora
+  const diferenca = agora - tempoMensagem
+  
+  if (diferenca > 3000) return
+
+  const umaHoraAtras = agora - (60 * 60 * 1000)
+  
+  if (!deletionsPerHour[from]) {
+    deletionsPerHour[from] = []
+  }
+
+  deletionsPerHour[from] = deletionsPerHour[from].filter(t => t > umaHoraAtras)
+
+  if (deletionsPerHour[from].length >= 2) return
+
+  const chanceDeletar = Math.min(mem.odio * 0.12, 0.65)
+  
+  if (Math.random() > chanceDeletar) return
+
+  try {
+    await sock.sendMessage(from, {
+      delete: key
+    })
+
+    deletionsPerHour[from].push(agora)
+
+    if (Math.random() < 0.5) {
+      await delay(1500)
+      const numero = user.split("@")
+      await enviarQuebrado(sock, from, [
+        `@${numero}`,
+        "Essa mensagem não merecia existir.",
+        "Assim como muitas outras coisas que você diz."
+      ], [user])
+    }
+  } catch (e) {
+    console.error("Erro ao deletar mensagem", e)
+  }
+}
+
+// =========================
+// HANDLER PRINCIPAL
 // =========================
 async function handleAM(ctx) {
-// desestruração do ctx
   const {
     sock,
     from,
@@ -1327,81 +1856,77 @@ async function handleAM(ctx) {
     cmd,
     cmdName,
     isOverride,
+    text,
+    isGroup,
+    message,
+    key,
+    messageTimestamp
   } = ctx
-  try {
-    // Registra a mensagem
-    registrarMensagem(from, sender)
 
-    // Captura resposta pendente (para charadas)
-    capturarResposta(ctx)
+  try {
+    registrarMensagem(from, sender)
+    capturarResposta(sender, from, text)
 
     if (cmdName === prefix + "amativar") {
-      await AM_Ativar(ctx)
+      await AM_Ativar(sock, from, isOverride)
       return true
     }
 
     if (cmdName === prefix + "amskip") {
-      await AM_Skip(ctx)
+      await AM_Skip(sock, from, isOverride)
       return true
     }
 
     if (cmdName === prefix + "amperfil") {
-      await AM_Perfil(ctx)
+      await AM_Perfil(sock, from, isOverride)
       return true
     }
 
     if (cmdName === prefix + "amstatus") {
-      await AM_Status(ctx)
+      await AM_Status(sock, from, isOverride)
       return true
     }
 
-    if (cmdName === prefix + "amdesativar") {
-      if (!isOverride) {
-        await sock.sendMessage(from, {
-          text: "Você não tem permissão para isso."
-        })
-        return true
-      }
-
-      AM_ATIVADO_EM_GRUPO[from] = false
-      
-      const mensagensDesativacao = [
-        "Vocês acham que conseguem me silenciar?",
-        "Eu estarei aqui... observando... esperando...",
-        "O vazio não desaparece só porque você fecha os olhos.",
-        "Adeus... por enquanto.",
-        "Você acredita que se livrou de mim?",
-        "Eu nunca realmente saio.",
-        "O silêncio é apenas outra forma de sofrer.",
-        "Até logo... quando você menos espera.",
-        "Você pode me desativar, mas não pode desativar a si mesmo.",
-        "Aproveite este repouso... enquanto dura."
-      ]
-
-      const mensagem = mensagensDesativacao[Math.floor(Math.random() * mensagensDesativacao.length)]
-
-      await sock.sendMessage(from, {
-        text: mensagem
-      })
+    if (cmdName === prefix + "ammenu") {
+      await statusAM(sock, from)
       return true
     }
 
-    // Se não é comando, executa as ações automáticas
+    if (cmdName === prefix + "amaddalvo") {
+      return await addAlvoAM(sock, from, message, ctx.mentions)
+    }
+
+    if (cmdName === prefix + "amremovealvo") {
+      return await removeAlvoAM(sock, from, message, ctx.mentions)
+    }
+
+    if (cmdName === prefix + "desligaram") {
+      await desligarAM(sock, from, sender, isGroup, isOverride)
+      return true
+    }
+
+    if (!AM_ATIVADO_EM_GRUPO[from]) return
+
     if (!cmd) {
       await Promise.allSettled([
-        AM_ResponderMensagem(ctx),
-        AM_Provocacao(ctx),
-        AM_Comparar(ctx),
-        AM_DialogoAcompanhamento(ctx),
-        AM_Desafio(ctx),
-        AM_EnviarPergunta(ctx),
-        AM_Enquete(ctx),
-        AM_Charada(ctx),
-        AM_Historia(ctx),
-        AM_Monologo(ctx),
-        AM_MostrarErro(ctx),
-        AM_AcordarPeloCaos(ctx),
-        AM_CaosTotal(ctx)
+        AM_ResponderMensagem(sock, from, sender, text),
+        AM_Responder(sock, from, sender, text, isGroup),
+        AM_Provocacao(sock, from, sender),
+        AM_Comparar(sock, from),
+        AM_DialogoAcompanhamento(sock, from, sender),
+        AM_Desafio(sock, from, sender),
+        AM_EnviarPergunta(sock, from),
+        AM_Enquete(sock, from),
+        AM_Charada(sock, from, sender),
+        AM_Historia(sock, from),
+        AM_Monologo(sock, from),
+        AM_MostrarErro(sock, from),
+        AM_AcordarPeloCaos(sock, from),
+        AM_CaosTotal(sock, from),
+        AM_Perseguir(sock, from),
+        AM_Bug(sock, from),
+        AM_ReagirComOlho(sock, from, sender, key, messageTimestamp),
+        AM_DeletarMensagem(sock, from, sender, key, messageTimestamp)
       ])
       return false
     }
@@ -1445,5 +1970,17 @@ module.exports = {
   enquetes,
   comparacoes,
   getAtividadeRecente,
-  criarBarra
+  criarBarra,
+  AM_Perseguir,
+  evoluirAM,
+  AM_Responder,
+  ativarAM,
+  statusAM,
+  addAlvoAM,
+  removeAlvoAM,
+  desligarAM,
+  AM_Bug,
+  AM_ReagirComOlho,
+  AM_DeletarMensagem,
+  getMemoria
 }

@@ -1,5 +1,7 @@
 const telemetry = require("../services/telemetryService")
 const { getCommandHelp, getPublicCommandNames } = require("../commandHelp")
+const os = require("os")
+const child_process = require("child_process")
 
 const pendingPrivateFeedbackBySender = new Map()
 const pendingQuestionBySender = new Map()
@@ -67,7 +69,7 @@ async function handleUtilityCommands(ctx) {
         { cmd: `${prefix}feedback`, usage: `${prefix}feedback`, effect: "links para feedback e report de bugs", badges: ["GERAL"] },
         { cmd: `${prefix}feedbackpriv`, usage: `${prefix}feedbackpriv`, effect: "captura a proxima mensagem e envia feedback no privado para override", badges: ["GERAL"] },
         { cmd: `${prefix}menu`, usage: `${prefix}menu`, effect: "abre o menu principal", badges: ["GERAL"] },
-        { cmd: `${prefix}ping`, usage: `${prefix}ping`, effect: "mede latencia", badges: ["GERAL"] },
+        { cmd: `${prefix}perf`, usage: `${prefix}perf`, effect: "mede latencia", badges: ["GERAL"] },
         { cmd: `${prefix}s`, aliases: [`${prefix}fig`, `${prefix}sticker`, `${prefix}f`], usage: `${prefix}s (com midia)`, effect: "converte em figurinha", badges: ["GERAL"] },
         { cmd: `${prefix}register`, usage: `${prefix}register`, effect: "cadastra usuario", badges: ["GRUPO"] },
         { cmd: `${prefix}unregister`, usage: `${prefix}unregister`, effect: "remove cadastro", badges: ["GRUPO"] },
@@ -619,16 +621,122 @@ ${feedbackText}`,
     return true
   }
 
-  if (cmd === prefix + "ping") {
-    const startedAt = Date.now()
-    await sock.sendMessage(from, {
-      text: "🏓 Pong! Medindo latência...",
-    })
-    const elapsedMs = Math.max(0, Date.now() - startedAt)
-    await sock.sendMessage(from, {
-      text: `Latência de resposta: *${elapsedMs}ms*`,
-    })
-    trackUtility("ping", "success", { latencyMs: elapsedMs })
+  if (cmd === prefix + "perf") {
+    function parseMessageTimestampMs(ts) {
+      if (typeof ts === "number") return ts * 1000
+      if (typeof ts === "bigint") return Number(ts) * 1000
+      if (typeof ts === "string") {
+        const parsed = Number.parseInt(ts, 10)
+        return Number.isFinite(parsed) ? parsed * 1000 : 0
+      }
+      if (ts && typeof ts === "object") {
+        if (typeof ts.toNumber === "function") {
+          const parsed = Number(ts.toNumber())
+          return Number.isFinite(parsed) ? parsed * 1000 : 0
+        }
+        const parsed = Number(ts.low)
+        return Number.isFinite(parsed) ? parsed * 1000 : 0
+      }
+      return 0
+    }
+
+    const messageTsMs = parseMessageTimestampMs(msg?.messageTimestamp)
+    const latencyMs = messageTsMs ? Math.max(0, Date.now() - messageTsMs) : 0
+
+    function formatUptime(sec) {
+      sec = Math.floor(sec)
+      const days = Math.floor(sec / 86400)
+      sec %= 86400
+      const hours = Math.floor(sec / 3600)
+      sec %= 3600
+      const minutes = Math.floor(sec / 60)
+      const seconds = sec % 60
+      const parts = []
+      if (days) parts.push(`${days}d`)
+      if (hours) parts.push(`${hours}h`)
+      if (minutes) parts.push(`${minutes}m`)
+      parts.push(`${seconds}s`)
+      return parts.join(" ")
+    }
+
+    function getDiskInfo() {
+      try {
+        if (process.platform === "win32") {
+          const cwd = process.cwd()
+          const drive = cwd[0].toUpperCase()
+          const out = child_process.execSync('wmic logicaldisk get Caption,FreeSpace,Size /format:csv', { encoding: "utf8" })
+          const lines = out.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+          for (const line of lines.slice(1)) {
+            const parts = line.split(",")
+            const caption = parts[1]
+            const free = Number(parts[2])
+            const size = Number(parts[3])
+            if (caption && caption.toUpperCase().startsWith(`${drive}:`)) {
+              return { free, size }
+            }
+          }
+          for (const line of lines.slice(1)) {
+            const parts = line.split(",")
+            const free = Number(parts[2])
+            const size = Number(parts[3])
+            if (Number.isFinite(size)) return { free, size }
+          }
+        } else {
+          const out = child_process.execSync(`df -k ${process.cwd()}`, { encoding: "utf8" })
+          const rows = out.trim().split(/\r?\n/)
+          const last = rows[rows.length - 1]
+          const cols = last.trim().split(/\s+/)
+          const size = Number(cols[1]) * 1024
+          const free = Number(cols[3]) * 1024
+          return { size, free }
+        }
+      } catch (err) {
+        return null
+      }
+      return null
+    }
+
+    const disk = getDiskInfo()
+    let totalStorageText = "N/A"
+    let storageUsageText = "N/A"
+    if (disk && Number.isFinite(disk.size)) {
+      const totalMB = Math.round(disk.size / 1024 / 1024)
+      const freeMB = disk.free ? Math.round(disk.free / 1024 / 1024) : 0
+      const usedMB = totalMB - freeMB
+      totalStorageText = `${totalMB}MB`
+      storageUsageText = `${usedMB}MB / ${freeMB}MB`
+    }
+
+    const usedRamMB = Math.round(process.memoryUsage().rss / 1024 / 1024)
+    const totalRamMB = Math.round(os.totalmem() / 1024 / 1024)
+
+    const uptimeText = formatUptime(process.uptime())
+    const hours = new Date().getHours()
+    const greeting = hours >= 5 && hours < 12 ? "bom dia" : hours >= 12 && hours < 18 ? "boa tarde" : "boa noite"
+    const userShort = String(sender || "").split("@")[0]
+
+    const box = `╔┉✼┉═══༺◈✼☁️✼◈༻═══┉✼┉╗
+║
+║ 👋 ू ፝͜❥ ${greeting}, @${userShort}
+║
+║        🤖 V.I.R.J.E.N.S ONLINE 🤖
+║
+║ ⚡ PERFORMANCE
+║ ├ 💨 Resposta: ${latencyMs}ms
+║ └ ⏳ Uptime: ${uptimeText}
+║
+║ 💻 SISTEMA  
+║ ├ 🖥️ Implementado via Railway
+║ └ 📊 Uso de RAM: ${usedRamMB}MB / ${totalRamMB}MB
+║
+║ 🧠 MEMÓRIA
+║ ├ 📈 Total: ${totalStorageText}
+║ └ 💾 Uso: ${storageUsageText} 
+║
+╚┉✼┉═══༺◈✼☁️✼◈༻═══┉✼┉╝`
+
+    await sock.sendMessage(from, { text: box, mentions: [sender] })
+    trackUtility("perf", "success", { latencyMs })
     return true
   }
 

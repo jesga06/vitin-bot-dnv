@@ -94,6 +94,27 @@ const logger = pino({ level: "silent" })
 
 const prefix = "!"
 
+const BASE_GAME_REWARD = 25
+const GAME_BUY_INS = {
+  adivinhacao: 10,
+  batata: 15,
+  dados: 20,
+  rr: 25,
+}
+
+const GAME_REWARDS = {
+  REACAO: BASE_GAME_REWARD,
+  EMBARALHADO: BASE_GAME_REWARD,
+  MEMORIA: BASE_GAME_REWARD,
+  ADIVINHACAO_CLOSEST: BASE_GAME_REWARD,
+  ADIVINHACAO_EXACT: 60,
+  DADOS_WIN: 35,
+  COMANDO_SUCCESS: 20,
+  ROLETA_WIN: 40,
+  ROLETA_WIN_GUARANTEED: 50,
+  BATATA_WIN: 20,
+}
+
 let qrImage = null
 let _lastGeneratedQr = null
 let _lastGeneratedQrAt = 0
@@ -3626,26 +3647,7 @@ setTimeout(() => {
       return storage.isResenhaEnabled(from)
     }
 
-    const BASE_GAME_REWARD = 25
-    const GAME_BUY_INS = {
-      adivinhacao: 10,
-      batata: 15,
-      dados: 20,
-      rr: 25,
-    }
-
-    const GAME_REWARDS = {
-      REACAO: BASE_GAME_REWARD,
-      EMBARALHADO: BASE_GAME_REWARD,
-      MEMORIA: BASE_GAME_REWARD,
-      ADIVINHACAO_CLOSEST: BASE_GAME_REWARD,
-      ADIVINHACAO_EXACT: 60,
-      DADOS_WIN: 35,
-      COMANDO_SUCCESS: 20,
-      ROLETA_WIN: 40,
-      ROLETA_WIN_GUARANTEED: 50,
-      BATATA_WIN: 20,
-    }
+    // GAME_REWARDS defined earlier to avoid TDZ during forced command dispatch
 
     function parsePositiveInt(value, fallback = 1) {
       const parsed = Number.parseInt(String(value || ""), 10)

@@ -707,15 +707,15 @@ const COMMAND_HELP = {
     details: "Gera um manual completo com seções. Normalmente usado por overrides/admins; resposta em DM.",
   },
 
-  ping: {
-    name: "Ping",
-    aliases: ["ping"],
-    description: "Testa a latência do bot",
-    usage: "!ping",
+  perf: {
+    name: "Perf",
+    aliases: ["perf"],
+    description: "Mostra métricas de performance do bot",
+    usage: "!perf",
     commonUsage: [
-      "!ping - Ver tempo de resposta",
+      "!perf - Ver tempo de resposta e uso de recursos",
     ],
-    details: "Retorna em menos que 100ms normalmente.",
+    details: "Retorna informações como latência, uptime e uso de memória.",
   },
 
   menu: {

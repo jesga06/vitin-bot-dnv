@@ -3538,14 +3538,14 @@ test("utility router handles hidden !jid only in DM", async () => {
   assert.match(sent[0].payload.text, /5511999999999@s\.whatsapp\.net/)
 })
 
-test("utility router handles !ping command", async () => {
+test("utility router handles !perf command", async () => {
   const { sock, sent } = createSockCapture()
 
   const handled = await handleUtilityCommands({
     sock,
     from: "group@g.us",
     sender: "user@s.whatsapp.net",
-    cmd: "!ping",
+    cmd: "!perf",
     prefix: "!",
     isGroup: true,
     msg: { message: {} },
@@ -3559,9 +3559,8 @@ test("utility router handles !ping command", async () => {
   })
 
   assert.equal(handled, true)
-  assert.equal(sent.length, 2)
-  assert.match(String(sent[0].payload?.text || ""), /Pong/i)
-  assert.match(String(sent[1].payload?.text || ""), /Latência de resposta/i)
+  assert.equal(sent.length, 1)
+  assert.match(String(sent[0].payload?.text || ""), /PERFORMANCE/i)
 })
 
 test("utility router handles !punicoeslista command", async () => {

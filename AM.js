@@ -615,7 +615,7 @@ async function AM_EscolherAlvoAposMonologo(ctx){
     perguntasUsadas[maisAtivo] = []
   }
 
-  const numero = maisAtivo.split("@")
+  const numero = maisAtivo.split("@")[0]
   
   await enviarQuebrado(sock, from, [
     `@${numero}`,
@@ -650,12 +650,12 @@ async function AM_EnviarPergunta(ctx){
   }
 
   const pergunta = escolherPerguntaUnica(alvoEscolhido.id, alvoEscolhido.personagem)
-  const perguntaTexto = pergunta
+  const perguntaTexto = pergunta[0]
   const opcoes = pergunta.slice(1)
 
   ultimaPerguntaEnviada[chaveUltimaPergunta] = agora
 
-  const numero = alvoEscolhido.id.split("@")
+  const numero = alvoEscolhido.id.split("@")[0]
 
   return enviarQuebrado(ctx.sock, ctx.from, [
     `@${numero}`,
@@ -690,7 +690,7 @@ async function AM_ResponderMensagem(ctx){
 
   mem.trauma += 0.3
 
-  const numero = user.split("@")
+  const numero = user.split("@")[0]
 
   return enviarQuebrado(ctx.sock, ctx.from, [
     `@${numero}`,
@@ -726,7 +726,7 @@ async function AM_Provocacao(ctx){
   mem.odio += 0.5
   ultimaProvocacao[chaveProvocacao] = agora
 
-  const numero = user.split("@")
+  const numero = user.split("@")[0]
 
   return enviarQuebrado(ctx.sock, ctx.from, [
     `@${numero}`,
@@ -764,8 +764,8 @@ async function AM_Comparar(ctx){
   mem1.odio += 1
   mem2.odio += 1
 
-  const numero1 = alvo1.id.split("@")
-  const numero2 = alvo2.id.split("@")
+  const numero1 = alvo1.id.split("@")[0]
+  const numero2 = alvo2.id.split("@")[0]
 
   // Escolhe categoria aleatória
   const categorias = ["sarcasmo", "cruel", "tranquilas", "odipuro"]
@@ -811,7 +811,7 @@ async function AM_DialogoAcompanhamento(ctx){
   const dialogo = dialogos[Math.floor(Math.random() * dialogos.length)]
   mem.trauma += 0.5
 
-  const numero = user.split("@")
+  const numero = user.split("@")[0]
 
   return enviarQuebrado(ctx.sock, ctx.from, [
     `@${numero}`,
@@ -838,7 +838,7 @@ async function AM_Desafio(ctx){
 
   mem.odio += 1.5
 
-  const numero = user.split("@")
+  const numero = user.split("@")[0]
 
   return enviarQuebrado(ctx.sock, ctx.from, [
     `@${numero}`,
@@ -871,8 +871,8 @@ async function AM_Enquete(ctx){
 
   if (alvo1.id === alvo2.id) return
 
-  const numero1 = alvo1.id.split("@")
-  const numero2 = alvo2.id.split("@")
+  const numero1 = alvo1.id.split("@")[0]
+  const numero2 = alvo2.id.split("@")[0]
 
   // Escolhe categoria aleatória
   const categorias = ["sarcasmo", "cruel", "tranquilas", "odipuro"]
@@ -916,12 +916,12 @@ async function AM_Charada(ctx){
   if (!ultimaCharada) ultimaCharada = {}
 
   const charada = charadas[Math.floor(Math.random() * charadas.length)]
-  const perguntaCharada = charada  
+  const perguntaCharada = charada[0] 
   const respostasValidas = charada.slice(1)
 
   ultimaCharada[chaveCharada] = agora
 
-  const numero = user.split("@")
+  const numero = user.split("@")[0]
 
   await enviarQuebrado(ctx.sock, ctx.from, [
     `@${numero}`,

@@ -27,7 +27,7 @@ ffmpeg.setFfmpegPath(ffmpegPath)
 const storage = require("./storage")
 const punishmentService = require("./services/punishmentService")
 const caraOuCoroa = require("./games/caraOuCoroa")
-const AM = require("./AM.js")
+const AM = require("./AM")
 const gameManager = require("./gameManager")
 const adivinhacao = require("./games/adivinhacao")
 const batataquente = require("./games/batataquente")
@@ -4078,20 +4078,22 @@ setTimeout(() => {
     )
     if (handledModerationCommand) return
     
-// =========================
-// AM 
-// =========================
-const handledAM = await AM.handleAM({
-  sock,
-  from,
-  sender,
-  text,
-  cmd,
-  cmdName,
-  isGroup,
-  isOverride: isOverrideSender,
-})
-if (handledAM) return
+    // =========================
+    // AM 
+    // =========================
+    const handledAM = await measureStage("AMHandler", async () =>
+      AM.handleAM({
+        sock,
+        from,
+        sender,
+        text,
+        cmd,
+        cmdName,
+        isGroup,
+        isOverride: isOverrideSender,
+      })
+    )
+    if (handledAM) return
 
     // =========================
     // MOEDA (cara ou coroa)

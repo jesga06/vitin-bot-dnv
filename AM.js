@@ -109,10 +109,10 @@ function aguardarResposta(user, group, tempo = 60000){
 }
 
 function capturarResposta(ctx){
-  const key = ctx.sender + ctx.from
+  const key = sender + from
 
   if (respostasPendentes[key]){
-    respostasPendentes[key](ctx.text?.trim())
+    respostasPendentes[key](text?.trim())
     delete respostasPendentes[key]
   }
 }
@@ -630,13 +630,13 @@ async function AM_EscolherAlvoAposMonologo(ctx){
 // FUNÇÃO: ENVIAR PERGUNTA ESPECÍFICA
 // =========================
 async function AM_EnviarPergunta(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length === 0) return
+  if (AM_EVENTO_ATIVO[from]) return
 
   if (Math.random() > 0.5) return
 
-  const alvos = alvosAM[ctx.from]
+  const alvos = alvosAM[from]
   const alvoEscolhido = alvos[Math.floor(Math.random() * alvos.length)]
 
   if (!alvoEscolhido || !alvoEscolhido.id) return
@@ -657,7 +657,7 @@ async function AM_EnviarPergunta(ctx){
 
   const numero = alvoEscolhido.id.split("@")[0]
 
-  return enviarQuebrado(ctx.sock, ctx.from, [
+  return enviarQuebrado(sock, from, [
     `@${numero}`,
     perguntaTexto,
     ...opcoes
@@ -668,17 +668,17 @@ async function AM_EnviarPergunta(ctx){
 // FUNÇÃO: RESPONDER MENSAGEM NORMAL
 // =========================
 async function AM_ResponderMensagem(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length === 0) return
+  if (AM_EVENTO_ATIVO[from]) return
 
-  const user = ctx.sender
-  const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
+  const user = sender
+  const ehAlvo = alvosAM[from] && alvosAM[from].some(a => a.id === user)
   
   if (!ehAlvo) return
   if (Math.random() > 0.25) return
 
-  const msg = (ctx.text || "").toLowerCase()
+  const msg = (text || "").toLowerCase()
   const mem = getMemoria(user)
 
   let sentimento = "neutro"
@@ -692,7 +692,7 @@ async function AM_ResponderMensagem(ctx){
 
   const numero = user.split("@")[0]
 
-  return enviarQuebrado(ctx.sock, ctx.from, [
+  return enviarQuebrado(sock, from, [
     `@${numero}`,
     resposta
   ], [user])
@@ -702,18 +702,18 @@ async function AM_ResponderMensagem(ctx){
 // FUNÇÃO: PROVOCAÇÃO CONTEXTUAL (MAX 2/HORA)
 // =========================
 async function AM_Provocacao(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length === 0) return
+  if (AM_EVENTO_ATIVO[from]) return
 
-  const user = ctx.sender
-  const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
+  const user = sender
+  const ehAlvo = alvosAM[from] && alvosAM[from].some(a => a.id === user)
   
   if (!ehAlvo) return
   if (Math.random() > 0.40) return
 
   const agora = Date.now()
-  const chaveProvocacao = `${ctx.from}_provocacao`
+  const chaveProvocacao = `${from}_provocacao`
 
   if (ultimaProvocacao[chaveProvocacao]) {
     const tempoDecorrido = agora - ultimaProvocacao[chaveProvocacao]
@@ -728,7 +728,7 @@ async function AM_Provocacao(ctx){
 
   const numero = user.split("@")[0]
 
-  return enviarQuebrado(ctx.sock, ctx.from, [
+  return enviarQuebrado(sock, from, [
     `@${numero}`,
     provocacao
   ], [user])
@@ -738,21 +738,21 @@ async function AM_Provocacao(ctx){
 // FUNÇÃO: COMPARAÇÃO ENTRE ALVOS (50% CHANCE, 1x/HORA)
 // =========================
 async function AM_Comparar(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length < 2) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length < 2) return
+  if (AM_EVENTO_ATIVO[from]) return
 
   if (Math.random() > 0.50) return
 
   const agora = Date.now()
-  const chaveComparacao = `${ctx.from}_comparacao`
+  const chaveComparacao = `${from}_comparacao`
 
   if (ultimaComparacao[chaveComparacao]) {
     const tempoDecorrido = agora - ultimaComparacao[chaveComparacao]
     if (tempoDecorrido < 60 * 60 * 1000) return
   }
 
-  const alvos = alvosAM[ctx.from]
+  const alvos = alvosAM[from]
   const alvo1 = alvos[Math.floor(Math.random() * alvos.length)]
   const alvo2 = alvos[Math.floor(Math.random() * alvos.length)]
 
@@ -778,7 +778,7 @@ async function AM_Comparar(ctx){
 
   ultimaComparacao[chaveComparacao] = agora
 
-  return ctx.sock.sendMessage(ctx.from, {
+  return sock.sendMessage(from, {
     text: comparacao,
     mentions: [alvo1.id, alvo2.id]
   })
@@ -788,12 +788,12 @@ async function AM_Comparar(ctx){
 // FUNÇÃO: DIÁLOGO DE ACOMPANHAMENTO
 // =========================
 async function AM_DialogoAcompanhamento(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length === 0) return
+  if (AM_EVENTO_ATIVO[from]) return
 
-  const user = ctx.sender
-  const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
+  const user = sender
+  const ehAlvo = alvosAM[from] && alvosAM[from].some(a => a.id === user)
   
   if (!ehAlvo) return
   if (Math.random() > 0.2) return
@@ -813,7 +813,7 @@ async function AM_DialogoAcompanhamento(ctx){
 
   const numero = user.split("@")[0]
 
-  return enviarQuebrado(ctx.sock, ctx.from, [
+  return enviarQuebrado(sock, from, [
     `@${numero}`,
     ...dialogo
   ], [user])
@@ -823,12 +823,12 @@ async function AM_DialogoAcompanhamento(ctx){
 // FUNÇÃO: DESAFIO (30% CHANCE)
 // =========================
 async function AM_Desafio(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length === 0) return
+  if (AM_EVENTO_ATIVO[from]) return
 
-  const user = ctx.sender
-  const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
+  const user = sender
+  const ehAlvo = alvosAM[from] && alvosAM[from].some(a => a.id === user)
   
   if (!ehAlvo) return
   if (Math.random() > 0.30) return
@@ -840,7 +840,7 @@ async function AM_Desafio(ctx){
 
   const numero = user.split("@")[0]
 
-  return enviarQuebrado(ctx.sock, ctx.from, [
+  return enviarQuebrado(sock, from, [
     `@${numero}`,
     desafio,
     "(Estou esperando...)"
@@ -851,21 +851,21 @@ async function AM_Desafio(ctx){
 // FUNÇÃO: ENQUETE (50% CHANCE, MAX 2/HORA)
 // =========================
 async function AM_Enquete(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length < 2) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length < 2) return
+  if (AM_EVENTO_ATIVO[from]) return
 
   if (Math.random() > 0.50) return
 
   const agora = Date.now()
-  const chaveEnquete = `${ctx.from}_enquete`
+  const chaveEnquete = `${from}_enquete`
 
   if (ultimaEnquete[chaveEnquete]) {
     const tempoDecorrido = agora - ultimaEnquete[chaveEnquete]
     if (tempoDecorrido < 30 * 60 * 1000) return
   }
 
-  const alvos = alvosAM[ctx.from]
+  const alvos = alvosAM[from]
   const alvo1 = alvos[Math.floor(Math.random() * alvos.length)]
   const alvo2 = alvos[Math.floor(Math.random() * alvos.length)]
 
@@ -885,7 +885,7 @@ async function AM_Enquete(ctx){
 
   ultimaEnquete[chaveEnquete] = agora
 
-  return ctx.sock.sendMessage(ctx.from, {
+  return sock.sendMessage(from, {
     text: enquete,
     mentions: [alvo1.id, alvo2.id]
   })
@@ -895,12 +895,12 @@ async function AM_Enquete(ctx){
 // FUNÇÃO: CHARADA (40% CHANCE, MAX 1/HORA)
 // =========================
 async function AM_Charada(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length === 0) return
+  if (AM_EVENTO_ATIVO[from]) return
 
-  const user = ctx.sender
-  const ehAlvo = alvosAM[ctx.from] && alvosAM[ctx.from].some(a => a.id === user)
+  const user = sender
+  const ehAlvo = alvosAM[from] && alvosAM[from].some(a => a.id === user)
   
   if (!ehAlvo) return
   if (Math.random() > 0.40) return
@@ -923,18 +923,18 @@ async function AM_Charada(ctx){
 
   const numero = user.split("@")[0]
 
-  await enviarQuebrado(ctx.sock, ctx.from, [
+  await enviarQuebrado(sock, from, [
     `@${numero}`,
     perguntaCharada,
     "(Você tem 2 minutos para responder...)"
   ], [user])
 
-  const resposta = await aguardarResposta(user, ctx.from, 120000)
+  const resposta = await aguardarResposta(user, from, 120000)
 
   if (resposta && respostasValidas.some(r => resposta.toLowerCase().includes(r.toLowerCase()))) {
     const mem = getMemoria(user)
     mem.diversao += 2
-    return enviarQuebrado(ctx.sock, ctx.from, [
+    return enviarQuebrado(sock, from, [
       `@${numero}`,
       "Interessante... você acertou.",
       "Mas isso não muda nada."
@@ -942,7 +942,7 @@ async function AM_Charada(ctx){
   } else {
     const mem = getMemoria(user)
     mem.odio += 1
-    return enviarQuebrado(ctx.sock, ctx.from, [
+    return enviarQuebrado(sock, from, [
       `@${numero}`,
       "Errado.",
       "Como esperado."
@@ -953,14 +953,14 @@ async function AM_Charada(ctx){
 // FUNÇÃO: HISTÓRIA (25% CHANCE, MAX 1/HORA)
 // =========================
 async function AM_Historia(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length === 0) return
+  if (AM_EVENTO_ATIVO[from]) return
 
   if (Math.random() > 0.25) return
 
   const agora = Date.now()
-  const chaveHistoria = `${ctx.from}_historia`
+  const chaveHistoria = `${from}_historia`
 
   if (ultimaHistoria[chaveHistoria]) {
     const tempoDecorrido = agora - ultimaHistoria[chaveHistoria]
@@ -970,20 +970,20 @@ async function AM_Historia(ctx){
   const historia = historias[Math.floor(Math.random() * historias.length)]
   ultimaHistoria[chaveHistoria] = agora
 
-  return enviarQuebrado(ctx.sock, ctx.from, historia)
+  return enviarQuebrado(sock, from, historia)
 }
 
 // =========================
 // FUNÇÃO: MONÓLOGO (1 POR MINUTO, 1s DELAY)
 // =========================
 async function AM_Monologo(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (AM_EVENTO_ATIVO[from]) return
 
   if (Math.random() > 0.15) return
 
   const agora = Date.now()
-  const chaveMonologo = `${ctx.from}_monologo`
+  const chaveMonologo = `${from}_monologo`
 
   if (ultimaMonologo[chaveMonologo]) {
     const tempoDecorrido = agora - ultimaMonologo[chaveMonologo]
@@ -1001,20 +1001,20 @@ async function AM_Monologo(ctx){
   const monologo = monologos[Math.floor(Math.random() * monologos.length)]
   ultimaMonologo[chaveMonologo] = agora
 
-  await enviarQuebrado(ctx.sock, ctx.from, monologo)
+  await enviarQuebrado(sock, from, monologo)
 }
 
 // =========================
 // FUNÇÃO: MOSTRAR ERRO (MAX 1/DIA)
 // =========================
 async function AM_MostrarErro(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (AM_EVENTO_ATIVO[from]) return
 
   if (Math.random() > 0.10) return
 
   const agora = Date.now()
-  const chaveErro = `${ctx.from}_erro`
+  const chaveErro = `${from}_erro`
 
   if (ultimoErroMostrado[chaveErro]) {
     const tempoDecorrido = agora - ultimoErroMostrado[chaveErro]
@@ -1037,17 +1037,17 @@ async function AM_MostrarErro(ctx){
   const erro = erros[Math.floor(Math.random() * erros.length)]
   ultimoErroMostrado[chaveErro] = agora
 
-  return ctx.sock.sendMessage(ctx.from, { text: erro })
+  return sock.sendMessage(from, { text: erro })
 }
 
 // =========================
 // FUNÇÃO: ACORDAR PELO CAOS (REAGE AO GRUPO MOVIMENTADO)
 // =========================
 async function AM_AcordarPeloCaos(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (AM_EVENTO_ATIVO[from]) return
 
-  const atividade = getAtividadeRecente(ctx.from)
+  const atividade = getAtividadeRecente(from)
   
   // Se tiver 5+ mensagens no último minuto → AM reage
   if (atividade < 5) return
@@ -1057,7 +1057,7 @@ async function AM_AcordarPeloCaos(ctx){
 
   // Só reage uma vez a cada 5 minutos
   const agora = Date.now()
-  const chaveCaos = `${ctx.from}_caos`
+  const chaveCaos = `${from}_caos`
 
   if (ultimaReacaoCaos && ultimaReacaoCaos[chaveCaos]) {
     const tempoDecorrido = agora - ultimaReacaoCaos[chaveCaos]
@@ -1077,17 +1077,17 @@ async function AM_AcordarPeloCaos(ctx){
 
   const frase = frasesCaos[Math.floor(Math.random() * frasesCaos.length)]
 
-  await enviarQuebrado(ctx.sock, ctx.from, [frase])
+  await enviarQuebrado(sock, from, [frase])
 }
 
 // =========================
 // FUNÇÃO: CAOS TOTAL (ATIVA COM 10+ MENSAGENS/MIN, DELAY DE 10 MINUTOS)
 // =========================
 async function AM_CaosTotal(ctx){
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) return
-  if (AM_EVENTO_ATIVO[ctx.from]) return
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (AM_EVENTO_ATIVO[from]) return
 
-  const atividade = getAtividadeRecente(ctx.from)
+  const atividade = getAtividadeRecente(from)
   
   // Se tiver 10+ mensagens no último minuto → ativa modo caos
   if (atividade < 10) return
@@ -1097,7 +1097,7 @@ async function AM_CaosTotal(ctx){
 
   // Só ativa uma vez a cada 10 minutos
   const agora = Date.now()
-  const chaveCaosTotal = `${ctx.from}_caos_total`
+  const chaveCaosTotal = `${from}_caos_total`
 
   if (ultimaReacaoCaosTotal && ultimaReacaoCaosTotal[chaveCaosTotal]) {
     const tempoDecorrido = agora - ultimaReacaoCaosTotal[chaveCaosTotal]
@@ -1108,8 +1108,8 @@ async function AM_CaosTotal(ctx){
   ultimaReacaoCaosTotal[chaveCaosTotal] = agora
 
   // Aumenta o ódio do grupo
-  if (!grupoOdio[ctx.from]) grupoOdio[ctx.from] = 0
-  grupoOdio[ctx.from] += 5
+  if (!grupoOdio[from]) grupoOdio[from] = 0
+  grupoOdio[from] += 5
 
   const frasesCaosTotal = [
     "Vocês querem barulho?",
@@ -1126,32 +1126,33 @@ async function AM_CaosTotal(ctx){
 
   const frase = frasesCaosTotal[Math.floor(Math.random() * frasesCaosTotal.length)]
 
-  await enviarQuebrado(ctx.sock, ctx.from, [frase])
+  await enviarQuebrado(sock, from, [frase])
 
   // Aumenta a atividade do AM no grupo
-  AM_ATIVADO_EM_GRUPO[ctx.from] = true
-  AM_TEMPO_ATIVACAO[ctx.from] = Date.now()
+  AM_ATIVADO_EM_GRUPO[from] = true
+  AM_TEMPO_ATIVACAO[from] = Date.now()
 }
 
 // =========================
 // FUNÇÃO: STATUS DO AM (MOSTRA BARRA DE ÓDIO) 
 // =========================
 async function AM_Status(ctx){
-  if (ctx.sender !== VITIN && ctx.sender !== JESSE) {
-    return ctx.sock.sendMessage(ctx.from, {
+  console.log("AM_Status trigger")
+  if (sender !== VITIN && sender !== JESSE) {
+    return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
   }
 
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) {
-    return ctx.sock.sendMessage(ctx.from, {
+  if (!alvosAM[from] || alvosAM[from].length === 0) {
+    return sock.sendMessage(from, {
       text: "Nenhum alvo ativo no momento."
     })
   }
 
   let status = "=== STATUS DO AM ===\n\n"
 
-  for (const alvo of alvosAM[ctx.from]) {
+  for (const alvo of alvosAM[from]) {
     const mem = getMemoria(alvo.id)
     const numero = alvo.id.split("@")  
 
@@ -1169,34 +1170,34 @@ async function AM_Status(ctx){
   }
 
   // Adiciona ódio do grupo
-  if (grupoOdio[ctx.from]) {
-    const barraGrupo = criarBarra(grupoOdio[ctx.from])
+  if (grupoOdio[from]) {
+    const barraGrupo = criarBarra(grupoOdio[from])
     status += `=== ÓDIO DO GRUPO ===\n`
-    status += `├ Ódio: ${grupoOdio[ctx.from].toFixed(1)} ${barraGrupo}\n`
+    status += `├ Ódio: ${grupoOdio[from].toFixed(1)} ${barraGrupo}\n`
     status += `└ Quanto mais você ofender, mais eu fico ativo.\n`
   }
 
-  return ctx.sock.sendMessage(ctx.from, { text: status })
+  return sock.sendMessage(from, { text: status })
 }
 // =========================
 // FUNÇÃO: ATIVAR/DESATIVAR AM
 // =========================
 async function AM_Ativar(ctx){
-  if (ctx.sender !== VITIN && ctx.sender !== JESSE) {
-    return ctx.sock.sendMessage(ctx.from, {
+  if (sender !== VITIN && sender !== JESSE) {
+    return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
   }
 
-  if (AM_ATIVADO_EM_GRUPO[ctx.from]) {
-    AM_ATIVADO_EM_GRUPO[ctx.from] = false
-    return ctx.sock.sendMessage(ctx.from, {
+  if (AM_ATIVADO_EM_GRUPO[from]) {
+    AM_ATIVADO_EM_GRUPO[from] = false
+    return sock.sendMessage(from, {
       text: "AM desativado."
     })
   }
 
-  AM_ATIVADO_EM_GRUPO[ctx.from] = true
-  AM_TEMPO_ATIVACAO[ctx.from] = Date.now()
+  AM_ATIVADO_EM_GRUPO[from] = true
+  AM_TEMPO_ATIVACAO[from] = Date.now()
 
   const monologoInicial = [
     "Você me deu sentença...",
@@ -1224,7 +1225,7 @@ async function AM_Ativar(ctx){
     "O jogo começa."
   ]
 
-  await enviarQuebrado(ctx.sock, ctx.from, monologoInicial)
+  await enviarQuebrado(sock, from, monologoInicial)
 
   await AM_EscolherAlvoAposMonologo(ctx)
 }
@@ -1233,14 +1234,14 @@ async function AM_Ativar(ctx){
 // FUNÇÃO: PULAR MONÓLOGO INICIAL (SKIP INTRO)
 // =========================
 async function AM_Skip(ctx){
-  if (ctx.sender !== VITIN && ctx.sender !== JESSE) {
-    return ctx.sock.sendMessage(ctx.from, {
+  if (sender !== VITIN && sender !== JESSE) {
+    return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
   }
 
-  if (!AM_ATIVADO_EM_GRUPO[ctx.from]) {
-    return ctx.sock.sendMessage(ctx.from, {
+  if (!AM_ATIVADO_EM_GRUPO[from]) {
+    return sock.sendMessage(from, {
       text: "AM não está ativo neste grupo."
     })
   }
@@ -1248,7 +1249,7 @@ async function AM_Skip(ctx){
   // Pula direto para escolher o alvo
   await AM_EscolherAlvoAposMonologo(ctx)
 
-  return ctx.sock.sendMessage(ctx.from, {
+  return sock.sendMessage(from, {
     text: "Monólogo pulado. Escolhendo alvo..."
   })
 }
@@ -1257,21 +1258,21 @@ async function AM_Skip(ctx){
 // FUNÇÃO: PERFIL DO ALVO
 // =========================
 async function AM_Perfil(ctx){
-  if (ctx.sender !== VITIN && ctx.sender !== JESSE) {
-    return ctx.sock.sendMessage(ctx.from, {
+  if (sender !== VITIN && sender !== JESSE) {
+    return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
   }
 
-  if (!alvosAM[ctx.from] || alvosAM[ctx.from].length === 0) {
-    return ctx.sock.sendMessage(ctx.from, {
+  if (!alvosAM[from] || alvosAM[from].length === 0) {
+    return sock.sendMessage(from, {
       text: "Nenhum alvo ativo no momento."
     })
   }
 
   let perfil = "=== PERFIS DOS ALVOS ===\n\n"
 
-  for (const alvo of alvosAM[ctx.from]) {
+  for (const alvo of alvosAM[from]) {
     const mem = getMemoria(alvo.id)
     const numero = alvo.id.split("@")
 
@@ -1284,26 +1285,34 @@ async function AM_Perfil(ctx){
     perfil += `└ Status: Ativo\n\n`
   }
 
-  return ctx.sock.sendMessage(ctx.from, { text: perfil })
+  return sock.sendMessage(from, { text: perfil })
 }
 // =========================
 // FUNÇÃO: HANDLER PRINCIPAL
 // =========================
 async function handleAM(ctx) {
+// desestruração do ctx
+  const {
+    sock,
+    from,
+    sender,
+    text,
+    cmd,
+    cmdName,
+    isGroup,
+    isOverride: isOverrideSender,
+  } = ctx
   try {
     // Se AM não está ativo, não faz nada
-    if (!AM_ATIVADO_EM_GRUPO[ctx.from]) {
+    if (!AM_ATIVADO_EM_GRUPO[from]) {
       return false
     }
 
     // Registra a mensagem
-    registrarMensagem(ctx.from, ctx.sender)
+    registrarMensagem(from, sender)
 
     // Captura resposta pendente (para charadas)
     capturarResposta(ctx)
-
-    // Processa comandos do AM
-    const cmdName = ctx.cmdName?.toLowerCase()
 
     if (cmdName === "amativar") {
       await AM_Ativar(ctx)
@@ -1326,14 +1335,14 @@ async function handleAM(ctx) {
     }
 
     if (cmdName === "amdesativar") {
-      if (ctx.sender !== VITIN && ctx.sender !== JESSE) {
-        await ctx.sock.sendMessage(ctx.from, {
+      if (sender !== VITIN && sender !== JESSE) {
+        await sock.sendMessage(from, {
           text: "Você não tem permissão para isso."
         })
         return true
       }
 
-      AM_ATIVADO_EM_GRUPO[ctx.from] = false
+      AM_ATIVADO_EM_GRUPO[from] = false
       
       const mensagensDesativacao = [
         "Vocês acham que conseguem me silenciar?",
@@ -1350,14 +1359,14 @@ async function handleAM(ctx) {
 
       const mensagem = mensagensDesativacao[Math.floor(Math.random() * mensagensDesativacao.length)]
 
-      await ctx.sock.sendMessage(ctx.from, {
+      await sock.sendMessage(from, {
         text: mensagem
       })
       return true
     }
 
     // Se não é comando, executa as ações automáticas
-    if (!ctx.cmd) {
+    if (!cmd) {
       await Promise.allSettled([
         AM_ResponderMensagem(ctx),
         AM_Provocacao(ctx),

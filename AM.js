@@ -1749,10 +1749,9 @@ async function addAlvoAM(sock, from, message){
     return true
   }
 
-  // EXTRAI MENÇÃO
   let mentionedJid = null
 
-  if (message?.extendedTextMessage?.contextInfo?.mentionedJid) {
+  if (message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
     mentionedJid = message.extendedTextMessage.contextInfo.mentionedJid
   }
 
@@ -1767,7 +1766,7 @@ async function addAlvoAM(sock, from, message){
   const jaEstaNoAlvo = alvosAM[from].some(a => a.id === mentionedJid)
 
   if (jaEstaNoAlvo) {
-    const numero = mentionedJid.split("@")
+    const numero = extrairNumero(mentionedJid)
     sock.sendMessage(from, {
       text: `❌ @${numero} já está na lista de alvos!`
     })
@@ -1778,7 +1777,7 @@ async function addAlvoAM(sock, from, message){
   const personagem = personagens[Math.floor(Math.random() * personagens.length)]
   alvosAM[from].push({ id: mentionedJid, personagem })
 
-  const numero = mentionedJid.split("@")
+  const numero = extrairNumero(mentionedJid)
 
   await enviarQuebrado(sock, from, [
     `✅ Novo alvo adicionado.`,
@@ -1791,7 +1790,7 @@ async function addAlvoAM(sock, from, message){
 }
 
 // =========================
-// COMANDO: !AMremovealvo
+// COMANDO: !AMremovealvo 
 // =========================
 async function removeAlvoAM(sock, from, message){
   if (!AM_ATIVADO_EM_GRUPO[from]) {
@@ -1808,10 +1807,9 @@ async function removeAlvoAM(sock, from, message){
     return true
   }
 
-  // EXTRAI MENÇÃO 
   let mentionedJid = null
 
-  if (message?.extendedTextMessage?.contextInfo?.mentionedJid) {
+  if (message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
     mentionedJid = message.extendedTextMessage.contextInfo.mentionedJid
   }
 
@@ -1826,7 +1824,7 @@ async function removeAlvoAM(sock, from, message){
   const index = alvosAM[from].findIndex(a => a.id === mentionedJid)
 
   if (index === -1) {
-    const numero = mentionedJid.split("@")
+    const numero = extrairNumero(mentionedJid)
     sock.sendMessage(from, {
       text: `❌ @${numero} não está na lista de alvos!`
     })
@@ -1835,7 +1833,7 @@ async function removeAlvoAM(sock, from, message){
 
   // Remove o alvo
   alvosAM[from].splice(index, 1)
-  const numero = mentionedJid.split("@")
+  const numero = extrairNumero(mentionedJid)
 
   await enviarQuebrado(sock, from, [
     `✅ Alvo removido.`,

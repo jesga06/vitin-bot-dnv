@@ -2194,7 +2194,6 @@ async function handleAM(ctx) {
       AM_ReagirComOlho(sock, from, sender, key, messageTimestamp).catch(e => console.error("Erro ao reagir:", e))
       AM_DeletarMensagem(sock, from, sender, key, messageTimestamp).catch(e => console.error("Erro ao deletar:", e))
     }
-
 // =========================
 // EXPORTAR FUNÇÕES
 // =========================

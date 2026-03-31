@@ -4092,7 +4092,7 @@ setTimeout(() => {
         cmd,
         cmdName,
         isGroup,
-        isOverride: isOverrideSender(),
+        isOverride: isOverrideSender,
       })
     )
     if (handledAM) return

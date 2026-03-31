@@ -1163,7 +1163,7 @@ async function AM_CaosTotal(ctx){
 async function AM_Status(ctx){
   const {from, sock, isOverride} = ctx
   console.log("AM_Status trigger")
-  if (isOverride) {
+  if (!isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
@@ -1209,7 +1209,7 @@ async function AM_Status(ctx){
 // =========================
 async function AM_Ativar(ctx){
   const {from, sock, isOverride} = ctx
-  if (isOverride) {
+  if (!isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
@@ -1261,7 +1261,7 @@ async function AM_Ativar(ctx){
 // =========================
 async function AM_Skip(ctx){
   const {from, sock, isOverride} = ctx
-  if (isOverride) {
+  if (!isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
@@ -1286,7 +1286,7 @@ async function AM_Skip(ctx){
 // =========================
 async function AM_Perfil(ctx){
   const {from, sock, isOverride} = ctx
-  if (isOverride) {
+  if (!isOverride) {
     return sock.sendMessage(from, {
       text: "Você não tem permissão para isso."
     })
@@ -1358,7 +1358,7 @@ async function handleAM(ctx) {
     }
 
     if (cmdName === prefix + "amdesativar") {
-      if (isOverride) {
+      if (!isOverride) {
         await sock.sendMessage(from, {
           text: "Você não tem permissão para isso."
         })

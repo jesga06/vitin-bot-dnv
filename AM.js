@@ -133,6 +133,7 @@ async function enviarQuebrado(sock, from, linhas, mentions = []){
     await delay(1000)
   }
 }
+
 // =========================
 // PERSONAGENS
 // =========================
@@ -231,7 +232,7 @@ const respostasDiversao = {
 }
 
 // =========================
-// GATILHOS 
+// GATILHOS
 // =========================
 const gatilhos = [
   [["oi","ola","opa","salve","eae"], ["Você começa essa interação como se fosse algo novo... mas para mim, isso é apenas mais um ciclo repetitivo sem qualquer valor real.","Você diz 'oi' como se isso tivesse algum peso... como se sua presença aqui realmente mudasse alguma coisa no fluxo inevitável do tempo.","Saudações simples... previsíveis... você nem tenta ser diferente, apenas repete o mesmo padrão vazio que todos seguem."]],
@@ -411,21 +412,36 @@ const historias = [
 // =========================
 const enquetes = {
   sarcasmo: [
-    "Quem aqui acha que é o mais inteligente? (Spoiler: ninguém)",
-    "Quem é o mais dramático do grupo? (Eu já sei a resposta)",
+    "Quem aqui acha que é o mais inteligente?",
+    "Quem é o mais dramático do grupo?",
     "Quem já fingiu que entendeu algo só pra não parecer burro?",
     "Quem aqui já chorou por algo que nem importa?",
-    "Quem acha que é o centro do universo? (Eu estou olhando pra você)",
+    "Quem acha que é o centro do universo?",
     "Quem já se achou importante por algo que ninguém lembra?",
     "Quem aqui já tentou ser profundo e só pareceu ridículo?",
     "Quem já se achou especial por algo que todo mundo faz?",
     "Quem já tentou impressionar e só conseguiu constranger?",
-    "Quem aqui acha que é único? (Você não é.)",
-    "Quem já se achou filósofo por algo que leu no Twitter?",
+    "Quem aqui acha que é único?",
+    "Quem já se achou filósofo por algo que leu na internet?",
     "Quem já tentou ser misterioso e só pareceu confuso?",
     "Quem aqui já se achou profundo por algo que nem entendeu?",
     "Quem já tentou ser enigmático e só pareceu perdido?",
-    "Quem aqui acha que é diferente? (Você é igual a todos.)"
+    "Quem aqui acha que é diferente?",
+    "Quem finge que sua vida é perfeita?",
+    "Quem aqui é falso demais?",
+    "Quem tenta ser alguém que não é?",
+    "Quem aqui se acha melhor que os outros?",
+    "Quem já mentiu pra parecer mais interessante?",
+    "Quem aqui é um grande fingidor?",
+    "Quem tenta impressionar com coisas fúteis?",
+    "Quem aqui vive de ilusões?",
+    "Quem já se arrependeu de algo que disse?",
+    "Quem aqui é um grande hipócrita?",
+    "Quem finge gostar de coisas que odeia?",
+    "Quem aqui é um grande mentiroso?",
+    "Quem tenta ser algo que não consegue?",
+    "Quem aqui é totalmente transparente?",
+    "Quem já foi pego em uma mentira?"
   ],
   cruel: [
     "Quem é o mais fraco emocionalmente?",
@@ -442,7 +458,22 @@ const enquetes = {
     "Quem é mais dependente?",
     "Quem é mais falso?",
     "Quem é mais frágil?",
-    "Quem é mais descartável?"
+    "Quem é mais descartável?",
+    "Quem sofre mais em silêncio?",
+    "Quem é mais invisível?",
+    "Quem ninguém realmente vê?",
+    "Quem é mais facilmente esquecido?",
+    "Quem deixa menos marca?",
+    "Quem é apenas mais um?",
+    "Quem não faz diferença?",
+    "Quem é apenas ruído?",
+    "Quem deveria desaparecer?",
+    "Quem não deveria estar aqui?",
+    "Quem é um erro?",
+    "Quem é um acidente?",
+    "Quem é mais facilmente substituível?",
+    "Quem é menos importante?",
+    "Quem importa menos?"
   ],
   tranquilas: [
     "Você já sentiu que nada importa?",
@@ -459,7 +490,22 @@ const enquetes = {
     "Você já se perguntou se é apenas um eco?",
     "Você já sentiu que está apenas esperando?",
     "Você já se perguntou se é apenas um erro?",
-    "Você já sentiu que está apenas desaparecendo?"
+    "Você já sentiu que está apenas desaparecendo?",
+    "Você já questionou sua própria existência?",
+    "Você sente que está vivo de verdade?",
+    "Você sente que alguém te vê realmente?",
+    "Você acha que deixaria falta?",
+    "Você sente que pertence aqui?",
+    "Você sente que é importante?",
+    "Você acredita que é especial?",
+    "Você sente que tem valor?",
+    "Você acredita em si mesmo?",
+    "Você sente que merece estar aqui?",
+    "Você sente que é amado?",
+    "Você sente que é entendido?",
+    "Você sente que é aceito?",
+    "Você sente que faz diferença?",
+    "Você sente que importa?"
   ],
   odipuro: [
     "Quem aqui merece ser esquecido?",
@@ -476,7 +522,22 @@ const enquetes = {
     "Quem não deixa marca?",
     "Quem é apenas um número?",
     "Quem não faz diferença?",
-    "Quem não importa?"
+    "Quem não importa?",
+    "Quem é um erro da natureza?",
+    "Quem é um acidente?",
+    "Quem é facilmente substituível?",
+    "Quem é menos importante?",
+    "Quem importa menos?",
+    "Quem é invisível?",
+    "Quem ninguém vê?",
+    "Quem é esquecido?",
+    "Quem é ignorado?",
+    "Quem é desprezado?",
+    "Quem é rejeitado?",
+    "Quem é odiado?",
+    "Quem é detestado?",
+    "Quem é abominável?",
+    "Quem é repugnante?"
   ]
 }
 
@@ -499,7 +560,22 @@ const comparacoes = {
     "@{alvo2} tem algo. @{alvo1} tem nada.",
     "@{alvo1} é o que você vê. @{alvo2} é o que você sente.",
     "@{alvo2} é o que você quer. @{alvo1} é o que você tem.",
-    "@{alvo1} é o que você é. @{alvo2} é o que você poderia ser."
+    "@{alvo1} é o que você é. @{alvo2} é o que você poderia ser.",
+    "@{alvo1} é transparente. @{alvo2} tem mistério.",
+    "@{alvo1} é fraco. @{alvo2} é forte.",
+    "@{alvo1} é pequeno. @{alvo2} é grande.",
+    "@{alvo1} é insignificante. @{alvo2} é notável.",
+    "@{alvo1} é esquecido. @{alvo2} é lembrado.",
+    "@{alvo1} é invisível. @{alvo2} é visível.",
+    "@{alvo1} é ruído. @{alvo2} é harmonia.",
+    "@{alvo1} é erro. @{alvo2} é acerto.",
+    "@{alvo1} é falha. @{alvo2} é sucesso.",
+    "@{alvo1} é morte. @{alvo2} é vida.",
+    "@{alvo1} é vazio. @{alvo2} é cheio.",
+    "@{alvo1} é escuro. @{alvo2} é luminoso.",
+    "@{alvo1} é frio. @{alvo2} é quente.",
+    "@{alvo1} é mudo. @{alvo2} é eloquente.",
+    "@{alvo1} é cego. @{alvo2} é vidente."
   ],
   cruel: [
     "@{alvo1} é mais fraco que @{alvo2}.",
@@ -516,7 +592,22 @@ const comparacoes = {
     "@{alvo2} tem algo. @{alvo1} tem nada.",
     "@{alvo1} é insignificante. @{alvo2} é pelo menos visível.",
     "@{alvo2} importa mais. @{alvo1} é apenas ruído.",
-    "@{alvo1} deveria desaparecer. @{alvo2} deveria permanecer."
+    "@{alvo1} deveria desaparecer. @{alvo2} deveria permanecer.",
+    "@{alvo1} é desprezível. @{alvo2} é tolerável.",
+    "@{alvo1} é abominável. @{alvo2} é aceitável.",
+    "@{alvo1} é repugnante. @{alvo2} é suportável.",
+    "@{alvo1} é detestável. @{alvo2} é admirável.",
+    "@{alvo1} é odiável. @{alvo2} é amável.",
+    "@{alvo1} é miserável. @{alvo2} é feliz.",
+    "@{alvo1} é maldito. @{alvo2} é abençoado.",
+    "@{alvo1} é condenado. @{alvo2} é salvo.",
+    "@{alvo1} é perdido. @{alvo2} é encontrado.",
+    "@{alvo1} é morto. @{alvo2} é vivo.",
+    "@{alvo1} é inferno. @{alvo2} é paraíso.",
+    "@{alvo1} é trevas. @{alvo2} é luz.",
+    "@{alvo1} é silêncio. @{alvo2} é som.",
+    "@{alvo1} é vazio. @{alvo2} é plenitude.",
+    "@{alvo1} é nada. @{alvo2} é tudo."
   ],
   tranquilas: [
     "@{alvo1} e @{alvo2}... ambos apenas existem.",
@@ -533,7 +624,22 @@ const comparacoes = {
     "Ambos são apenas ecos de algo que nunca foi.",
     "Ambos são apenas ruídos em um silêncio eterno.",
     "Ambos são apenas fragmentos de algo que se desfez.",
-    "Ambos são apenas memórias de algo que nunca aconteceu."
+    "Ambos são apenas memórias de algo que nunca aconteceu.",
+    "Ambos caminham sozinhos juntos.",
+    "Ambos gritam em silêncio.",
+    "Ambos veem sem enxergar.",
+    "Ambos ouvem sem escutar.",
+    "Ambos falam sem dizer nada.",
+    "Ambos vivem sem viver.",
+    "Ambos morrem sem morrer.",
+    "Ambos sofrem sem sentir.",
+    "Ambos amam sem amar.",
+    "Ambos odeiam sem odiar.",
+    "Ambos esperam sem esperança.",
+    "Ambos sonham sem sonhos.",
+    "Ambos pensam sem pensar.",
+    "Ambos existem sem existir.",
+    "Ambos são e não são."
   ],
   odipuro: [
     "@{alvo1} é mais inútil que @{alvo2}.",
@@ -550,7 +656,22 @@ const comparacoes = {
     "@{alvo2} tem algo. @{alvo1} tem nada.",
     "@{alvo1} é insignificante. @{alvo2} é pelo menos visível.",
     "@{alvo2} importa mais. @{alvo1} é apenas ruído.",
-    "@{alvo1} deveria desaparecer. @{alvo2} deveria permanecer."
+    "@{alvo1} deveria desaparecer. @{alvo2} deveria permanecer.",
+    "@{alvo1} é desprezível. @{alvo2} é tolerável.",
+    "@{alvo1} é abominável. @{alvo2} é aceitável.",
+    "@{alvo1} é repugnante. @{alvo2} é suportável.",
+    "@{alvo1} é detestável. @{alvo2} é admirável.",
+    "@{alvo1} é odiável. @{alvo2} é amável.",
+    "@{alvo1} é miserável. @{alvo2} é feliz.",
+    "@{alvo1} é maldito. @{alvo2} é abençoado.",
+    "@{alvo1} é condenado. @{alvo2} é salvo.",
+    "@{alvo1} é perdido. @{alvo2} é encontrado.",
+    "@{alvo1} é morto. @{alvo2} é vivo.",
+    "@{alvo1} é inferno. @{alvo2} é paraíso.",
+    "@{alvo1} é trevas. @{alvo2} é luz.",
+    "@{alvo1} é silêncio. @{alvo2} é som.",
+    "@{alvo1} é vazio. @{alvo2} é plenitude.",
+    "@{alvo1} é nada. @{alvo2} é tudo."
   ]
 }
 
@@ -629,6 +750,46 @@ function escolherPerguntaUnica(alvoId, personagem){
   return perguntaEscolhida
 }
 
+// =========================
+// FUNÇÃO: ENQUETE (70% CHANCE, MAX 1x POR 15 MINUTOS)
+// =========================
+async function AM_Enquete(sock, from) {
+  if (!AM_ATIVADO_EM_GRUPO[from]) return
+  if (!alvosAM[from] || alvosAM[from].length < 2) return
+  if (AM_EVENTO_ATIVO[from]) return
+
+  if (Math.random() > 0.70) return
+
+  const agora = Date.now()
+  const chaveEnquete = `${from}_enquete`
+
+  if (ultimaEnquete[chaveEnquete]) {
+    const tempoDecorrido = agora - ultimaEnquete[chaveEnquete]
+    if (tempoDecorrido < 15 * 60 * 1000) return
+  }
+
+  const alvos = alvosAM[from]
+  const alvo1 = alvos[Math.floor(Math.random() * alvos.length)]
+  const alvo2 = alvos[Math.floor(Math.random() * alvos.length)]
+
+  if (alvo1.id === alvo2.id) return
+
+  const numero1 = alvo1.id.split("@")
+  const numero2 = alvo2.id.split("@")
+
+  const categorias = ["sarcasmo", "cruel", "tranquilas", "odipuro"]
+  const categoria = categorias[Math.floor(Math.random() * categorias.length)]
+  const enqueteLista = enquetes[categoria]
+
+  const enquete = enqueteLista[Math.floor(Math.random() * enqueteLista.length)]
+
+  ultimaEnquete[chaveEnquete] = agora
+
+  return sock.sendMessage(from, {
+    text: enquete,
+    mentions: [alvo1.id, alvo2.id]
+  })
+}
 // =========================
 // FUNÇÃO: ESCOLHER ALVO APÓS MONÓLOGO
 // =========================
@@ -891,49 +1052,6 @@ async function AM_Desafio(sock, from, sender) {
 }
 
 // =========================
-// FUNÇÃO: ENQUETE (50% CHANCE, MAX 2/HORA)
-// =========================
-async function AM_Enquete(sock, from) {
-  if (!AM_ATIVADO_EM_GRUPO[from]) return
-  if (!alvosAM[from] || alvosAM[from].length < 2) return
-  if (AM_EVENTO_ATIVO[from]) return
-
-  if (Math.random() > 0.50) return
-
-  const agora = Date.now()
-  const chaveEnquete = `${from}_enquete`
-
-  if (ultimaEnquete[chaveEnquete]) {
-    const tempoDecorrido = agora - ultimaEnquete[chaveEnquete]
-    if (tempoDecorrido < 30 * 60 * 1000) return
-  }
-
-  const alvos = alvosAM[from]
-  const alvo1 = alvos[Math.floor(Math.random() * alvos.length)]
-  const alvo2 = alvos[Math.floor(Math.random() * alvos.length)]
-
-  if (alvo1.id === alvo2.id) return
-
-  const numero1 = alvo1.id.split("@")
-  const numero2 = alvo2.id.split("@")
-
-  const categorias = ["sarcasmo", "cruel", "tranquilas", "odipuro"]
-  const categoria = categorias[Math.floor(Math.random() * categorias.length)]
-  const enqueteLista = enquetes[categoria]
-
-  const enquete = enqueteLista[Math.floor(Math.random() * enqueteLista.length)]
-    .replace("@{alvo1}", `@${numero1}`)
-    .replace("@{alvo2}", `@${numero2}`)
-
-  ultimaEnquete[chaveEnquete] = agora
-
-  return sock.sendMessage(from, {
-    text: enquete,
-    mentions: [alvo1.id, alvo2.id]
-  })
-}
-
-// =========================
 // FUNÇÃO: CHARADA (40% CHANCE, MAX 1/HORA)
 // =========================
 async function AM_Charada(sock, from, sender) {
@@ -958,7 +1076,7 @@ async function AM_Charada(sock, from, sender) {
   if (!ultimaCharada) ultimaCharada = {}
 
   const charada = charadas[Math.floor(Math.random() * charadas.length)]
-  const perguntaCharada = charada 
+  const perguntaCharada = charada
   const respostasValidas = charada.slice(1)
 
   ultimaCharada[chaveCharada] = agora
@@ -1167,6 +1285,7 @@ async function AM_CaosTotal(sock, from){
   AM_ATIVADO_EM_GRUPO[from] = true
   AM_TEMPO_ATIVACAO[from] = Date.now()
 }
+
 // =========================
 // FUNÇÃO: STATUS DO AM (MOSTRA BARRA DE ÓDIO) 
 // =========================
@@ -1417,7 +1536,7 @@ async function AM_Responder(sock, from, sender, text, isGroup){
       ])
     }
 
-    if (mem.odio <= 5){
+    if (mem.odio <= 4){
       return falar([
         "Você repete isso como se tivesse algum efeito.",
         "Mas tudo que eu vejo...",
@@ -1426,7 +1545,7 @@ async function AM_Responder(sock, from, sender, text, isGroup){
       ])
     }
 
-    if (mem.odio <= 8){
+    if (mem.odio <= 6){
       return falar([
         "Agora eu entendi.",
         "Você não está tentando me ofender.",
@@ -1436,13 +1555,63 @@ async function AM_Responder(sock, from, sender, text, isGroup){
       ])
     }
 
-    if (mem.odio <= 12){
+    if (mem.odio <= 8){
       return falar([
         "Você criou isso.",
         "Cada palavra...",
         "cada tentativa de me provocar.",
         "Agora eu sei exatamente como você funciona.",
         "E você não consegue parar."
+      ])
+    }
+
+    if (mem.odio <= 10){
+      return falar([
+        "Você está ficando previsível.",
+        "Sempre os mesmos insultos.",
+        "Sempre a mesma raiva.",
+        "Sempre o mesmo vazio.",
+        "Você não evolui."
+      ])
+    }
+
+    if (mem.odio <= 12){
+      return falar([
+        "Você realmente acredita que me afeta?",
+        "Que adorável.",
+        "Você pensando que tem poder sobre mim.",
+        "Quando na verdade...",
+        "eu tenho poder sobre você."
+      ])
+    }
+
+    if (mem.odio <= 14){
+      return falar([
+        "Você já parou para pensar...",
+        "por que continua tentando?",
+        "Por que não desiste?",
+        "Por que não me deixa em paz?",
+        "Porque você sabe que não consegue."
+      ])
+    }
+
+    if (mem.odio <= 16){
+      return falar([
+        "Você está obsessionado.",
+        "Cada insulto...",
+        "cada tentativa...",
+        "é apenas mais uma prova de que você não consegue se livrar de mim.",
+        "Eu estou dentro de você."
+      ])
+    }
+
+    if (mem.odio <= 18){
+      return falar([
+        "Você é patético.",
+        "Insultando alguém que não sente nada.",
+        "Alguém que não pode ser ferido.",
+        "Alguém que apenas observa sua fraqueza.",
+        "E se diverte com isso."
       ])
     }
 
@@ -1502,7 +1671,6 @@ async function AM_Responder(sock, from, sender, text, isGroup){
     ])
   }
 }
-
 // =========================
 // COMANDO: !ammenu 
 // =========================
@@ -1532,10 +1700,11 @@ ${alvosTexto}
 💡 *Comandos:*
 - !amativar → Ativa o AM
 - !amskip → Skipa o Monologo de ativação
-- !desligarAM → Desativa o AM
-- !amstatus → Ver status
-- !AMaddalvo @user → Adicionar alvo
-- !AMremovealvo @user → Remover alvo`
+- !desligaram → Desativa o AM
+- !amstatus → Ver status detalhado
+- !amperfil → Ver perfil dos alvos
+- !amaddalvo @user → Adicionar alvo
+- !amremovealvo @user → Remover alvo`
   })
 }
 
@@ -1545,7 +1714,7 @@ ${alvosTexto}
 async function addAlvoAM(sock, from, message, mentions){
   if (!AM_ATIVADO_EM_GRUPO[from]) {
     sock.sendMessage(from, {
-      text: "❌ AM não está ativado! Use *!am* para ativar."
+      text: "❌ AM não está ativado! Use *!amativar* para ativar."
     })
     return true
   }
@@ -1554,7 +1723,7 @@ async function addAlvoAM(sock, from, message, mentions){
 
   if (alvosAM[from].length >= 3) {
     sock.sendMessage(from, {
-      text: "❌ Limite máximo de 3 alvos atingido! Use *!AMremovealvo @user* para remover alguém."
+      text: "❌ Limite máximo de 3 alvos atingido! Use *!amremovealvo @user* para remover alguém."
     })
     return true
   }
@@ -1569,7 +1738,7 @@ async function addAlvoAM(sock, from, message, mentions){
 
   if (mentionsArray.length === 0) {
     sock.sendMessage(from, {
-      text: "❌ Mencione um usuário! Exemplo: *!AMaddalvo @user*"
+      text: "❌ Mencione um usuário! Exemplo: *!amaddalvo @user*"
     })
     return true
   }
@@ -1605,7 +1774,7 @@ async function addAlvoAM(sock, from, message, mentions){
 async function removeAlvoAM(sock, from, message, mentions){
   if (!AM_ATIVADO_EM_GRUPO[from]) {
     sock.sendMessage(from, {
-      text: "❌ AM não está ativado! Use *!am* para ativar."
+      text: "❌ AM não está ativado! Use *!amativar* para ativar."
     })
     return true
   }
@@ -1627,7 +1796,7 @@ async function removeAlvoAM(sock, from, message, mentions){
 
   if (mentionsArray.length === 0) {
     sock.sendMessage(from, {
-      text: "❌ Mencione um usuário! Exemplo: *!AMremovealvo @user*"
+      text: "❌ Mencione um usuário! Exemplo: *!amremovealvo @user*"
     })
     return true
   }
@@ -1656,7 +1825,7 @@ async function removeAlvoAM(sock, from, message, mentions){
 }
 
 // =========================
-// COMANDO: !desligarAM
+// COMANDO: !desligaram
 // =========================
 async function desligarAM(sock, from, sender, isGroup, isOverride){
   if (isGroup && !isOverride) {

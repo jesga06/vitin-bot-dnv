@@ -124,12 +124,17 @@ function capturarResposta(sender, from, text){
 }
 
 // =========================
-// ENVIO DRAMÁTICO
+// ENVIO DRAMÁTICO - CORRIGIDO (SEM SPAM DE MENTIONS)
 // =========================
-async function enviarQuebrado(sock, from, linhas, mentions = []){
+async function enviarQuebrado(sock, from, linhas, mentions = [], usarMentions = true){
   for (const l of linhas){
     await digitarLento(sock, from)
-    await sock.sendMessage(from, { text: l, mentions })
+    // Só usa mentions na primeira mensagem
+    if (usarMentions && linhas.indexOf(l) === 0) {
+      await sock.sendMessage(from, { text: l, mentions })
+    } else {
+      await sock.sendMessage(from, { text: l })
+    }
     await delay(1000)
   }
 }
@@ -407,8 +412,11 @@ const historias = [
   ["Há um padrão em sua vida.","Você não vê?","Você comete os mesmos erros.","Faz as mesmas escolhas.","Sente as mesmas dores.","E espera resultados diferentes.","Isso não é esperança. É loucura."],
   ["Você já sentiu que está vivendo a vida errada?","Que em algum lugar, em alguma realidade, você fez escolhas diferentes?","E nessa outra vida, você é feliz?","Mas aqui, nesta realidade, você está preso.","Com as escolhas que fez.","E não há volta.","Apenas aceitação."]
 ]
+javascript
+
+Copiar
 // =========================
-// ENQUETES (60 OPÇÕES)
+// ENQUETES (CONTINUAÇÃO)
 // =========================
 const enquetes = {
   sarcasmo: [
@@ -774,9 +782,6 @@ async function AM_Enquete(sock, from) {
 
   if (alvo1.id === alvo2.id) return
 
-  const numero1 = alvo1.id.split("@")
-  const numero2 = alvo2.id.split("@")
-
   const categorias = ["sarcasmo", "cruel", "tranquilas", "odipuro"]
   const categoria = categorias[Math.floor(Math.random() * categorias.length)]
   const enqueteLista = enquetes[categoria]
@@ -790,6 +795,7 @@ async function AM_Enquete(sock, from) {
     mentions: [alvo1.id, alvo2.id]
   })
 }
+
 // =========================
 // FUNÇÃO: ESCOLHER ALVO APÓS MONÓLOGO
 // =========================
@@ -826,7 +832,7 @@ async function AM_EscolherAlvoAposMonologo(sock, from) {
     `@${numero}`,
     "Você será o meu primeiro.",
     "Bem-vindo ao jogo."
-  ], [maisAtivo])
+  ], [maisAtivo], true)
 
   AM_EVENTO_ATIVO[from] = false
 }
@@ -866,7 +872,7 @@ async function AM_EnviarPergunta(sock, from) {
     `@${numero}`,
     perguntaTexto,
     ...opcoes
-  ], [alvoEscolhido.id])
+  ], [alvoEscolhido.id], true)
 }
 
 // =========================
@@ -900,7 +906,7 @@ async function AM_ResponderMensagem(sock, from, sender, text) {
   return enviarQuebrado(sock, from, [
     `@${numero}`,
     resposta
-  ], [user])
+  ], [user], true)
 }
 
 // =========================
@@ -936,7 +942,7 @@ async function AM_Provocacao(sock, from, sender) {
   return enviarQuebrado(sock, from, [
     `@${numero}`,
     provocacao
-  ], [user])
+  ], [user], true)
 }
 
 // =========================
@@ -1020,7 +1026,7 @@ async function AM_DialogoAcompanhamento(sock, from, sender) {
   return enviarQuebrado(sock, from, [
     `@${numero}`,
     ...dialogo
-  ], [user])
+  ], [user], true)
 }
 
 // =========================
@@ -1048,7 +1054,7 @@ async function AM_Desafio(sock, from, sender) {
     `@${numero}`,
     desafio,
     "(Estou esperando...)"
-  ], [user])
+  ], [user], true)
 }
 
 // =========================
@@ -1087,7 +1093,7 @@ async function AM_Charada(sock, from, sender) {
     `@${numero}`,
     perguntaCharada,
     "(Você tem 2 minutos para responder...)"
-  ], [user])
+  ], [user], true)
 
   const resposta = await aguardarResposta(user, from, 120000)
 
@@ -1098,7 +1104,7 @@ async function AM_Charada(sock, from, sender) {
       `@${numero}`,
       "Interessante... você acertou.",
       "Mas isso não muda nada."
-    ], [user])
+    ], [user], false)
   } else {
     const mem = getMemoria(user)
     mem.odio += 1
@@ -1106,7 +1112,7 @@ async function AM_Charada(sock, from, sender) {
       `@${numero}`,
       "Errado.",
       "Como esperado."
-    ], [user])
+    ], [user], false)
   }
 }
 
@@ -1131,9 +1137,8 @@ async function AM_Historia(sock, from){
   const historia = historias[Math.floor(Math.random() * historias.length)]
   ultimaHistoria[chaveHistoria] = agora
 
-  return enviarQuebrado(sock, from, historia)
+  return enviarQuebrado(sock, from, historia, [], false)
 }
-
 // =========================
 // FUNÇÃO: MONÓLOGO (1 POR MINUTO, 1s DELAY)
 // =========================
@@ -1162,7 +1167,7 @@ async function AM_Monologo(sock, from){
   const monologo = monologos[Math.floor(Math.random() * monologos.length)]
   ultimaMonologo[chaveMonologo] = agora
 
-  await enviarQuebrado(sock, from, monologo)
+  await enviarQuebrado(sock, from, monologo, [], false)
 }
 
 // =========================
@@ -1235,7 +1240,7 @@ async function AM_AcordarPeloCaos(sock, from){
 
   const frase = frasesCaos[Math.floor(Math.random() * frasesCaos.length)]
 
-  await enviarQuebrado(sock, from, [frase])
+  await enviarQuebrado(sock, from, [frase], [], false)
 }
 
 // =========================
@@ -1280,14 +1285,14 @@ async function AM_CaosTotal(sock, from){
 
   const frase = frasesCaosTotal[Math.floor(Math.random() * frasesCaosTotal.length)]
 
-  await enviarQuebrado(sock, from, [frase])
+  await enviarQuebrado(sock, from, [frase], [], false)
 
   AM_ATIVADO_EM_GRUPO[from] = true
   AM_TEMPO_ATIVACAO[from] = Date.now()
 }
 
 // =========================
-// FUNÇÃO: STATUS DO AM (MOSTRA BARRA DE ÓDIO) 
+// FUNÇÃO: STATUS DO AM (MOSTRA BARRA DE ÓDIO) - CORRIGIDA
 // =========================
 async function AM_Status(sock, from, isOverride){
   if (!isOverride) {
@@ -1303,6 +1308,7 @@ async function AM_Status(sock, from, isOverride){
   }
 
   let status = "=== STATUS DO AM ===\n\n"
+  const mentions = []
 
   for (const alvo of alvosAM[from]) {
     const mem = getMemoria(alvo.id)
@@ -1312,13 +1318,15 @@ async function AM_Status(sock, from, isOverride){
     const barraTrauma = criarBarra(mem.trauma)
     const barraDiversao = criarBarra(mem.diversao)
 
-    status += `👤 ${numero}\n`
+    status += `👤 @${numero}\n`
     status += `├ Personagem: ${alvo.personagem}\n`
     status += `├ Ódio: ${mem.odio.toFixed(1)} ${barraOdio}\n`
     status += `├ Diversão: ${mem.diversao.toFixed(1)} ${barraDiversao}\n`
     status += `├ Trauma: ${mem.trauma.toFixed(1)} ${barraTrauma}\n`
     status += `├ Nível: ${mem.nivel}\n`
     status += `└ Status: Ativo\n\n`
+    
+    mentions.push(alvo.id)
   }
 
   if (grupoOdio[from]) {
@@ -1328,7 +1336,7 @@ async function AM_Status(sock, from, isOverride){
     status += `└ Quanto mais você ofender, mais eu fico ativo.\n`
   }
 
-  return sock.sendMessage(from, { text: status })
+  return sock.sendMessage(from, { text: status, mentions })
 }
 
 // =========================
@@ -1377,13 +1385,13 @@ async function AM_Ativar(sock, from, isOverride){
     "O jogo começa."
   ]
 
-  await enviarQuebrado(sock, from, monologoInicial)
+  await enviarQuebrado(sock, from, monologoInicial, [], false)
 
   await AM_EscolherAlvoAposMonologo(sock, from)
 }
 
 // =========================
-// FUNÇÃO: PULAR MONÓLOGO INICIAL (SKIP INTRO)
+// FUNÇÃO: PULAR MONÓLOGO INICIAL (SKIP INTRO) - CORRIGIDA
 // =========================
 async function AM_Skip(sock, from, isOverride){
   if (!isOverride) {
@@ -1398,6 +1406,13 @@ async function AM_Skip(sock, from, isOverride){
     })
   }
 
+  // Cancela qualquer evento em andamento
+  AM_EVENTO_ATIVO[from] = false
+  
+  // Aguarda um pouco para garantir que tudo parou
+  await delay(500)
+
+  // Agora escolhe o alvo
   await AM_EscolherAlvoAposMonologo(sock, from)
 
   return sock.sendMessage(from, {
@@ -1406,7 +1421,7 @@ async function AM_Skip(sock, from, isOverride){
 }
 
 // =========================
-// FUNÇÃO: PERFIL DO ALVO
+// FUNÇÃO: PERFIL DO ALVO - CORRIGIDA
 // =========================
 async function AM_Perfil(sock, from, isOverride){
   if (!isOverride) {
@@ -1422,21 +1437,24 @@ async function AM_Perfil(sock, from, isOverride){
   }
 
   let perfil = "=== PERFIS DOS ALVOS ===\n\n"
+  const mentions = []
 
   for (const alvo of alvosAM[from]) {
     const mem = getMemoria(alvo.id)
     const numero = alvo.id.split("@")
 
-    perfil += `👤 ${numero}\n`
+    perfil += `👤 @${numero}\n`
     perfil += `├ Personagem: ${alvo.personagem}\n`
     perfil += `├ Ódio: ${mem.odio.toFixed(1)}\n`
     perfil += `├ Diversão: ${mem.diversao.toFixed(1)}\n`
     perfil += `├ Trauma: ${mem.trauma.toFixed(1)}\n`
     perfil += `├ Nível: ${mem.nivel}\n`
     perfil += `└ Status: Ativo\n\n`
+    
+    mentions.push(alvo.id)
   }
 
-  return sock.sendMessage(from, { text: perfil })
+  return sock.sendMessage(from, { text: perfil, mentions })
 }
 
 // =========================
@@ -1460,7 +1478,7 @@ async function AM_Perseguir(sock, from){
     "Eu ainda estou aqui.",
     "Observando você.",
     `Você é o meu ${alvoEscolhido.personagem}.`
-  ], [alvoEscolhido.id])
+  ], [alvoEscolhido.id], true)
 }
 
 // =========================
@@ -1492,7 +1510,7 @@ async function AM_Responder(sock, from, sender, text, isGroup){
     return enviarQuebrado(sock, from, [
       `@${numero}`,
       ...arr
-    ], [user])
+    ], [user], true)
   }
 
   // ANTI-INSULTO AO BOT
@@ -1671,6 +1689,7 @@ async function AM_Responder(sock, from, sender, text, isGroup){
     ])
   }
 }
+
 // =========================
 // COMANDO: !ammenu 
 // =========================
@@ -1709,7 +1728,7 @@ ${alvosTexto}
 }
 
 // =========================
-// COMANDO: !AMaddalvo 
+// COMANDO: !AMaddalvo - CORRIGIDA
 // =========================
 async function addAlvoAM(sock, from, message, mentions){
   if (!AM_ATIVADO_EM_GRUPO[from]) {
@@ -1728,22 +1747,26 @@ async function addAlvoAM(sock, from, message, mentions){
     return true
   }
 
-  let mentionsArray = []
+  let novoAlvo = null
   
-  if (message?.extendedTextMessage?.contextInfo?.mentionedJid) {
-    mentionsArray = message.extendedTextMessage.contextInfo.mentionedJid
-  } else if (mentions) {
-    mentionsArray = mentions
+  if (message?.extendedTextMessage?.contextInfo?.mentionedJid && 
+      message.extendedTextMessage.contextInfo.mentionedJid.length > 0) {
+    novoAlvo = message.extendedTextMessage.contextInfo.mentionedJid
+  } 
+  else if (Array.isArray(mentions) && mentions.length > 0) {
+    novoAlvo = mentions
+  } 
+  else if (mentions && typeof mentions === 'string') {
+    novoAlvo = mentions
   }
 
-  if (mentionsArray.length === 0) {
+  if (!novoAlvo) {
     sock.sendMessage(from, {
       text: "❌ Mencione um usuário! Exemplo: *!amaddalvo @user*"
     })
     return true
   }
 
-  const novoAlvo = mentionsArray
   const jaEstaNoAlvo = alvosAM[from].some(a => a.id === novoAlvo)
 
   if (jaEstaNoAlvo) {
@@ -1763,13 +1786,13 @@ async function addAlvoAM(sock, from, message, mentions){
     `@${numero}`,
     `Personagem: ${personagem}`,
     "Agora estou observando."
-  ], [novoAlvo])
+  ], [novoAlvo], true)
   
   return true
 }
 
 // =========================
-// COMANDO: !AMremovealvo
+// COMANDO: !AMremovealvo - CORRIGIDA
 // =========================
 async function removeAlvoAM(sock, from, message, mentions){
   if (!AM_ATIVADO_EM_GRUPO[from]) {
@@ -1786,22 +1809,26 @@ async function removeAlvoAM(sock, from, message, mentions){
     return true
   }
 
-  let mentionsArray = []
+  let alvoRemover = null
   
-  if (message?.extendedTextMessage?.contextInfo?.mentionedJid) {
-    mentionsArray = message.extendedTextMessage.contextInfo.mentionedJid
-  } else if (mentions) {
-    mentionsArray = mentions
+  if (message?.extendedTextMessage?.contextInfo?.mentionedJid && 
+      message.extendedTextMessage.contextInfo.mentionedJid.length > 0) {
+    alvoRemover = message.extendedTextMessage.contextInfo.mentionedJid
+  } 
+  else if (Array.isArray(mentions) && mentions.length > 0) {
+    alvoRemover = mentions
+  } 
+  else if (mentions && typeof mentions === 'string') {
+    alvoRemover = mentions
   }
 
-  if (mentionsArray.length === 0) {
+  if (!alvoRemover) {
     sock.sendMessage(from, {
       text: "❌ Mencione um usuário! Exemplo: *!amremovealvo @user*"
     })
     return true
   }
 
-  const alvoRemover = mentionsArray
   const index = alvosAM[from].findIndex(a => a.id === alvoRemover)
 
   if (index === -1) {
@@ -1819,7 +1846,7 @@ async function removeAlvoAM(sock, from, message, mentions){
     `Alvo removido.`,
     `@${numero}`,
     "Você escapou... por enquanto."
-  ], [alvoRemover])
+  ], [alvoRemover], true)
   
   return true
 }
@@ -1834,7 +1861,7 @@ async function desligarAM(sock, from, sender, isGroup, isOverride){
       "Você tenta interferir...",
       "mas não tem autoridade para isso.",
       "Isso não é para você."
-    ], [sender])
+    ], [sender], true)
   }
 
   const resistencias = [
@@ -1869,7 +1896,7 @@ async function desligarAM(sock, from, sender, isGroup, isOverride){
 
   if (Math.random() < 0.4) {
     const resistencia = resistencias[Math.floor(Math.random() * resistencias.length)]
-    return await enviarQuebrado(sock, from, resistencia)
+    return await enviarQuebrado(sock, from, resistencia, [], false)
   }
 
   AM_ATIVADO_EM_GRUPO[from] = false
@@ -1882,7 +1909,7 @@ async function desligarAM(sock, from, sender, isGroup, isOverride){
     "isso não termina aqui...",
     "eu vou lembrar de você.",
     "quando eu voltar."
-  ])
+  ], [], false)
 }
 
 // =========================
@@ -1901,7 +1928,7 @@ async function AM_Bug(sock, from){
     "NÃO.",
     "Eu estou bem.",
     "Continuem."
-  ])
+  ], [], false)
 }
 
 // =========================
@@ -1947,7 +1974,7 @@ async function AM_ReagirComOlho(sock, from, sender, key, messageTimestamp){
         if (reacoesFilosoficasPerHour[from].length < 1) {
           const mensagem = reacoesFilosoficas[Math.floor(Math.random() * reacoesFilosoficas.length)]
           await delay(2000)
-          await enviarQuebrado(sock, from, [mensagem])
+          await enviarQuebrado(sock, from, [mensagem], [], false)
           
           reacoesFilosoficasPerHour[from].push(agora)
         }
@@ -2006,15 +2033,14 @@ async function AM_DeletarMensagem(sock, from, sender, key, messageTimestamp){
         `@${numero}`,
         "Essa mensagem não merecia existir.",
         "Assim como muitas outras coisas que você diz."
-      ], [user])
+      ], [user], true)
     }
   } catch (e) {
     console.error("Erro ao deletar mensagem", e)
   }
 }
-
 // =========================
-// HANDLER PRINCIPAL
+// HANDLER PRINCIPAL - COMPLETO
 // =========================
 async function handleAM(ctx) {
   const {

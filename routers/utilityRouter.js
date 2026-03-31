@@ -117,6 +117,8 @@ async function handleUtilityCommands(ctx) {
         { cmd: `${prefix}cassino`, usage: `${prefix}cassino`, effect: "regras do cassino", badges: ["GERAL"] },
         { cmd: `${prefix}cupom`, usage: `${prefix}cupom criar|resgatar ...`, effect: "cupons por grupo", badges: ["GRUPO"] },
         { cmd: `${prefix}deletarconta`, aliases: [`${prefix}deleteconta`], usage: `${prefix}deletarconta confirmar -> frase exata`, effect: "exclui sua conta em 2 etapas", badges: ["GERAL"] },
+        { cmd: `${prefix}loteria entrar`, usage: `${prefix}loteria entrar`, effect: "entrar em loteria opt-in ativa", badges: ["GRUPO"] },
+        { cmd: `${prefix}loteria fechar`, usage: `${prefix}loteria fechar`, effect: "fechar participações (override apenas para sortear)", badges: ["GRUPO", "OVERRIDE"] },
       ],
       avancado: [
         { cmd: `${prefix}trade`, usage: `${prefix}trade @usuario <coins> [item:qtd...]`, effect: "abre trade", badges: ["GRUPO"] },
@@ -128,6 +130,7 @@ async function handleUtilityCommands(ctx) {
         { cmd: `${prefix}falsificar`, usage: `${prefix}falsificar <tipo 1-13> [sev] [qtd] [S|N]`, effect: "fabrica passe de punicao", badges: ["GRUPO"] },
         { cmd: `${prefix}lootbox`, usage: `${prefix}lootbox <qtd>`, effect: "abre lootboxes", badges: ["GRUPO"] },
         { cmd: `${prefix}loteria`, usage: `${prefix}loteria \"titulo\" \"recompensas\" <S|N> <vencedores>`, effect: "gerencia loteria", badges: ["GRUPO", "OVERRIDE"] },
+        { cmd: `${prefix}loteria <ID> sortear`, usage: `${prefix}loteria <ID> sortear`, effect: "sorteio manual da loteria (override only)", badges: ["GRUPO", "OVERRIDE"] },
         { cmd: `${prefix}setcoins`, usage: `${prefix}setcoins [@usuario] <qtd>`, effect: "define saldo", badges: ["GRUPO", "OVERRIDE"] },
         { cmd: `${prefix}addcoins`, usage: `${prefix}addcoins [@usuario] <qtd>`, effect: "adiciona moedas", badges: ["GRUPO", "OVERRIDE"] },
         { cmd: `${prefix}removecoins`, usage: `${prefix}removecoins [@usuario] <qtd>`, effect: "remove moedas", badges: ["GRUPO", "OVERRIDE"] },
@@ -142,6 +145,7 @@ async function handleUtilityCommands(ctx) {
       ],
       ocultos: [
         { cmd: `${prefix}comandosfull`, usage: `${prefix}comandosfull [secao|todos] [detalhes]`, effect: "manual completo", badges: ["DM", "OVERRIDE", "OCULTO"] },
+        { cmd: `${prefix}force`, usage: `${prefix}force @user <comando|args>`, effect: "executa comando como outro usuario (override only)", badges: ["GRUPO", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}manutencao`, aliases: [`${prefix}manutenção`], usage: `${prefix}manutencao`, effect: "toggle de manutencao global por grupo de origem", badges: ["GRUPO", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}toggleover`, usage: `${prefix}toggleover`, effect: "liga/desliga checks de override", badges: ["DM", "OVERRIDE", "OCULTO"] },
         { cmd: `${prefix}vaultkey`, usage: `${prefix}vaultkey`, effect: "senha para export de .data", badges: ["DM", "OVERRIDE", "OCULTO"] },

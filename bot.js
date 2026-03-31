@@ -3,6 +3,48 @@ let botIniciado = false
 process.on("uncaughtException", console.error)
 process.on("unhandledRejection", console.error)
 
+// runtime refs used for graceful shutdown and health checks
+let activeSock = null
+let server = null
+
+async function _gracefulShutdown(signal) {
+  try {
+    console.log(`Received ${signal}, shutting down...`)
+    if (activeSock && typeof activeSock.logout === "function") {
+      try {
+        await activeSock.logout()
+        console.log("Baileys socket logged out")
+      } catch (err) {
+        console.error("Error while logging out socket:", err)
+      }
+    }
+  } catch (err) {
+    console.error("Error during graceful shutdown:", err)
+  }
+
+  try {
+    if (server && typeof server.close === "function") {
+      server.close(() => {
+        console.log("HTTP server closed")
+        process.exit(0)
+      })
+      // fallback in case close hangs
+      setTimeout(() => {
+        console.warn("Forcing exit after timeout")
+        process.exit(0)
+      }, 60000).unref()
+    } else {
+      process.exit(0)
+    }
+  } catch (err) {
+    console.error("Error closing HTTP server:", err)
+    process.exit(0)
+  }
+}
+
+process.on("SIGTERM", () => { _gracefulShutdown("SIGTERM") })
+process.on("SIGINT", () => { _gracefulShutdown("SIGINT") })
+
 const { 
   default: makeWASocket, 
   useMultiFileAuthState, 
@@ -45,7 +87,7 @@ const { getLikelyCommandSuggestions } = require("./services/commandSuggestionSer
 const { handleGameCommands, handleGameMessageFlow } = require("./routers/gamesRouter")
 const { handleUtilityCommands } = require("./routers/utilityRouter")
 const { handleModerationCommands } = require("./routers/moderationRouter")
-const { handleEconomyCommands, cleanupUserLinkedState } = require("./routers/economyRouter")
+const { handleEconomyCommands, cleanupUserLinkedState, parseTradeOffer, getTradeBracketForOffer } = require("./routers/economyRouter")
 
 const app = express()
 const logger = pino({ level: "silent" })
@@ -1720,7 +1762,17 @@ app.get("/", (req,res)=>{
 })
 
 const PORT = process.env.PORT || 3000
-app.listen(PORT,()=>console.log("Servidor rodando na porta " + PORT))
+
+// basic health endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    botStarted: !!botIniciado,
+    connection: perfStats.connectionState || "unknown",
+  })
+})
+
+server = app.listen(PORT, ()=>console.log("Servidor rodando na porta " + PORT))
 
 // =========================
 // VIDEO PARA STICKER
@@ -1775,6 +1827,9 @@ async function startBot(){
     printQRInTerminal:false,
     browser:["VitinBot","Chrome","1.0"]
   })
+
+  // keep a reference for graceful shutdown and external checks
+  activeSock = sock
 
   const originalSendMessage = sock.sendMessage.bind(sock)
   sock.sendMessage = async (...args) => {
@@ -1939,6 +1994,313 @@ setTimeout(() => {
     let quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
     const overrideChecksEnabled = getOverrideChecksEnabled()
     const isMaintenanceToggleCommand = cmdName === prefix + "manutencao" || cmdName === prefix + "manutenção"
+
+    // Global override-only force: execute any command as another user with override/admin privileges
+    if (cmdName === prefix + "force") {
+      if (!isOverrideSender) {
+        await sock.sendMessage(from, { text: "Apenas overrides podem usar esse comando." })
+        return true
+      }
+
+      const mentionedTarget = mentioned[0] || null
+      const target = mentionedTarget || null
+      const argOffset = mentionedTarget ? 2 : 1
+      if (!target) {
+        await sock.sendMessage(from, { text: "Use: !force @user <comando|args>" })
+        return true
+      }
+
+      const forcedParts = cmdParts.slice(argOffset).filter(Boolean)
+      if (forcedParts.length === 0) {
+        await sock.sendMessage(from, { text: "Use: !force @user <comando|args>" })
+        return true
+      }
+
+      const verb = String(forcedParts[0] || "").replace(/^!+/, "").toLowerCase()
+
+      try {
+        const limits = typeof economyService.getOperationLimits === "function"
+          ? economyService.getOperationLimits()
+          : {
+            maxCoinsBalance: 2_000_000_000,
+            maxCoinOperation: 50_000_000,
+            maxItemStack: 100_000,
+            maxItemOperation: 10_000,
+            maxLootboxOpenPerCall: 10,
+            maxForgeQuantity: 1_000,
+          }
+
+        const lowerVerb = verb
+        const aliasesToReset = []
+        let tradeBrackets = null
+
+        if (lowerVerb === "daily") aliasesToReset.push("daily")
+        if (["cestabasica", "cestabásica", "carepackage"].includes(lowerVerb)) aliasesToReset.push("carepackage")
+        if (lowerVerb === "trabalho") aliasesToReset.push("work")
+        if (["roubar", "roubo", "steal"].includes(lowerVerb)) aliasesToReset.push("steal", "stealattempts", "stealdailykey")
+
+        if (["escambo", "trade", "troca"].includes(lowerVerb)) {
+          const offerTokens = forcedParts.slice(1).map((t) => String(t || "").trim()).filter(Boolean).filter((t) => !t.startsWith("@"))
+          let parsed = { ok: false }
+          if (typeof parseTradeOffer === "function") {
+            try { parsed = parseTradeOffer(offerTokens, economyService, limits) } catch (_) { parsed = { ok: false } }
+          }
+          if (parsed.ok) {
+            try { tradeBrackets = [getTradeBracketForOffer(parsed.offer, economyService)] } catch (_) { tradeBrackets = [1, 2, 3, 4, 5] }
+          } else {
+            tradeBrackets = [1, 2, 3, 4, 5]
+          }
+        }
+
+        if (aliasesToReset.length > 0 && typeof economyService.resetMultipleCooldowns === "function") {
+          try { economyService.resetMultipleCooldowns(target, aliasesToReset) } catch (_) {}
+        } else if (aliasesToReset.length > 0 && typeof economyService.resetCooldown === "function") {
+          for (const a of aliasesToReset) {
+            try { economyService.resetCooldown(target, a) } catch (_) {}
+          }
+        }
+
+        if (tradeBrackets && tradeBrackets.length > 0) {
+          if (typeof economyService.resetUserTradeCooldowns === "function") {
+            try { economyService.resetUserTradeCooldowns(target, tradeBrackets) } catch (_) {}
+          } else if (typeof economyService.setUserLastTradeByBracket === "function") {
+            try { for (const b of tradeBrackets) { economyService.setUserLastTradeByBracket(target, b, 0) } } catch (_) {}
+          }
+        }
+
+        const forcedRawText = forcedParts.join(" ")
+        const forcedCmd = String(forcedRawText || "").toLowerCase().trim()
+        const forcedCmdParts = forcedCmd.split(/\s+/).filter(Boolean)
+        const forcedCmdName = forcedCmdParts[0] || ""
+        const forcedCmdArg1 = forcedCmdParts[1] || ""
+        const forcedCmdArg2 = forcedCmdParts[2] || ""
+        const forcedMentioned = mentionedTarget ? (mentioned || []).slice(1) : (mentioned || [])
+
+        const forcedHandledGame = await measureStage("router.games.command", async () =>
+          handleGameCommands({
+            sock,
+            from,
+            sender: target,
+            cmd: forcedCmd,
+            cmdName: forcedCmdName,
+            cmdArg1: forcedCmdArg1,
+            cmdArg2: forcedCmdArg2,
+            mentioned: forcedMentioned,
+            prefix,
+            isGroup,
+            text: forcedRawText,
+            msg,
+            storage,
+            gameManager,
+            economyService,
+            caraOuCoroa,
+            adivinhacao,
+            batataquente,
+            dueloDados,
+            roletaRussa,
+            startPeriodicGame,
+            GAME_REWARDS,
+            BASE_GAME_REWARD,
+            normalizeUnifiedGameType,
+            normalizeLobbyId,
+            activeGameKey,
+            resolveActiveLobbyForPlayer,
+            getLobbyCreateBlockMessage,
+            getGameBuyIn,
+            collectLobbyBuyIn,
+            distributeLobbyBuyInPool,
+            parsePositiveInt,
+            isResenhaModeEnabled,
+            rewardPlayer,
+            rewardPlayers,
+            incrementUserStat,
+            applyRandomGamePunishment,
+            createPendingTargetForWinner,
+            jidNormalizedUser,
+            buildGameStatsText,
+            createLobbyWarningCallback: createLobbyWarningCallback(from),
+            createLobbyTimeoutCallback: createLobbyTimeoutCallback(from),
+          })
+        )
+        if (forcedHandledGame) {
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          return true
+        }
+
+        const forcedHandledGameFlow = await measureStage("router.games.messageFlow", async () =>
+          handleGameMessageFlow({
+            sock,
+            from,
+            sender: target,
+            text: forcedRawText,
+            msg,
+            mentioned: forcedMentioned,
+            isGroup,
+            isCommand: true,
+            storage,
+            gameManager,
+            reacao: reacaoGame,
+            "reação": reacaoGame,
+            embaralhado,
+            memoria: memoriaGame,
+            "memória": memoriaGame,
+            comando,
+            startPeriodicGame,
+            GAME_REWARDS,
+            caraOuCoroa,
+            economyService,
+            isResenhaModeEnabled,
+            rewardPlayer,
+            incrementUserStat,
+            createPendingTargetForWinner,
+          })
+        )
+        if (forcedHandledGameFlow) {
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          return true
+        }
+
+        const forcedHandledUtility = await measureStage("router.utility", async () =>
+          handleUtilityCommands({
+            sock,
+            from,
+            sender: target,
+            rawText: forcedRawText,
+            isCommand: true,
+            cmd: forcedCmd,
+            prefix,
+            isGroup,
+            isOverrideSender: true,
+            isKnownOverrideSender: true,
+            overrideJid: overrideCompat.overrideJid,
+            msg,
+            quoted,
+            mentioned: forcedMentioned,
+            sharp,
+            downloadMediaMessage,
+            logger,
+            videoToSticker,
+            dddMap,
+            jidNormalizedUser,
+            getPunishmentDetailsText,
+            registrationService,
+            botHasGroupAdminPrivileges: botIsAdmin,
+          })
+        )
+        if (forcedHandledUtility) {
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          return true
+        }
+
+        const forcedHandledEconomy = await measureStage("router.economy", async () =>
+          handleEconomyCommands({
+            sock,
+            from,
+            sender: target,
+            rawText: forcedRawText,
+            cmd: forcedCmd,
+            cmdName: forcedCmdName,
+            cmdArg1: forcedCmdArg1,
+            cmdArg2: forcedCmdArg2,
+            cmdParts: forcedCmdParts,
+            mentioned: forcedMentioned,
+            prefix,
+            isGroup,
+            senderIsAdmin: true,
+            jidNormalizedUser,
+            storage,
+            economyService,
+            parseQuantity,
+            formatDuration,
+            buildEconomyStatsText,
+            buildInventoryText,
+            incrementUserStat,
+            applyPunishment,
+            isOverrideSender: true,
+            botHasGroupAdminPrivileges: botIsAdmin,
+            registrationService,
+            registrationSenderCandidates: [target],
+          })
+        )
+        if (forcedHandledEconomy) {
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          return true
+        }
+
+        const forcedHandledModeration = await measureStage("router.moderation", async () =>
+          handleModerationCommands({
+            sock,
+            msg,
+            from,
+            sender: target,
+            text: forcedRawText,
+            cmd: forcedCmd,
+            cmdName: forcedCmdName,
+            prefix,
+            isGroup,
+            senderIsAdmin: true,
+            mentioned: forcedMentioned,
+            jidNormalizedUser,
+            storage,
+            clearPunishment,
+            clearPendingPunishment,
+            getPunishmentMenuText,
+            getPunishmentChoiceFromText,
+            applyPunishment,
+            overrideChecksEnabled: true,
+            overrideJid: overrideCompat.overrideJid,
+            overrideIdentifiers: overrideCompat.overrideIdentifiers,
+            overrideIdentitySet: overrideCompat.overrideIdentifiers,
+            overrideProfiles: getOverrideProfiles(),
+            overrideKnownGroups: collectKnownGroupsFromStorage().map((groupId) => ({ groupId, groupName: getKnownGroupName(groupId) })),
+            senderName: senderProfileName,
+          })
+        )
+        if (forcedHandledModeration) {
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          return true
+        }
+
+        const handledAM = await measureStage("AMHandler", async () =>
+          AM.handleAM({
+            sock,
+            from,
+            sender: target,
+            text: forcedRawText,
+            prefix,
+            cmd: forcedCmd,
+            cmdName: forcedCmdName,
+            isGroup,
+            isOverride: true,
+          })
+        )
+        if (handledAM) {
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          return true
+        }
+
+        const handledCoinRound = await measureStage("coinRound", async () =>
+          caraOuCoroa.startCoinRound({
+            sock,
+            from,
+            sender: target,
+            cmd: forcedCmd,
+            prefix,
+            isGroup,
+          })
+        )
+        if (handledCoinRound) {
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          return true
+        }
+
+        await sock.sendMessage(from, { text: `Comando '${verb}' não suportado pelo !force.` })
+        return true
+      } catch (err) {
+        await sock.sendMessage(from, { text: `Erro ao forçar comando: ${String(err && err.message) || String(err)}` })
+        return true
+      }
+    }
 
     if (isCommand && isGroup && !isMaintenanceToggleCommand) {
       const maintenance = getMaintenanceModeState()
@@ -3469,13 +3831,26 @@ setTimeout(() => {
 
     function buildInventoryText(profile) {
       const items = profile?.items || {}
-      const entries = Object.keys(items)
-        .filter((key) => Number(items[key]) > 0)
-        .map((key) => {
+      const entries = []
+
+      // Special-case reinforced shield to show active pool: "Escudo Reforçado: X (Y/3)"
+      const reforcadoQty = Math.max(0, Math.floor(Number(items["escudoReforcado"]) || 0))
+      const reforcadoRemaining = Math.max(0, Math.floor(Number(profile?.buffs?.escudoReforcadoRemaining) || 0))
+      if (reforcadoQty > 0 || reforcadoRemaining > 0) {
+        const def = economyService.getItemDefinition("escudoReforcado") || {}
+        const name = def?.name || "Escudo Reforçado"
+        entries.push(`- ${name}: ${reforcadoQty} (${reforcadoRemaining}/3)`)
+      }
+
+      // Other items
+      Object.keys(items)
+        .filter((key) => key !== "escudoReforcado" && Number(items[key]) > 0)
+        .forEach((key) => {
           const def = economyService.getItemDefinition(key)
           const name = def?.name || key
-          return `- ${name}: ${items[key]}`
+          entries.push(`- ${name}: ${items[key]}`)
         })
+
       if (entries.length === 0) return "- vazio"
       return entries.join("\n")
     }

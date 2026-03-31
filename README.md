@@ -122,6 +122,7 @@ Observações de lobby:
 - !loteria "<titulo>" "<recompensas>" <S|N> <qtdVencedores>
 - !loteria entrar
 - !loteria fechar
+- !loteria <ID> sortear (override only)
 - !trabalho
 - !usarpasse @user <tipo> <severidade>
 - !team create <nome>
@@ -222,6 +223,7 @@ Pool semanal:
 - !adm / !admeconomia
 - !setcoins @user <quantidade>
 - !addcoins / !removecoins / !additem / !removeitem
+- !force @user <comando|args> (override only)
 
 ### Utilitários e diversão
 - !menu
@@ -241,6 +243,7 @@ Pool semanal:
 - !nuke
 - !overridetest
 - !comandosfull
+- !force @user <comando|args>
 
 ## Balanceamento de jogos e economia
 

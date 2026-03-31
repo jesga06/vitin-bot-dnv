@@ -266,7 +266,7 @@ const ITEM_DEFINITIONS = {
     sellRate: 0.75,
     stackable: true,
     rarity: 3,
-    description: "[PASSIVO] Consumo automático em apostas >= 4: devolve 40% da perda.",
+    description: "[PASSIVO] Consumo automático em apostas >= 4 (exceto cassino): devolve 40% da perda.",
   },
   // Boosters
   xpBooster: {
@@ -285,11 +285,11 @@ const ITEM_DEFINITIONS = {
     id: "12",
     aliases: ["moedadasorte"],
     name: "Moeda da Sorte",
-    price: 450,
+    price: 600,
     sellRate: 0.75,
     stackable: true,
     rarity: 1,
-    description: "[PASSIVO] +5% ganhos de moedas em daily/trabalho/cassino/roubo.",
+    description: "[PASSIVO] +5% ganhos de moedas em daily/trabalho/cassino/roubo (empilha até 10%).",
   },
   espelhoDeLuz: {
     key: "espelhoDeLuz",
@@ -466,7 +466,7 @@ const ITEM_DEFINITIONS = {
   tesouroLendario: {
     key: "tesouroLendario",
     id: "27",
-    aliases: ["tesouro"],
+    aliases: ["tesouroLendario"],
     name: "Tesouro Lendário",
     price: 150000,
     sellRate: 0.76,
@@ -488,7 +488,7 @@ const ITEM_DEFINITIONS = {
   coracaoDoUniverso: {
     key: "coracaoDoUniverso",
     id: "29",
-    aliases: ["coracao"],
+    aliases: ["coracaodouniverso"],
     name: "Renda Diária Suprema",
     price: 180000,
     sellRate: 0.76,
@@ -1870,18 +1870,17 @@ function consumeShield(userId) {
   const user = ensureUser(userId)
   if (!user) return false
 
-  const weekKey = getWeekKey()
-  if (getItemQuantity(userId, "espelhoDeLuz") > 0 && user.buffs.espelhoDeLuzWeekKey !== weekKey) {
-    user.buffs.espelhoDeLuzWeekKey = weekKey
-    // Count buff-based shield usage for quest/stat progression
+  // Protection priority (first-used): daily > weekly > temporary (Kronos) > reinforced > basic
+  const dayKey = getDayKey()
+  if (getItemQuantity(userId, "coracaoOssificado") > 0 && user.buffs.coracaoOssificadoDayKey !== dayKey) {
+    user.buffs.coracaoOssificadoDayKey = dayKey
     incrementStat(userId, "shieldsUsed", 1)
     return true
   }
 
-  const dayKey = getDayKey()
-  if (getItemQuantity(userId, "coracaoOssificado") > 0 && user.buffs.coracaoOssificadoDayKey !== dayKey) {
-    user.buffs.coracaoOssificadoDayKey = dayKey
-    // Count buff-based shield usage for quest/stat progression
+  const weekKey = getWeekKey()
+  if (getItemQuantity(userId, "espelhoDeLuz") > 0 && user.buffs.espelhoDeLuzWeekKey !== weekKey) {
+    user.buffs.espelhoDeLuzWeekKey = weekKey
     incrementStat(userId, "shieldsUsed", 1)
     return true
   }
@@ -1895,15 +1894,45 @@ function consumeShield(userId) {
     return true
   }
 
-  if (getItemQuantity(userId, "escudo") > 0) {
-    removeItem(userId, "escudo", 1)
+  // Reinforced shield behavior: each `escudoReforcado` provides a pool of 3 hidden
+  // protections. Only one reinforced shield pool is active at a time and the
+  // inventory count is decremented only when a pool reaches 0/3 (the exhausted
+  // reinforced shield is removed). The active pool is tracked in
+  // `user.buffs.escudoReforcadoRemaining`.
+  const reforcadoQty = getItemQuantity(userId, "escudoReforcado")
+  if (reforcadoQty > 0) {
+    // ensure numeric field exists
+    user.buffs.escudoReforcadoRemaining = Math.max(0, Math.floor(Number(user.buffs?.escudoReforcadoRemaining) || 0))
+
+    // If there is no active pool, start using one now (do not remove inventory yet)
+    if (user.buffs.escudoReforcadoRemaining <= 0) {
+      user.buffs.escudoReforcadoRemaining = 3
+    }
+
+    // consume one protection from the active pool
+    user.buffs.escudoReforcadoRemaining = Math.max(0, user.buffs.escudoReforcadoRemaining - 1)
+
+    // If the pool was exhausted by this consumption, remove one reinforced shield
+    // from inventory (the exhausted item). If there are more reinforced shields
+    // left, start using the next one immediately (set its pool to 3 for future hits).
+    if (user.buffs.escudoReforcadoRemaining === 0) {
+      removeItem(userId, "escudoReforcado", 1)
+      const remainingInv = getItemQuantity(userId, "escudoReforcado")
+      if (remainingInv > 0) {
+        // prepare the next reinforced shield for forthcoming hits
+        user.buffs.escudoReforcadoRemaining = 3
+      } else {
+        user.buffs.escudoReforcadoRemaining = 0
+      }
+    }
+
+    touchUser(user)
+    saveEconomy()
     incrementStat(userId, "shieldsUsed", 1)
     return true
   }
 
-  if (getItemQuantity(userId, "escudoReforcado") > 0) {
-    removeItem(userId, "escudoReforcado", 1)
-    addItem(userId, "escudo", 3)
+  if (getItemQuantity(userId, "escudo") > 0) {
     removeItem(userId, "escudo", 1)
     incrementStat(userId, "shieldsUsed", 1)
     return true
@@ -2053,7 +2082,11 @@ function applyKronosGainMultiplier(userId, amount, type = "generic") {
   const base = Math.max(0, Math.floor(Number(amount) || 0))
   if (base <= 0) return 0
   let withItems = base
-  if (getItemQuantity(userId, "moedaDaSorte") > 0) withItems = Math.floor(withItems * 1.05)
+  const moedaQty = Math.max(0, Math.floor(Number(getItemQuantity(userId, "moedaDaSorte")) || 0))
+  if (moedaQty > 0) {
+    const capped = Math.min(moedaQty, 2) // up to 2 coins => max 10%
+    withItems = Math.floor(withItems * (1 + 0.05 * capped))
+  }
   if (getItemQuantity(userId, "tesouroLendario") > 0) withItems = Math.floor(withItems * 1.15)
   if (type === "daily" && getItemQuantity(userId, "tesouroClassico") > 0) withItems = Math.floor(withItems * 1.12)
   if (type === "daily" && getItemQuantity(userId, "coracaoDoUniverso") > 0) withItems = Math.floor(withItems * 1.4)
@@ -2493,6 +2526,28 @@ function getShopIndexText() {
   return lines.join("\n")
 }
 
+function getDetailedShopText() {
+  const lines = ["Loja — Itens (detalhado)"]
+  const catalog = getItemCatalog().filter((item) => item.buyable !== false)
+  for (const item of catalog) {
+    lines.push(`- ${item.name} (ID ${item.key}) — ${item.price} Epsteincoins`)
+    if (item.description) {
+      lines.push(`  ${item.description}`)
+    }
+    const props = []
+    if (typeof item.rarity !== "undefined") props.push(`Raridade: ${item.rarity}`)
+    if (item.stackable) props.push("Stackável")
+    if (item.buyable === false) props.push("Não comprável")
+    if (item.permanent) props.push("Permanente")
+    if (item.durationMs) props.push(`DuraçãoMs: ${item.durationMs}`)
+    if (props.length) lines.push(`  ${props.join(" | ")}`)
+    lines.push("")
+  }
+  lines.push("Compre com: !comprar <id|nome> [quantidade]")
+  lines.push("Use !usaritem <id|nome> para usar itens manuais quando aplicável")
+  return lines.join("\n")
+}
+
 function getProfile(userId) {
   const user = ensureUser(userId)
   if (!user) {
@@ -2515,6 +2570,7 @@ function getProfile(userId) {
       kronosActive: hasActiveKronos(userId),
       kronosExpiresAt: Number(user.buffs?.kronosExpiresAt) || 0,
       kronosVerdadeiraActive: Boolean(user.buffs?.kronosVerdadeiraActive),
+        escudoReforcadoRemaining: Math.max(0, Math.floor(Number(user.buffs?.escudoReforcadoRemaining) || 0)),
     },
     cooldowns: { ...user.cooldowns },
     stats: { ...user.stats },
@@ -2911,6 +2967,192 @@ function getStealCooldown(userId) {
   return Math.floor(Number(user.cooldowns.stealAt) || 0)
 }
 
+function setUserLastTradeByBracket(userId, bracket, timestamp = 0) {
+  const user = ensureUser(userId)
+  if (!user) return false
+  if (!user.progression || typeof user.progression !== "object") user.progression = buildDefaultProgression()
+  if (!user.progression.lastTradeByBracket || typeof user.progression.lastTradeByBracket !== "object") {
+    user.progression.lastTradeByBracket = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+  }
+  const b = Math.max(1, Math.min(5, Math.floor(Number(bracket) || 1)))
+  const parsed = Number(timestamp)
+  user.progression.lastTradeByBracket[b] = Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0
+  touchUser(user)
+  saveEconomy()
+  return true
+}
+
+function resetUserTradeCooldowns(userId, brackets = null) {
+  const user = ensureUser(userId)
+  if (!user) return false
+  if (!user.progression || typeof user.progression !== "object") user.progression = buildDefaultProgression()
+  if (!user.progression.lastTradeByBracket || typeof user.progression.lastTradeByBracket !== "object") {
+    user.progression.lastTradeByBracket = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+  }
+  if (!Array.isArray(brackets)) {
+    user.progression.lastTradeByBracket = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+  } else {
+    for (const bRaw of brackets) {
+      const b = Math.max(1, Math.min(5, Math.floor(Number(bRaw) || 1)))
+      user.progression.lastTradeByBracket[b] = 0
+    }
+  }
+  touchUser(user)
+  saveEconomy()
+  return true
+}
+
+function getMsUntilNextLocalMidnight(nowMs = Date.now()) {
+  const now = new Date(Number(nowMs) || Date.now())
+  const next = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+    0,
+    0,
+    0,
+    0
+  )
+  return Math.max(0, next.getTime() - now.getTime())
+}
+
+function getCooldowns(userId) {
+  const user = ensureUser(userId)
+  if (!user) return {}
+  const now = Date.now()
+  const dayKey = getDayKey(now)
+  const cooldowns = user.cooldowns || {}
+
+  const result = {}
+
+  // Daily
+  const claimedDay = String(cooldowns.dailyClaimKey || null)
+  result.daily = {
+    key: "dailyClaimKey",
+    claimedToday: claimedDay === dayKey,
+    remainingMs: claimedDay === dayKey ? getMsUntilNextLocalMidnight(now) : 0,
+  }
+
+  // Work / trabalho
+  const lastWorkAt = Math.floor(Number(cooldowns.workAt) || 0)
+  const workDuration = getWorkCooldownDurationMs(userId)
+  const workRemaining = Math.max(0, (lastWorkAt + Number(workDuration || 0)) - now)
+  result.work = {
+    key: "workAt",
+    lastAt: lastWorkAt,
+    durationMs: workDuration,
+    remainingMs: workRemaining,
+  }
+
+  // Care package / cesta básica
+  const lastCareAt = Math.floor(Number(cooldowns.carePackageLastClaimedAt) || 0)
+  const SEVEN_DAYS_MS = 7 * DAY_MS
+  const careRemaining = Math.max(0, (lastCareAt + SEVEN_DAYS_MS) - now)
+  result.carePackage = {
+    key: "carePackageLastClaimedAt",
+    lastAt: lastCareAt,
+    remainingMs: careRemaining,
+  }
+
+  // Steal cooldown
+  const lastStealAt = Math.floor(Number(cooldowns.stealAt) || 0)
+  const STEAL_COOLDOWN_MS = 30 * 60_000
+  const stealRemaining = Math.max(0, (lastStealAt + STEAL_COOLDOWN_MS) - now)
+  result.steal = {
+    key: "stealAt",
+    lastAt: lastStealAt,
+    remainingMs: stealRemaining,
+  }
+
+  // Other values
+  result.stealAttemptsToday = {
+    key: "stealAttemptsToday",
+    value: Math.max(0, Math.floor(Number(cooldowns.stealAttemptsToday) || 0)),
+  }
+  result.stealDailyKey = {
+    key: "stealDailyKey",
+    value: cooldowns.stealDailyKey || null,
+  }
+
+  return result
+}
+
+function resetCooldown(userId, alias) {
+  const user = ensureUser(userId)
+  if (!user) return false
+  const a = String(alias || "").trim().toLowerCase()
+  switch (a) {
+    case "daily":
+    case "dailyclaim":
+    case "dailyclaimkey":
+      user.cooldowns.dailyClaimKey = null
+      break
+    case "work":
+    case "workat":
+    case "trabalho":
+      user.cooldowns.workAt = 0
+      break
+    case "carepackage":
+    case "cestabasica":
+    case "cestabásica":
+    case "care":
+    case "cesta":
+      user.cooldowns.carePackageLastClaimedAt = 0
+      break
+    case "steal":
+    case "stealat":
+      user.cooldowns.stealAt = 0
+      break
+    case "stealattempts":
+    case "stealattemptstoday":
+      user.cooldowns.stealAttemptsToday = 0
+      break
+    case "stealdailykey":
+      user.cooldowns.stealDailyKey = null
+      break
+    default:
+      // If matches an exact cooldown property, reset generically
+      if (Object.prototype.hasOwnProperty.call(user.cooldowns, alias)) {
+        const current = user.cooldowns[alias]
+        if (typeof current === "number") user.cooldowns[alias] = 0
+        else if (typeof current === "string") user.cooldowns[alias] = null
+        else if (Array.isArray(current)) user.cooldowns[alias] = []
+        else if (typeof current === "object") user.cooldowns[alias] = {}
+        else user.cooldowns[alias] = null
+        break
+      }
+      return false
+  }
+  touchUser(user)
+  saveEconomy()
+  return true
+}
+
+function resetMultipleCooldowns(userId, aliases) {
+  if (!Array.isArray(aliases)) return false
+  let any = false
+  for (const a of aliases) {
+    if (resetCooldown(userId, a)) any = true
+  }
+  return any
+}
+
+function resetAllCooldowns(userId) {
+  const user = ensureUser(userId)
+  if (!user) return false
+  user.cooldowns = user.cooldowns || {}
+  user.cooldowns.dailyClaimKey = null
+  user.cooldowns.workAt = 0
+  user.cooldowns.stealAt = 0
+  user.cooldowns.stealDailyKey = null
+  user.cooldowns.stealTargets = {}
+  user.cooldowns.stealAttemptsToday = 0
+  user.cooldowns.carePackageLastClaimedAt = 0
+  touchUser(user)
+  saveEconomy()
+  return true
+}
+
 function buildForgeDeps() {
   return {
     isValidPunishmentType,
@@ -3053,6 +3295,7 @@ module.exports = {
   getGroupXpRanking,
   getUserGlobalXpPosition,
   getShopIndexText,
+  getDetailedShopText,
   pushTransaction,
   getStatement,
   incrementStat,
@@ -3061,6 +3304,12 @@ module.exports = {
   getWorkCooldownDurationMs,
   setStealCooldown,
   getStealCooldown,
+  getCooldowns,
+  resetCooldown,
+  resetMultipleCooldowns,
+  resetAllCooldowns,
+  setUserLastTradeByBracket,
+  resetUserTradeCooldowns,
   getProfile,
   getStablePublicLabel,
   isMentionOptIn,

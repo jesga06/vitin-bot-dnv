@@ -53,24 +53,24 @@ A economia é o sistema de progressão principal. Você ganha coins, XP e itens 
 ```
 
 ## Comandos Documentados
+### Visão geral
+- Economia: comandos de perfil, loja, missões, trabalho, cupons e administração financeira
+- Jogos: lobbies, jogos rápidos (memória, reação, embaralhado, comando) e jogos de lobby (adivinhação, batata, dados, roleta russa, moeda)
+- Moderação: administração, filtros e sistema de punições
+- Utilitários: ajuda, menu, feedback e ferramentas administrativas/override
 
-### Economia (20 comandos)
-- economia, perfil, xp, missao, missaosemanal, guia, daily, trabalho, extrato
-- coinsranking, xpranking, cassino, loja, comprar, vender, doarcoins, doaritem
-- roubar, lootbox, falsificar, trade, time, mentions, apelido, cupom, loteria
-- register, unregister, deletarconta
+### Novos / Atualizados (últimas mudanças)
+- `moeda` — Cara ou Coroa com apostas e modo Dobro ou Nada
+- `streak`, `streakranking` — estatísticas e ranking de streaks do Cara ou Coroa
+- `memoria`, `reacao`, `comando` — jogos rápidos ativáveis por `!comecar <tipo>`
+- `aposta` — configuração de aposta por jogador em lobbies
+- `mudarapelido` (override) — ajuste de apelido público via override
+- `cooldowns` (override) — listar/resetar cooldowns econômicos
+- `comandosfull` — manual completo por seção (oculto/override)
+ - `loteria` — atualizado: criação e gerenciamento com opt-in/opt-out; subcomandos `!loteria entrar`, `!loteria fechar` e sorteio manual `!loteria <ID> sortear` (override only)
+ - `force` — novo (override): permite executar qualquer comando como outro usuário. Use com cautela; pode alterar saldos e estados.
 
-### Jogos (7 comandos)
-- jogos, brincadeiras, começar, entrar, lobbies
-
-### Moderação (14 comandos)
-- mute, unmute, ban, block, unblock, punicoes, punicoesadd, punicoesclr
-- filtros, filtroadd, filtroremove, vote, voteset, adm
-
-### Utilidade (2 comandos)
-- ajuda, ping
-
-**Total: ~50 comandos documentados**
+Para a lista completa e por-seção use `!comandosfull <secao|todos> [detalhes]` (resposta em DM).
 
 ## Restrições Implementadas
 

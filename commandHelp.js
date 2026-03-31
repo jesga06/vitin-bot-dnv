@@ -337,12 +337,18 @@ const COMMAND_HELP = {
   loteria: {
     name: "Loteria",
     aliases: ["loteria"],
-    description: "[Admin] Inicia sorteios com prêmios em coins ou itens",
+    description: "[Override/Admin] Cria e gerencia sorteios com prêmios em coins ou itens (entrar/fechar/sortear)",
     usage: "!loteria \"<titulo>\" \"<recompensas>\" <S|N> <qtd_vencedores>",
     commonUsage: [
-      "!loteria \"Sextou\" \"moedas=500|escudo-2\" S 2 - Loteria com opt-in, 2 vencedores",
+      "!loteria \"Sextou\" \"moedas=500|item:escudo-2|Vale lanche\" S 2 - Cria loteria opt-in, 2 vencedores",
+      "!loteria entrar - Entrar em loteria opt-in ativa (usuários)",
+      "!loteria fechar - Fechar participações (apenas override pode sortear manualmente)",
+      "!loteria 12 sortear - (override) Forçar sorteio da loteria com ID 12",
     ],
-    details: "Opt-in (S) = usuários entram. Opt-out (N) = automático. Admin only.",
+    details:
+      "Opt-in (S) = usuários devem entrar com '!loteria entrar'. Opt-out (N) = participantes = grupo inteiro (exceto quem criou). " +
+      "Apenas overrides podem iniciar e sortear loterias; com opt-in, a loteria fica aberta por 20 minutos ou até '!loteria fechar'. " +
+      "Recompensas aceitam texto livre, moedas=<valor> ou item:<itemID-quantidade> separadas por |.",
   },
 
   register: {
@@ -436,6 +442,88 @@ const COMMAND_HELP = {
       "!lobbies - Ver todos os lobbies",
     ],
     details: "Veja quais jogos estão abertos para entrar.",
+  },
+
+  moeda: {
+    name: "Cara ou Coroa",
+    aliases: ["moeda"],
+    description: "Jogo Cara ou Coroa com apostas e modo Dobro ou Nada",
+    usage: "!moeda [2-10] | !moeda dobro | !moeda continua | !moeda sair",
+    commonUsage: [
+      "!moeda 2 - Apostar 2x (buy-in 50 coins)",
+      "!moeda dobro - Iniciar Dobro ou Nada (modo contínuo)",
+      "!moeda continua - Continuar Dobro ou Nada",
+      "!moeda sair - Coletar ganhos do Dobro ou Nada",
+    ],
+    details: "Jogue cara ou coroa com aposta (2-10x). Existem limites de uso (5 jogadas por 30 minutos por grupo) e suporte a streaks e modo Dobro ou Nada.",
+  },
+
+  streak: {
+    name: "Streak",
+    aliases: ["streak"],
+    description: "Mostra a sequência de vitórias no Cara ou Coroa",
+    usage: "!streak [@usuario]",
+    commonUsage: [
+      "!streak - Ver sua streak atual",
+      "!streak @usuario - Ver streak de outro usuário",
+    ],
+    details: "Exibe quantas vitórias consecutivas (streak) um usuário tem no jogo de Cara ou Coroa neste grupo.",
+  },
+
+  streakranking: {
+    name: "Ranking de Streaks",
+    aliases: ["streakranking"],
+    description: "Mostra o ranking de maiores streaks do grupo",
+    usage: "!streakranking",
+    commonUsage: [
+      "!streakranking - Ver top streaks do grupo",
+    ],
+    details: "Lista os maiores streaks registrados no grupo (máximo histórico e valores atuais).",
+  },
+
+  aposta: {
+    name: "Aposta (Lobby)",
+    aliases: ["aposta"],
+    description: "Define a aposta por jogador em um lobby (fase de preparação)",
+    usage: "!aposta <LobbyID> <1-10|skip>",
+    commonUsage: [
+      "!aposta LOBBY123 3 - Definir aposta 3x para você no lobby",
+      "!aposta LOBBY123 skip - Pular fase de apostas",
+    ],
+    details: "Usado durante a fase de preparação do lobby para ajustar multiplicadores de aposta por jogador antes do início.",
+  },
+
+  memoria: {
+    name: "Memória",
+    aliases: ["memoria", "memória"],
+    description: "Jogo rápido de memória: memorize a sequência e envie de volta",
+    usage: "!comecar memoria (ou !começar memoria)",
+    commonUsage: [
+      "!comecar memoria - Iniciar jogo rápido de memória",
+    ],
+    details: "O bot mostra uma sequência de 12 caracteres por 5 segundos; o primeiro jogador a reproduzir corretamente vence.",
+  },
+
+  reacao: {
+    name: "Reação",
+    aliases: ["reacao", "reação"],
+    description: "Teste de reação: quem reagir mais rápido vence",
+    usage: "!comecar reacao (ou !começar reacao)",
+    commonUsage: [
+      "!comecar reacao - Iniciar teste de reação rápido",
+    ],
+    details: "O bot libera o início e mede o tempo de reação de quem enviar mensagens; o mais rápido vence.",
+  },
+
+  comando: {
+    name: "Comando",
+    aliases: ["comando"],
+    description: "Jogo 'Comando' (Último a obedecer): siga instruções sorteadas",
+    usage: "!comecar comando (ou !começar comando)",
+    commonUsage: [
+      "!comecar comando - Iniciar o jogo 'Comando'",
+    ],
+    details: "O bot dará instruções aleatórias (emoji, foto, silêncio etc.). O último a obedecer (ou o primeiro a quebrar o silêncio) perde e pode receber punição.",
   },
 
   // ===== MODERATION COMMANDS =====
@@ -605,6 +693,18 @@ const COMMAND_HELP = {
       "!duvida daily - Mesma coisa que !ajuda",
     ],
     details: "Use este comando para saber como usar qualquer comando público. Respostas vêm em DM.",
+  },
+
+  comandosfull: {
+    name: "Manual Completo (comandosfull)",
+    aliases: ["comandosfull"],
+    description: "Gera manual completo por seção com comandos e notas (oculto/override)",
+    usage: "!comandosfull [secao|todos] [detalhes]",
+    commonUsage: [
+      "!comandosfull economia - Ver comandos da seção economia",
+      "!comandosfull ocultos detalhes - Ver comandos ocultos com notas",
+    ],
+    details: "Gera um manual completo com seções. Normalmente usado por overrides/admins; resposta em DM.",
   },
 
   ping: {
@@ -916,6 +1016,43 @@ const COMMAND_HELP = {
       "!removeitem @usuario escudo 2 - Tirar 2 escudos",
     ],
     details: "Admin only.",
+  },
+
+  mudarapelido: {
+    name: "Mudar Apelido (override)",
+    aliases: ["mudarapelido"],
+    description: "[Override] Altera o apelido público de outro usuário",
+    usage: "!mudarapelido @user <novo_apelido>",
+    commonUsage: [
+      "!mudarapelido @usuario ReiDoCaos - Atualiza apelido público (override only)",
+    ],
+    details: "Requer permissões de override/admin. Captura tudo após a menção como novo apelido.",
+  },
+
+  cooldowns: {
+    name: "Cooldowns (override)",
+    aliases: ["cooldowns"],
+    description: "[Override] Lista ou reseta cooldowns de economia para um usuário",
+    usage: "!cooldowns [list] | !cooldowns reset [@user] <all|daily,work,cestabasica,steal,moeda>",
+    commonUsage: [
+      "!cooldowns list - Ver cooldowns do remetente",
+      "!cooldowns reset @user all - Resetar todos os cooldowns (override only)",
+    ],
+    details: "Admin/Override only. Lista cooldowns e permite reset por tipo ou todos (uso cuidadoso).",
+  },
+
+  force: {
+    name: "Force (Executar como outro)",
+    aliases: ["force"],
+    description: "[Override] Executa o comando fornecido como se fosse outro usuário",
+    usage: "!force @user <comando|args>",
+    commonUsage: [
+      "!force @usuario daily - Forçar resgate de daily como outro usuário",
+      "!force @usuario trade @outro 100 escudo:1 - Forçar oferta de trade como outro usuário",
+    ],
+    details:
+      "Apenas overrides podem usar. Simula o usuário mencionado executando o comando especificado (games, utilitários, economia, moderação). " +
+      "Aplica reset/ajustes necessários (ex.: cooldowns de daily/trade) e confirma com 'Comando forçado executado como @user'. Use com extremo cuidado, pois pode alterar saldos e estados de usuários.",
   },
 
   timeranking: {

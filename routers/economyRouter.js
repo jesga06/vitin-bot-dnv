@@ -3,10 +3,10 @@ const telemetry = require("../services/telemetryService")
 
 const pendingForgeTypeByUser = new Map()
 const activeRafflesByGroup = new Map()
-const RAFFLE_REVEAL_DELAY_MS = 5_000
+const raffleRevealDelayMs = 5_000
 const RAFFLE_OPTIN_WINDOW_MS = 30 * 60 * 1000
 const TRADE_STATE_KEY = "tradeState"
-const TRADE_TIMEOUT_MS = 15 * 60 * 1000
+const TRADE_TIMEOUT_MS = 1440 * 60 * 1000
 const TRADE_HISTORY_LIMIT = 100
 const TRADE_ITEM_STACK_LIMIT = 100_000
 const TEAM_WITHDRAW_COOLDOWN_MS = 15 * 60 * 1000
@@ -61,112 +61,88 @@ function parseQuotedArgs(input = "") {
 
 function parseRaffleCreationArgs(commandRemainder = "") {
   const args = parseQuotedArgs(commandRemainder)
-  if (args.length < 4) {
-    return {
-      ok: false,
-      reason: "missing-args",
-    }
+  if (args.length < 2) {
+    return { ok: false, reason: "missing-args" }
   }
 
-  const winnersRaw = String(args.pop() || "").trim()
-  const winnersCount = Number.parseInt(winnersRaw, 10)
-  if (!Number.isFinite(winnersCount) || winnersCount <= 0) {
-    return {
-      ok: false,
-      reason: "invalid-winners",
-    }
+  // Parse optional trailing tokens: <opt-in S|N> and <winnersCount>
+  let winnersCount = 1
+  let optIn = false
+
+  // Look for numeric winners count at the end
+  const lastTok = String(args[args.length - 1] || "").trim()
+  if (/^\d+$/.test(lastTok)) {
+    winnersCount = Math.max(1, Number.parseInt(args.pop(), 10))
   }
 
-  const optInToken = String(args.pop() || "").trim().toUpperCase()
-  if (!["S", "N"].includes(optInToken)) {
-    return {
-      ok: false,
-      reason: "invalid-opt-in",
-    }
+  // Look for opt-in token (S or N) now at the end
+  const maybeOpt = String(args[args.length - 1] || "").trim().toUpperCase()
+  if (["S", "N"].includes(maybeOpt)) {
+    optIn = maybeOpt === "S"
+    args.pop()
   }
 
   const rewardRaw = String(args.pop() || "").trim()
   const title = String(args.join(" ") || "").trim()
-  if (!title || !rewardRaw) {
-    return {
-      ok: false,
-      reason: "missing-args",
-    }
+  if (!title || rewardRaw === undefined) {
+    return { ok: false, reason: "missing-args" }
   }
 
-  return {
-    ok: true,
-    title,
-    rewardRaw,
-    optIn: optInToken === "S",
-    winnersCount,
-  }
+  return { ok: true, title, rewardRaw, optIn, winnersCount }
 }
 
 function parseRaffleRewards(rewardRaw = "", economyService, limits) {
-  const segments = String(rewardRaw || "")
-    .split("|")
-    .map((segment) => String(segment || "").trim())
-    .filter(Boolean)
-
-  if (segments.length === 0) {
-    return {
-      ok: false,
-      reason: "empty",
-    }
+  // Support either pipe-separated segments (legacy) or comma-separated lists
+  let segments = []
+  const raw = String(rewardRaw || "")
+  if (raw.includes("|")) {
+    segments = raw.split("|")
+  } else if (raw.includes(",")) {
+    // prefer comma-split when items are passed as comma-separated
+    segments = raw.split(",")
+  } else {
+    segments = [raw]
   }
+  segments = segments.map((s) => String(s || "").trim()).filter(Boolean)
+
+  if (segments.length === 0) return { ok: false, reason: "empty" }
 
   const rewards = []
   for (const segment of segments) {
-    const coinMatch = segment.match(/^moedas\s*=\s*(\d+)$/i)
+    // coins pattern (allow zero)
+    const coinMatch = segment.match(/^\s*(?:moedas|coins)?\s*=?\s*(\d+)\s*$/i)
     if (coinMatch) {
       const amount = Number.parseInt(coinMatch[1], 10)
-      if (!Number.isFinite(amount) || amount <= 0 || amount > limits.maxCoinOperation) {
-        return {
-          ok: false,
-          reason: "invalid-coins",
-          details: `moedas deve ser entre 1 e ${limits.maxCoinOperation}`,
-        }
+      if (!Number.isFinite(amount) || amount < 0 || amount > limits.maxCoinOperation) {
+        return { ok: false, reason: "invalid-coins", details: `moedas deve ser entre 0 e ${limits.maxCoinOperation}` }
       }
       rewards.push({ type: "coins", amount })
       continue
     }
 
-    const itemMatch = segment.match(/^item\s*:\s*([a-z0-9_]+)\s*-\s*(\d+)$/i)
+    // item patterns: accepts item:escudo-2, item-escudo:2, escudo-2, escudo:2
+    const itemMatch = segment.match(/^(?:item\s*[:\-])?\s*([a-z0-9_]+)\s*[:\-]\s*(\d+)$/i)
     if (itemMatch) {
       const requestedItem = String(itemMatch[1] || "").trim()
       const quantity = Number.parseInt(itemMatch[2], 10)
       if (!Number.isFinite(quantity) || quantity <= 0 || quantity > limits.maxItemOperation) {
-        return {
-          ok: false,
-          reason: "invalid-item-quantity",
-          details: `item:<id-quantidade> deve ter quantidade entre 1 e ${limits.maxItemOperation}`,
-        }
+        return { ok: false, reason: "invalid-item-quantity", details: `item:<id-quantidade> deve ter quantidade entre 1 e ${limits.maxItemOperation}` }
       }
-      const itemDef = economyService.getItemDefinition(requestedItem)
+      const itemDef = typeof economyService?.getItemDefinition === "function"
+        ? economyService.getItemDefinition(requestedItem)
+        : null
       if (!itemDef?.key) {
-        return {
-          ok: false,
-          reason: "unknown-item",
-          details: `item desconhecido: ${requestedItem}`,
-        }
+        return { ok: false, reason: "unknown-item", details: `item desconhecido: ${requestedItem}` }
       }
-      rewards.push({
-        type: "item",
-        itemKey: itemDef.key,
-        quantity,
-        name: itemDef.name || itemDef.key,
-      })
+      rewards.push({ type: "item", itemKey: itemDef.key, quantity, name: itemDef.name || itemDef.key })
       continue
     }
 
+    // fallback: free text reward
     rewards.push({ type: "text", text: segment })
   }
 
-  return {
-    ok: true,
-    rewards,
-  }
+  return { ok: true, rewards }
 }
 
 function getTradeState(storage, groupId) {
@@ -481,13 +457,13 @@ async function handleLevel100Milestone(sock, userId, xpResult) {
   // Send congratulatory DM to the user
   const jidNormalized = String(userId || "").includes("@") ? userId : `${userId}@s.whatsapp.net`
   try {
-    await sock.sendMessage(jidNormalized, {
-      text:
-        "🎉 *PARABÉNS!* 🎉\n\n" +
-        "Você atingiu o *nível 100*! 🏆\n\n" +
-        "Como presente, você recebeu uma *Coroa Kronos Verdadeira Permanente* ✨\n\n" +
-        "Esta é uma recompensa exclusiva por alcançar o máximo nível. Aproveite seus benefícios!",
-    })
+        await sock.sendMessage(jidNormalized, {
+          text:
+            "🎉 *PARABÉNS!* 🎉\n\n" +
+            "Você atingiu o *nível 100*! 🏆\n\n" +
+            "Como presente, você recebeu uma *Coroa Kronos Verdadeira Permanente* ✨\n\n" +
+            "Esta é uma recompensa exclusiva por alcançar o máximo nível. Aproveite seus benefícios!"
+        })
   } catch (err) {
     // Silently fail DM sends if the user hasn't accepted DMs
   }
@@ -657,6 +633,7 @@ async function handleEconomyCommands(ctx) {
     `${commandPrefix}time`,
     `${commandPrefix}cupom`,
     `${commandPrefix}loteria`,
+    `${commandPrefix}listaitens`,
     `${commandPrefix}item`,
     `${commandPrefix}deletarconta`,
     `${commandPrefix}deleteconta`,
@@ -769,6 +746,8 @@ async function handleEconomyCommands(ctx) {
       return Boolean(identity?.mentionId)
     })
   }
+
+  // (force handling moved to bot.js)
 
   if (cmdName === prefix + "mentions" || cmdName === prefix + "mention") {
     const action = String(cmdArg1 || "").trim().toLowerCase()
@@ -3070,6 +3049,38 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     } else if (profile?.buffs?.kronosActive) {
       kronosInfo = `\nCoroa Kronos (Quebrada) ativa até: *${new Date(profile.buffs.kronosExpiresAt).toLocaleString()}*`
     }
+    // Build cooldown summary
+    const cd = typeof economyService.getCooldowns === "function"
+      ? economyService.getCooldowns(targetUser)
+      : {}
+    const now = Date.now()
+    const cooldownLines = []
+    if (cd.daily) {
+      cooldownLines.push(`Daily: ${cd.daily.remainingMs > 0 ? `Reseta em ${formatDuration(cd.daily.remainingMs)}` : "Disponível"}`)
+    }
+    if (cd.work) {
+      cooldownLines.push(`Trabalho: ${cd.work.remainingMs > 0 ? `Disponível em ${formatDuration(cd.work.remainingMs)}` : "Disponível"}`)
+    }
+    if (cd.carePackage) {
+      cooldownLines.push(`Cesta básica: ${cd.carePackage.remainingMs > 0 ? `Disponível em ${formatDuration(cd.carePackage.remainingMs)}` : "Disponível"}`)
+    }
+    if (cd.steal) {
+      cooldownLines.push(`Roubo: ${cd.steal.remainingMs > 0 ? `Disponível em ${formatDuration(cd.steal.remainingMs)}` : "Disponível"}`)
+    }
+    // moeda (cara ou coroa) rate-limit (group-scoped)
+    try {
+      if (isGroup && typeof storage?.getCoinRateLimits === "function") {
+        const limits = storage.getCoinRateLimits(from) || {}
+        const plays = Array.isArray(limits[targetUser]) ? limits[targetUser] : []
+        const recent = plays.filter((ts) => now - Number(ts || 0) < (30 * 60_000))
+        const used = recent.length
+        const max = 5
+        cooldownLines.push(`Moeda (30m): ${used}/${max} jogadas usadas${used >= max ? ` - aguarde ${formatDuration((recent[0] || 0) + (30 * 60_000) - now)}` : ""}`)
+      }
+    } catch (_) {}
+
+    const cooldownText = cooldownLines.length > 0 ? `\n\n⏱️ Cooldowns:\n${cooldownLines.join("\n")}` : ""
+
     await sock.sendMessage(from, {
       text:
         `💳 Carteira global de @${targetUser.split("@")[0]}\n` +
@@ -3079,7 +3090,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         `XP: *${xp.xpNow}/${xp.xpToNext}*\n` +
         `Pontos de temporada: *${xp.seasonPoints}*\n` +
         `Posição global XP: *${xp.globalPosition || "N/A"}*\n` +
-        `Inventário:\n${buildInventoryText(profile)}${kronosInfo}`,
+        `Inventário:\n${buildInventoryText(profile)}${kronosInfo}` +
+        cooldownText,
       mentions: [targetUser],
     })
     telemetry.incrementCounter("economy.profile.view", 1, {
@@ -3106,12 +3118,12 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       const date = new Date(Number(entry.at) || Date.now())
       const dd = String(date.getDate()).padStart(2, "0")
       const mm = String(date.getMonth() + 1).padStart(2, "0")
-      const hh = String(date.getHours()).padStart(2, "0")
+      const hh = String(date.getHours() + 3).padStart(2, "0")
       const min = String(date.getMinutes()).padStart(2, "0")
       const delta = Math.floor(Number(entry.deltaCoins) || 0)
       const sign = delta >= 0 ? "+" : ""
       const reason = String(entry.details || entry.type || "sem motivo").trim()
-      return `${dd}/${mm} | ${hh}/${min} | ${sign}${delta} | ${reason}`
+      return `${dd}/${mm} | ${hh}:${min} | ${sign}${delta} | ${reason}`
     })
 
     await sock.sendMessage(from, {
@@ -3267,6 +3279,24 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     await sock.sendMessage(from, {
       text: economyService.getShopIndexText(),
     })
+    return true
+  }
+
+  if (cmdName === prefix + "listaitens") {
+    // Send a detailed, better-formatted shop catalog to the user's DMs
+    const targetJid = jidNormalizedUser(sender)
+    const detailed = typeof economyService.getDetailedShopText === "function"
+      ? economyService.getDetailedShopText()
+      : economyService.getShopIndexText()
+    try {
+      await sock.sendMessage(targetJid, { text: detailed })
+      // Acknowledge in group or chat where command was used
+      if (isGroup) {
+        await sock.sendMessage(from, { text: "✅ Enviei a lista de itens por DM." })
+      }
+    } catch (err) {
+      await sock.sendMessage(from, { text: "❌ Não foi possível enviar DM. Verifique suas configurações de privacidade." })
+    }
     return true
   }
 
@@ -3613,14 +3643,18 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       gained: steal.gained,
     })
     await handleLevel100Milestone(sock, sender, xpResult)
+    const kronosText = economyService.hasActiveKronos(sender) ? " (antes de bônus da Coroa Kronos)" : ""
     await sock.sendMessage(from, {
       text:
-        `🕵️ Roubo bem-sucedido! @${sender.split("@")[0]} roubou *${steal.stolenFromVictim}* de @${target.split("@")[0]} e recebeu *${steal.gained}* ${CURRENCY_LABEL}.\n` +
-        `Faixa base do roubo: 90 a 320 ${CURRENCY_LABEL} (antes de bônus da Coroa Kronos).\n` +
+        `🕵️ Roubo bem-sucedido! @${sender.split("@")[0]} roubou *${steal.stolenFromVictim}* de @${target.split("@")[0]} e recebeu *${steal.gained}* ${CURRENCY_LABEL}.
+` +
+        `Faixa base do roubo: 90 a 320 ${CURRENCY_LABEL}${kronosText}.
+` +
         `Chance de sucesso nesta tentativa: ${(steal.successChance * 100).toFixed(0)}%` +
         buildXpRewardText(xpResult, XP_REWARDS.stealAttemptSuccess, economyService),
       mentions: [sender, target],
     })
+
     return true
   }
 
@@ -3811,18 +3845,11 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     }
 
     let casinoInsurance = { activated: false, refunded: 0 }
-    let salvage = { activated: false, refunded: 0 }
     if (payout <= 0) {
       if (typeof economyService.applyCasinoInsurance === "function") {
         casinoInsurance = economyService.applyCasinoInsurance(sender, value, {
           wager: value,
           threshold: 2,
-        })
-      }
-      if (typeof economyService.applySalvageInsurance === "function") {
-        salvage = economyService.applySalvageInsurance(sender, value, {
-          betValue: value,
-          threshold: 4,
         })
       }
     }
@@ -3854,7 +3881,6 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
           ? `Resultado: ganhou *${payout}* ${CURRENCY_LABEL}.`
           : `Resultado: perdeu *${value}* ${CURRENCY_LABEL}.`) +
         (casinoInsurance.activated ? `\n🎟️ Seguro de Cassino ativado: devolução de *${casinoInsurance.refunded}* ${CURRENCY_LABEL}.` : "") +
-        (salvage.activated ? `\n🛟 Seguro Geral ativado: devolução de *${salvage.refunded}* ${CURRENCY_LABEL}.` : "") +
         buildXpRewardText(xpResult, casinoXp, economyService),
     })
     return true
@@ -4315,12 +4341,37 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       if (sessionId && activeSession.id !== sessionId) return false
       activeRafflesByGroup.delete(from)
 
+      // clear any scheduled timers (initial delay + per-second countdowns)
       if (activeSession.timeoutId) {
-        clearTimeout(activeSession.timeoutId)
+        try { clearTimeout(activeSession.timeoutId) } catch (e) {}
+      }
+      if (Array.isArray(activeSession.scheduledTimers)) {
+        for (const t of activeSession.scheduledTimers) {
+          try { clearTimeout(t) } catch (e) {}
+        }
+        activeSession.scheduledTimers = []
       }
 
+      // Only consider participants that are currently present in the group
+      // and are registered users (if registration service is available)
+      const metadata = await sock.groupMetadata(from)
+      const presentSet = new Set((metadata?.participants || []).map((p) => jidNormalizedUser(p.id)))
       const candidates = Array.from(activeSession.participants)
-        .filter((participantId) => participantId && participantId !== activeSession.createdBy)
+        .map((p) => String(p || "").trim())
+        .filter((participantId) => {
+          if (!participantId) return false
+          const normalizedForPresence = jidNormalizedUser(participantId)
+          if (!normalizedForPresence) return false
+          if (normalizedForPresence === activeSession.createdBy) return false
+          if (!presentSet.has(normalizedForPresence)) return false
+          if (typeof registrationService?.isRegistered === "function") {
+            const normalizedForReg = typeof registrationService.normalizeUserId === "function"
+              ? registrationService.normalizeUserId(participantId)
+              : normalizedForPresence
+            return Boolean(registrationService.isRegistered(normalizedForReg))
+          }
+          return true
+        })
 
       if (!candidates.length) {
         await sock.sendMessage(from, {
@@ -4413,10 +4464,71 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         return true
       }
 
+      // Close the opt-in window but do not auto-resolve; drawing must be triggered by an override
+      activeSession.optIn = false
       await sock.sendMessage(from, {
-        text: `🔒 Loteria *${activeSession.title}* foi fechada. Sorteando...`,
+        text: `🔒 Loteria *${activeSession.title}* foi fechada para participações.` +
+          `\nPara sortear, um override deve usar: *${prefix}loteria ${activeSession.code} sortear*`,
+        mentions: applyMentionPolicy(Array.from(activeSession.participants)),
       })
-      await settleRaffleSession(activeSession.id)
+      return true
+    }
+
+    // Manual draw: !loteria <2-digit-id> sortear (override only)
+    const raffleArg2 = String(cmdArg2 || "").trim().toLowerCase()
+    if (/^\d{2}$/.test(raffleAction) && raffleArg2 === "sortear") {
+      if (!isOverrideSender) {
+        await sock.sendMessage(from, { text: "Apenas overrides podem sortear loterias." })
+        return true
+      }
+      const activeSession = activeRafflesByGroup.get(from)
+      if (!activeSession) {
+        await sock.sendMessage(from, { text: "Não há loteria ativa neste grupo." })
+        return true
+      }
+      if (String(activeSession.code) !== raffleAction) {
+        await sock.sendMessage(from, { text: `ID inválido. Loteria atual: ${activeSession.code}` })
+        return true
+      }
+      if (activeSession.sorting) {
+        await sock.sendMessage(from, { text: "Sorteio já em andamento para esta loteria." })
+        return true
+      }
+
+      activeSession.sorting = true
+      // Announce upcoming draw
+      await sock.sendMessage(from, {
+        text: `🎯 Loteria *${activeSession.title}* (ID ${activeSession.code}) — prestes a sortear *${activeSession.winnersCount}* vencedor(es).`,
+        mentions: applyMentionPolicy(Array.from(activeSession.participants)),
+      })
+
+      // Start countdown after configurable initial delay, then send per-second updates, then settle
+      const countdownSeconds = 5
+      const initialDelayMs = Number.isFinite(Number(raffleRevealDelayMs))
+        ? Math.max(0, Math.floor(Number(raffleRevealDelayMs)))
+        : 5 * 1000
+
+      const initial = setTimeout(() => {
+        // schedule per-second messages: countdownSeconds,..,1
+        activeSession.scheduledTimers = activeSession.scheduledTimers || []
+        for (let i = countdownSeconds; i >= 1; i--) {
+          const t = setTimeout(async () => {
+            try {
+              await sock.sendMessage(from, { text: `⏱️ Sorteando em ${i}s...` })
+            } catch (e) {}
+          }, (countdownSeconds - i) * 1000)
+          activeSession.scheduledTimers.push(t)
+          if (typeof t.unref === "function") t.unref()
+        }
+        const finish = setTimeout(async () => {
+          try { await settleRaffleSession(activeSession.id) } catch (e) {}
+        }, countdownSeconds * 1000)
+        activeSession.scheduledTimers.push(finish)
+        if (typeof finish.unref === "function") finish.unref()
+      }, initialDelayMs)
+      activeSession.scheduledTimers = activeSession.scheduledTimers || []
+      activeSession.scheduledTimers.push(initial)
+      if (typeof initial.unref === "function") initial.unref()
       return true
     }
 
@@ -4459,14 +4571,13 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     }
 
     const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const revealDelay = Number.isFinite(Number(raffleRevealDelayMs))
-      ? Math.max(0, Math.floor(Number(raffleRevealDelayMs)))
-      : RAFFLE_REVEAL_DELAY_MS
     const optInWindowMs = Number.isFinite(Number(raffleOptInWindowMs))
       ? Math.max(1000, Math.floor(Number(raffleOptInWindowMs)))
       : RAFFLE_OPTIN_WINDOW_MS
+    const sessionCode = String(Math.floor(Math.random() * 100)).padStart(2, "0")
     const session = {
       id: sessionId,
+      code: sessionCode,
       groupId: from,
       createdBy: sender,
       title: parsedArgs.title,
@@ -4475,6 +4586,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       participants: new Set(),
       winnersCount: Math.max(1, Math.min(100, parsedArgs.winnersCount)),
       createdAt: Date.now(),
+      // scheduledTimers holds timeouts used during manual draw (initial + per-second updates)
+      scheduledTimers: [],
       timeoutId: null,
     }
 
@@ -4501,9 +4614,10 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       text:
         `🎲 Loteria iniciada!\n` +
         `Título: *${session.title}*\n` +
+        `ID: *${session.code}*\n` +
         `${session.optIn
           ? `Aberta por *${Math.ceil(optInWindowMs / 60000)} min* ou até *${prefix}loteria fechar*.\n`
-          : `Resultado em *${Math.ceil(revealDelay / 1000)}s*.\n`}` +
+          : `Para sortear, use: *${prefix}loteria ${session.code} sortear* (apenas overrides).\n`}` +
         `Opt-in: *${session.optIn ? "S" : "N"}*\n` +
         `Vencedores: *${session.winnersCount}*\n` +
         `Participantes atuais: *${session.participants.size}*\n` +
@@ -4511,13 +4625,6 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         `Recompensas:\n${rewardPreview}`,
       mentions: applyMentionPolicy(Array.from(session.participants)),
     })
-
-    session.timeoutId = setTimeout(async () => {
-      await settleRaffleSession(sessionId)
-    }, session.optIn ? optInWindowMs : revealDelay)
-    if (session.timeoutId && typeof session.timeoutId.unref === "function") {
-      session.timeoutId.unref()
-    }
 
     return true
   }
@@ -4690,6 +4797,67 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       return true
     }
 
+    if (cmdName === prefix + "cooldowns") {
+      // Override-only admin: list/reset cooldowns for a user
+      const mentionedTarget = mentioned[0] || null
+      const target = mentionedTarget || sender
+      const localArgOffset = mentionedTarget ? 2 : 1
+      const action = String(cmdParts[localArgOffset] || "").trim().toLowerCase()
+
+      if (!action || action === "list") {
+        const cds = typeof economyService.getCooldowns === "function"
+          ? economyService.getCooldowns(target)
+          : {}
+        const now = Date.now()
+        const lines = []
+        if (cds.daily) lines.push(`Daily: ${cds.daily.remainingMs > 0 ? `Reseta em ${formatDuration(cds.daily.remainingMs)}` : "Disponível"}`)
+        if (cds.work) lines.push(`Trabalho: ${cds.work.remainingMs > 0 ? `Disponível em ${formatDuration(cds.work.remainingMs)}` : "Disponível"}`)
+        if (cds.carePackage) lines.push(`Cesta básica: ${cds.carePackage.remainingMs > 0 ? `Disponível em ${formatDuration(cds.carePackage.remainingMs)}` : "Disponível"}`)
+        if (cds.steal) lines.push(`Roubo: ${cds.steal.remainingMs > 0 ? `Disponível em ${formatDuration(cds.steal.remainingMs)}` : "Disponível"}`)
+        if (typeof storage?.getCoinRateLimits === "function" && isGroup) {
+          try {
+            const limits = storage.getCoinRateLimits(from) || {}
+            const plays = Array.isArray(limits[target]) ? limits[target] : []
+            const recent = plays.filter((ts) => now - Number(ts || 0) < (30 * 60_000))
+            lines.push(`Moeda (30m): ${recent.length}/5 jogadas usadas`)
+          } catch (_) {}
+        }
+        await sock.sendMessage(from, { text: `Cooldowns de @${target.split("@")[0]}:\n${lines.join("\n")}`, mentions: [target] })
+        return true
+      }
+
+      if (action === "reset" || action === "resetar") {
+        const keysRaw = String(cmdParts[localArgOffset + 1] || "").trim().toLowerCase()
+        if (!keysRaw) {
+          return sock.sendMessage(from, { text: `Use: !cooldowns reset [@user] <all|daily,work,cestabasica,steal,moeda>` })
+        }
+        const keys = keysRaw.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
+        let any = false
+        if (keys.includes("all")) {
+          any = economyService.resetAllCooldowns(target)
+        } else {
+          any = economyService.resetMultipleCooldowns(target, keys)
+        }
+        // If asked, also clear moeda rate-limits for the group
+        if (keys.includes("moeda") || keys.includes("coin") || keys.includes("coins")) {
+          try {
+            const limits = storage.getCoinRateLimits(from) || {}
+            if (limits && limits[target]) {
+              delete limits[target]
+              storage.setCoinRateLimits(from, limits)
+              any = true
+            }
+          } catch (_) {}
+        }
+
+        if (!any) return sock.sendMessage(from, { text: "Nenhum cooldown encontrado ou especificador inválido." })
+        await sock.sendMessage(from, { text: `✅ Cooldowns resetados para @${target.split("@")[0]}.`, mentions: [target] })
+        return true
+      }
+
+      return sock.sendMessage(from, { text: `Uso: !cooldowns [list] | !cooldowns reset <all|daily,work,cestabasica,steal,moeda>` })
+    }
+
     if (cmdName === prefix + "mudarapelido") {
       if (!mentionedTarget) {
         return sock.sendMessage(from, { text: "Use: !mudarapelido @user <apelido-novo>" })
@@ -4735,4 +4903,6 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 module.exports = {
   handleEconomyCommands,
   cleanupUserLinkedState,
+  parseTradeOffer,
+  getTradeBracketForOffer,
 }

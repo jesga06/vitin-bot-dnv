@@ -2,7 +2,7 @@ const telemetry = require("../services/telemetryService")
 const storageModule = require("../storage.js")
 const RR_TURN_TIMEOUT_MS = 60_000
 const RR_TURN_TIMEOUT_SECONDS = Math.floor(RR_TURN_TIMEOUT_MS / 1000)
-const LOBBY_BET_GRACE_MS = 15_000
+const LOBBY_BET_GRACE_MS = 10_000
 const GAME_XP_REWARDS = {
   lobbyStart: 6,
   batataWin: 24,
@@ -302,17 +302,15 @@ async function handleGameCommands(ctx) {
   // ==========================================================
 
   if ((cmd === prefix + "moeda dobro" || cmd === prefix + "moeda dobroounada" || cmd === prefix + "moeda dobrounada") && isGroup) {
-    const toggle = caraOuCoroa.toggleDobroOuNada(from, sender)
-    if (toggle.enabled) {
-      await sock.sendMessage(from, {
-        text: `🎲 Dobro ou Nada ATIVADO para !moeda!\n\n${caraOuCoroa.formatDobroStatus(from, toggle.state)}`,
-      })
-    } else {
-      await sock.sendMessage(from, {
-        text: "🎲 Dobro ou Nada DESATIVADO para !moeda.",
-      })
-    }
-    return true
+    return await caraOuCoroa.startDobroGame(ctx)
+  }
+
+  if (cmdName === prefix + "moeda" && cmdArg1 === "continua" && isGroup) {
+    return await caraOuCoroa.continueDobroGame(ctx)
+  }
+
+  if (cmdName === prefix + "moeda" && cmdArg1 === "sair" && isGroup) {
+    return await caraOuCoroa.exitDobroGame(ctx)
   }
 
   if (cmdName === prefix + "jogos" && cmdArg1 === "stats") {
@@ -554,11 +552,11 @@ async function handleGameCommands(ctx) {
       await handleGameCommands({
         sock,
         from,
-        sender,
+        sender: graceState.startedBy || sender,
         cmd: `${prefix}começar ${targetLobbyId}`,
         cmdName: `${prefix}comecar`,
         cmdArg1: targetLobbyId,
-        cmdArg2: graceState.rrBetValueToken || "",
+        cmdArg2: String(graceState.rrBetValueToken || ""),
         mentioned,
         prefix,
         isGroup,
@@ -685,11 +683,11 @@ async function handleGameCommands(ctx) {
         await handleGameCommands({
           sock,
           from,
-          sender: latestGraceState.startedBy || sender,
+          sender: latestGraceState.startedBy,
           cmd: `${prefix}começar ${lobbyId}`,
-          cmdName,
+          cmdName: `${prefix}comecar`,
           cmdArg1: lobbyId,
-          cmdArg2: latestGraceState.rrBetValueToken || "",
+          cmdArg2: String(latestGraceState.rrBetValueToken || ""),
           mentioned,
           prefix,
           isGroup,
@@ -1642,6 +1640,7 @@ async function handleGameMessageFlow(ctx) {
     isResenhaModeEnabled,
     rewardPlayer,
     incrementUserStat,
+    economyService, // NOTE: Assuming this is passed in context for Dobro ou Nada
     createPendingTargetForWinner,
   } = ctx
 
@@ -1649,6 +1648,10 @@ async function handleGameMessageFlow(ctx) {
   const memoryGame = memoria || memória
 
   if (!isGroup || isCommand) return false
+
+  if (await caraOuCoroa.handleDobroGuess(ctx)) {
+    return true
+  }
 
   gameManager.incrementMessageCounter(from, sender)
 

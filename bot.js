@@ -4089,21 +4089,6 @@ const handledAM = await AM.handleAM({
 })
 if (handledAM) return
 
-// =========================
-// Validação
-// =========================
-if (!comandoExiste) {
-  return sugestao()
-}
-
-// =========================
-// OUTROS COMANDOS
-// =========================
-moeda
-menu
-etc
-
-
     // =========================
     // MOEDA (cara ou coroa)
     // =========================

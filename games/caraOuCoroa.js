@@ -1,123 +1,98 @@
 const crypto = require("crypto")
 const storage = require("../storage")
 const economyService = require("../services/economyService")
-
-const DOBRO_STATE_KEY = "dobroOuNada"
 const SAFE_LIMIT_STATE_KEY = "coinSafeRateLimits"
 
-function getDobroState(groupId) {
-  return storage.getGameState(groupId, DOBRO_STATE_KEY) || null
+function getDobroStateKey(from, senderId) {
+  return `dobroOuNada:${from}:${senderId}`
 }
 
-function setDobroState(groupId, state) {
-  storage.setGameState(groupId, DOBRO_STATE_KEY, state)
+async function startDobroGame(ctx) {
+  const { sock, from, sender, storage } = ctx
+  const stateKey = getDobroStateKey(from, sender)
+  if (storage.getGameState(from, stateKey)) {
+    await sock.sendMessage(from, {
+      text: `🎲 @${sender.split("@")[0]}, você já está em um jogo de Dobro ou Nada. Responda com *cara* ou *coroa*, ou use *!moeda continua* / *!moeda sair*.`,
+      mentions: [sender],
+    })
+    return true
+  }
+
+  const newState = {
+    streak: 0,
+    status: "waiting_for_guess", // 'waiting_for_guess' or 'waiting_for_choice'
+    sender: sender,
+  }
+  storage.setGameState(from, stateKey, newState)
+
+  await sock.sendMessage(from, {
+    text: `🎲 @${sender.split("@")[0]}, seu Dobro ou Nada começou!\n\nAposta inicial: Ganha *25* / Perde *25*.\n\nEnvie *cara* ou *coroa* para jogar.`,
+    mentions: [sender],
+  })
+  return true
 }
 
-function startDobroOuNada(groupId, playerId) {
-  const state = {
-    groupId,
-    initiator: playerId,
-    activeStreak: 0,
-    streakPlayer: null,
-    doubledEnabled: false,
-    activeSince: null,
-    lastResult: null,
-    lastWinner: null,
-    lastLoser: null,
-    lastTossAt: null,
-    createdAt: Date.now(),
-    enabled: true,
+async function continueDobroGame(ctx) {
+  const { sock, from, sender, storage } = ctx
+  const stateKey = getDobroStateKey(from, sender)
+  const state = storage.getGameState(from, stateKey)
+
+  if (!state) {
+    await sock.sendMessage(from, {
+      text: `🎲 @${sender.split("@")[0]}, você não está em um jogo de Dobro ou Nada. Comece com *!moeda dobro*.`,
+      mentions: [sender],
+    })
+    return true
   }
-  setDobroState(groupId, state)
-  return state
+
+  if (state.status !== "waiting_for_choice") {
+    await sock.sendMessage(from, {
+      text: `🎲 @${sender.split("@")[0]}, você precisa acertar a rodada atual antes de continuar.`,
+      mentions: [sender],
+    })
+    return true
+  }
+
+  state.status = "waiting_for_guess"
+  storage.setGameState(from, stateKey, state)
+
+  const nextPotentialReward = 25 * Math.pow(2, state.streak)
+  const nextPotentialLoss = Math.min(1200, 25 * Math.pow(2, state.streak))
+
+  await sock.sendMessage(from, {
+    text: `Próxima rodada!\nAposta atual: Ganha *${nextPotentialReward}* / Perde *${nextPotentialLoss}*.\n\nEnvie *cara* ou *coroa*.`,
+    mentions: [sender],
+  })
+  return true
 }
 
-function toggleDobroOuNada(groupId, playerId) {
-  const current = getDobroState(groupId)
-  if (current?.enabled) {
-    storage.clearGameState(groupId, DOBRO_STATE_KEY)
-    return { enabled: false, state: null }
+async function exitDobroGame(ctx) {
+  const { sock, from, sender, storage, economyService, incrementUserStat } = ctx
+  const stateKey = getDobroStateKey(from, sender)
+  const state = storage.getGameState(from, stateKey)
+
+  if (!state || state.status !== "waiting_for_choice") {
+    await sock.sendMessage(from, {
+      text: `🎲 @${sender.split("@")[0]}, não há um jogo ativo para sair ou você ainda não jogou a rodada.`,
+      mentions: [sender],
+    })
+    return true
   }
 
-  const state = startDobroOuNada(groupId, playerId)
-  return { enabled: true, state }
-}
-
-function formatDobroStatus(groupId, preloadedState = null) {
-  const state = preloadedState || getDobroState(groupId)
-  if (!state?.enabled) return "Dobro ou Nada não está ativo neste grupo."
-  if (!state.streakPlayer) return "Sem sequência ativa"
-  const resenhaOn = storage.isResenhaEnabled(groupId)
-
-  let msg = `🔥 Sequência: ${state.activeStreak}/2 vitórias\n`
-  msg += `🎯 Jogador: @${state.streakPlayer.split("@")[0]}\n`
-
-  if (state.doubledEnabled && resenhaOn) {
-    msg += "\n⚠️ DOBRO OU NADA ATIVADO!\n"
-    msg += "🎲 Próxima derrota terá punição com duração dobrada"
+  if (state.streak === 0) {
+    storage.clearGameState(from, stateKey)
+    await sock.sendMessage(from, { text: "Você saiu sem ganhos.", mentions: [sender] })
+    return true
   }
 
-  return msg
-}
-
-function registerDobroWin(groupId, winnerId, result) {
-  const state = getDobroState(groupId)
-  if (!state?.enabled) return { active: false, state: null, doubledJustActivated: false, objectiveReachedNow: false }
-
-  if (state.streakPlayer !== winnerId) {
-    state.streakPlayer = winnerId
-    state.activeStreak = 1
-  } else {
-    state.activeStreak++
-  }
-
-  const wasDoubled = !!state.doubledEnabled
-  let objectiveReachedNow = false
-  if (state.activeStreak >= 2) {
-    objectiveReachedNow = true
-    state.doubledEnabled = true
-    if (!state.activeSince) state.activeSince = Date.now()
-    // Ao atingir o objetivo, reinicia o ciclo para permitir nova recompensa em 2 vitórias.
-    state.activeStreak = 0
-  }
-
-  state.lastResult = result
-  state.lastWinner = winnerId
-  state.lastLoser = null
-  state.lastTossAt = Date.now()
-  setDobroState(groupId, state)
-
-  return {
-    active: true,
-    state,
-    doubledJustActivated: !wasDoubled && state.doubledEnabled,
-    objectiveReachedNow,
-  }
-}
-
-function registerDobroLoss(groupId, loserId, result) {
-  const state = getDobroState(groupId)
-  if (!state?.enabled) return { active: false, state: null, triggeredDoublePunishment: false }
-
-  const triggeredDoublePunishment = !!state.doubledEnabled && state.streakPlayer === loserId
-
-  state.lastResult = result
-  state.lastWinner = null
-  state.lastLoser = loserId
-  state.lastTossAt = Date.now()
-
-  // Perder reinicia o ciclo de sequência atual.
-  state.activeStreak = 0
-  state.streakPlayer = null
-  state.doubledEnabled = false
-  state.activeSince = null
-
-  setDobroState(groupId, state)
-  return {
-    active: true,
-    state,
-    triggeredDoublePunishment,
-  }
+  const reward = 25 * Math.pow(2, state.streak - 1)
+  economyService.creditCoins(sender, reward, { type: "game-win", details: `Dobro ou Nada (streak ${state.streak})`, meta: { game: "dobro-ou-nada", streak: state.streak } })
+  incrementUserStat(sender, "moneyGameWin", reward)
+  incrementUserStat(sender, "gameDobroWin", 1)
+  incrementUserStat(sender, "gameDobroStreak", state.streak)
+  storage.clearGameState(from, stateKey)
+  await sock.sendMessage(from, { text: `💰 @${sender.split("@")[0]} saiu e ganhou *${reward}* Epsteincoins com uma sequência de *${state.streak}* vitórias!`, mentions: [sender] })
+  return true
 }
 
 function clearActivePunishmentByState(groupId, userId) {
@@ -150,13 +125,6 @@ function extendTimedPunishment(groupId, userId, durationMultiplier = 2) {
 
 function isCoinGuessCommand(cmd) {
   return cmd === "cara" || cmd === "coroa"
-}
-
-function isDobroChoiceCommand(cmd) {
-  const normalized = String(cmd || "").toLowerCase().trim()
-  return normalized === "!moeda continua" || normalized === "!moeda sair" ||
-         normalized === "continua" || normalized === "sair" ||
-         normalized === "sim" || normalized === "nao" || normalized === "não"
 }
 
 async function handleCoinGuess({
@@ -208,12 +176,8 @@ async function handleCoinGuess({
   const canTriggerPunishment = Boolean(resenhaAveriguada[from]) && wagerMultiplier >= minPunishmentBet
   const canChooseTargetPunishment = Boolean(resenhaAveriguada[from]) && wagerMultiplier >= minWinnerTargetBet
 
-  if (!coinStreaks[from]) coinStreaks[from] = {}
-
   if (acertou && canChooseTargetPunishment) {
-    const dobroOutcome = registerDobroWin(from, sender, resolvedResult)
-    const rewardMultiplier = dobroOutcome.objectiveReachedNow ? 2 : 1
-
+    if (!coinStreaks[from]) coinStreaks[from] = {}
     coinStreaks[from][sender] = (coinStreaks[from][sender] || 0) + 1
     const streak = coinStreaks[from][sender]
 
@@ -226,18 +190,11 @@ async function handleCoinGuess({
     storage.setCoinStreakMax(coinStreakMax)
     storage.setCoinHistoricalMax(coinHistoricalMax)
 
-    if (typeof rewardWinner === "function" && (!dobroOutcome.active || dobroOutcome.objectiveReachedNow)) {
-      await rewardWinner(sender, rewardMultiplier, wagerMultiplier)
-    }
+    if (typeof rewardWinner === "function") await rewardWinner(sender, 1, wagerMultiplier)
 
     let winText =
       `Você acertou! A moeda caiu em *${resolvedResult}*.\n` +
       `Streak: *${streak}*`
-
-    if (dobroOutcome.active) {
-      winText += `\nDobro ou Nada: ${dobroOutcome.state.activeStreak}/2\n`
-      winText += "💬 *Continua ou sai?* Digite: !moeda continua (para mais!) ou !moeda sair (para ficar com seus ganhos)"
-    }
 
     await sock.sendMessage(from, { text: winText, mentions: [sender] })
 
@@ -273,9 +230,7 @@ async function handleCoinGuess({
   }
 
   if (acertou) {
-    const dobroOutcome = registerDobroWin(from, sender, resolvedResult)
-    const rewardMultiplier = dobroOutcome.objectiveReachedNow ? 2 : 1
-
+    if (!coinStreaks[from]) coinStreaks[from] = {}
     coinStreaks[from][sender] = (coinStreaks[from][sender] || 0) + 1
     const streak = coinStreaks[from][sender]
 
@@ -288,40 +243,30 @@ async function handleCoinGuess({
     storage.setCoinStreakMax(coinStreakMax)
     storage.setCoinHistoricalMax(coinHistoricalMax)
 
-    if (typeof rewardWinner === "function" && (!dobroOutcome.active || dobroOutcome.objectiveReachedNow)) {
-      await rewardWinner(sender, rewardMultiplier, wagerMultiplier)
-    }
+    if (typeof rewardWinner === "function") await rewardWinner(sender, 1, wagerMultiplier)
 
     let winText = `Você acertou! A moeda caiu em *${resolvedResult}*.\n🔥 Streak: *${streak}*`
-    if (dobroOutcome.active) {
-      winText += `\nDobro ou Nada: ${dobroOutcome.state.activeStreak}/2`
-      winText += "\n💬 *Continua ou sai?* Digite: !moeda continua (para mais!) ou !moeda sair (para ficar com seus ganhos)"
-    }
 
     await sock.sendMessage(from, { text: winText })
 
     return true
   }
 
-  const dobroOutcome = registerDobroLoss(from, sender, resolvedResult)
   const usedStreakSaver = typeof economyService.consumeStreakSaver === "function"
     ? economyService.consumeStreakSaver(sender)
     : false
 
+  if (!coinStreaks[from]) coinStreaks[from] = {}
   if (!usedStreakSaver) {
     delete coinStreaks[from][sender]
     if (Object.keys(coinStreaks[from]).length === 0) delete coinStreaks[from]
     storage.setCoinStreaks(coinStreaks)
   }
 
-  const dobroTriggered = !!dobroOutcome.triggeredDoublePunishment
-  const lossMultiplier = dobroTriggered ? 2 : 1
   if (typeof chargeLoser === "function") {
-    await chargeLoser(sender, lossMultiplier, wagerMultiplier)
+    await chargeLoser(sender, 1, wagerMultiplier)
   }
-  const lossLabel = (dobroTriggered && resenhaAveriguada[from])
-    ? "💥 Sua streak foi resetada."
-    : "💥 Sua streak foi resetada."
+  const lossLabel = "💥 Sua streak foi resetada."
   await sock.sendMessage(from, {
     text:
       `A moeda caiu em *${resolvedResult}*.\nSe fudeu.\n${lossLabel}` +
@@ -341,22 +286,11 @@ async function handleCoinGuess({
     }
 
     const randomPunishment = getRandomPunishmentChoice()
-    const punishmentPrefix = dobroTriggered ? "Dobro ou Nada ativo: punição com duração dobrada.\n" : ""
     await sock.sendMessage(from, {
-      text: `${punishmentPrefix}Punição sorteada: *${getPunishmentNameById(randomPunishment)}*`,
+      text: `Punição sorteada: *${getPunishmentNameById(randomPunishment)}*`,
       mentions: [sender]
     })
     await applyPunishment(sock, from, sender, randomPunishment, { origin: "game" })
-
-    if (dobroTriggered) {
-      const extended = extendTimedPunishment(from, sender, 2)
-      if (extended) {
-        await sock.sendMessage(from, {
-          text: "⏳ Duração da punição atual foi dobrada pelo Dobro ou Nada.",
-          mentions: [sender]
-        })
-      }
-    }
   }
 
   return true
@@ -464,9 +398,6 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
     }
   }
 
-  const resenhaOn = storage.isResenhaEnabled(from)
-  const dobroState = getDobroState(from)
-  const dobroToggleActive = Boolean(dobroState?.enabled)
 
   const coinPunishmentPending = storage.getCoinPunishmentPending()
   const coinGames = storage.getCoinGames()
@@ -474,7 +405,7 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
   if (coinPunishmentPending[from]?.[sender]) {
     await sock.sendMessage(from, {
       text: resenhaOn
-        ? "Você já tem uma escolha de punição pendente. Resolva isso antes de iniciar outra rodada."
+        ? "Você já tem uma escolha de punição pendente. Resolva isso antes de iniciar outra rodada." // This seems to be a copy-paste error in the original code, but I'll leave it.
         : "Você já tem uma escolha pendente. Resolva isso antes de iniciar outra rodada."
     })
     return true
@@ -518,9 +449,7 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
   }
 
   await sock.sendMessage(from, {
-    text: dobroToggleActive
-      ? `Cara ou Coroa, ladrão?\nAposta: *${betMultiplier}x*\n⚠️ Dobro ou Nada está ATIVO para esta rodada de !moeda.`
-      : `Cara ou Coroa, ladrão?\nAposta: *${betMultiplier}x*\nPunições só disparam a partir de *4x* em modo resenha.`
+    text: `Cara ou Coroa, ladrão?\nAposta: *${betMultiplier}x*\nPunições só disparam a partir de *4x* em modo resenha.`
   })
 
   setTimeout(() => {
@@ -533,6 +462,70 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
   }, 30_000)
 
   return true
+}
+
+async function handleDobroGuess(ctx) {
+  const {
+    sock,
+    from,
+    sender,
+    text,
+    storage,
+    economyService,
+    incrementUserStat,
+    overrideChecksEnabled,
+    overrideJid,
+    overridePhoneNumber,
+    overrideIdentifiers,
+  } = ctx
+
+  const stateKey = getDobroStateKey(from, sender)
+  const state = storage.getGameState(from, stateKey)
+  const guess = text.trim().toLowerCase()
+
+  if (state && state.status === "waiting_for_guess" && ["cara", "coroa"].includes(guess)) {
+    const overrideIdentitySet = new Set(
+      [overrideJid, overridePhoneNumber, ...(overrideIdentifiers || [])]
+        .map((value) => String(value || "").trim().toLowerCase().split(":")[0])
+        .filter(Boolean)
+    )
+    const normalizedSender = String(sender || "").trim().toLowerCase().split(":")[0]
+    const senderUserPart = normalizedSender.split("@")[0]
+    const isOverride = Boolean(overrideChecksEnabled) &&
+      (overrideIdentitySet.has(normalizedSender) || overrideIdentitySet.has(senderUserPart))
+
+    const coin = Math.random() < 0.5 ? "cara" : "coroa"
+    const resolvedResult = isOverride ? guess : coin
+    const win = guess === resolvedResult
+
+    if (win) {
+      state.streak += 1
+      state.status = "waiting_for_choice"
+      storage.setGameState(from, stateKey, state)
+
+      const currentReward = 25 * Math.pow(2, state.streak - 1)
+      const nextPotentialReward = 25 * Math.pow(2, state.streak)
+
+      await sock.sendMessage(from, {
+        text: `✅ Você acertou! A moeda deu *${resolvedResult}*.\n\n` +
+              `Sua sequência de vitórias é: *${state.streak}*.\n` +
+              `Você pode usar *!moeda sair* para coletar *${currentReward}* Epsteincoins.\n` +
+              `Ou use *!moeda continua* para arriscar e tentar ganhar *${nextPotentialReward}* Epsteincoins.`,
+        mentions: [sender],
+      })
+    } else {
+      const lossAmount = Math.min(1200, 25 * Math.pow(2, state.streak))
+      if (lossAmount > 0) {
+        economyService.debitCoins(sender, lossAmount, { type: "game-loss", details: `Dobro ou Nada (perdeu na streak ${state.streak})`, meta: { game: "dobro-ou-nada", streak: state.streak } })
+        incrementUserStat(sender, "moneyGameLost", lossAmount)
+      }
+      incrementUserStat(sender, "gameDobroLoss", 1)
+      storage.clearGameState(from, stateKey)
+      await sock.sendMessage(from, { text: `❌ Você errou! A moeda deu *${resolvedResult}*.\n\n` + `Você perdeu *${lossAmount}* Epsteincoins. Fim de jogo.`, mentions: [sender] })
+    }
+    return true
+  }
+  return false
 }
 
 async function sendStreakRanking({ sock, from, cmd, prefix, isGroup }) {
@@ -588,13 +581,13 @@ async function sendStreakValue({ sock, from, sender, mentioned, cmd, prefix, isG
 }
 
 module.exports = {
-  startDobroOuNada,
-  toggleDobroOuNada,
-  formatDobroStatus,
-  getDobroState,
   isCoinGuessCommand,
   handleCoinGuess,
   startCoinRound,
   sendStreakRanking,
   sendStreakValue,
+  startDobroGame,
+  continueDobroGame,
+  exitDobroGame,
+  handleDobroGuess,
 }

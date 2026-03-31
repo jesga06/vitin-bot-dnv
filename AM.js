@@ -1719,9 +1719,9 @@ ${alvosTexto}
   })
 }
 // =========================
-// COMANDO: !AMaddalvo - CORRIGIDA
+// COMANDO: !AMaddalvo 
 // =========================
-async function addAlvoAM(sock, from, message, mentions, cmd){
+async function addAlvoAM(sock, from, message){
   if (!AM_ATIVADO_EM_GRUPO[from]) {
     sock.sendMessage(from, {
       text: "❌ AM não está ativado! Use *!amativar* para ativar."
@@ -1738,36 +1738,17 @@ async function addAlvoAM(sock, from, message, mentions, cmd){
     return true
   }
 
-  let novoAlvo = null
-  
-  // acho que fiz certo agr
-  if (message?.extendedTextMessage?.contextInfo?.mentionedJid && 
-      message.extendedTextMessage.contextInfo.mentionedJid.length > 0) {
-    novoAlvo = message.extendedTextMessage.contextInfo.mentionedJid
-  } 
-    
-  else if (Array.isArray(mentions) && mentions.length > 0) {
-    novoAlvo = mentions
-  } 
-  
-  else if (mentions && typeof mentions === 'string') {
-    novoAlvo = mentions
-  }
-  
-  else if (cmd && cmd.includes('@')) {
-    const match = cmd.match(/(\d+@[a-z.]+)/i)
-    if (match) {
-      novoAlvo = match
-    }
-  }
+  // Extrai menção do contextInfo
+  const mentionedJid = message?.extendedTextMessage?.contextInfo?.mentionedJid
 
-  if (!novoAlvo) {
+  if (!mentionedJid || mentionedJid.length === 0) {
     sock.sendMessage(from, {
-      text: "❌ Mencione um usuário! Exemplo: *!amaddalvo @user* ou *!amaddalvo 5521999999999@s.whatsapp.net*"
+      text: "❌ Mencione um usuário! Exemplo: *!amaddalvo @user*"
     })
     return true
   }
 
+  const novoAlvo = mentionedJid
   const jaEstaNoAlvo = alvosAM[from].some(a => a.id === novoAlvo)
 
   if (jaEstaNoAlvo) {
@@ -1793,9 +1774,9 @@ async function addAlvoAM(sock, from, message, mentions, cmd){
 }
 
 // =========================
-// COMANDO: !AMremovealvo - CORRIGIDA
+// COMANDO: !AMremovealvo
 // =========================
-async function removeAlvoAM(sock, from, message, mentions, cmd){
+async function removeAlvoAM(sock, from, message){
   if (!AM_ATIVADO_EM_GRUPO[from]) {
     sock.sendMessage(from, {
       text: "❌ AM não está ativado! Use *!amativar* para ativar."
@@ -1810,35 +1791,17 @@ async function removeAlvoAM(sock, from, message, mentions, cmd){
     return true
   }
 
-  let alvoRemover = null
-  
-  if (message?.extendedTextMessage?.contextInfo?.mentionedJid && 
-      message.extendedTextMessage.contextInfo.mentionedJid.length > 0) {
-    alvoRemover = message.extendedTextMessage.contextInfo.mentionedJid
-  } 
+  // Extrai menção do contextInfo
+  const mentionedJid = message?.extendedTextMessage?.contextInfo?.mentionedJid
 
-  else if (Array.isArray(mentions) && mentions.length > 0) {
-    alvoRemover = mentions
-  } 
-
-  else if (mentions && typeof mentions === 'string') {
-    alvoRemover = mentions
-  }
-
-  else if (cmd && cmd.includes('@')) {
-    const match = cmd.match(/(\d+@[a-z.]+)/i)
-    if (match) {
-      alvoRemover = match
-    }
-  }
-
-  if (!alvoRemover) {
+  if (!mentionedJid || mentionedJid.length === 0) {
     sock.sendMessage(from, {
-      text: "❌ Mencione um usuário! Exemplo: *!amremovealvo @user* ou *!amremovealvo 5521999999999@s.whatsapp.net*"
+      text: "❌ Mencione um usuário! Exemplo: *!amremovealvo @user*"
     })
     return true
   }
 
+  const alvoRemover = mentionedJid
   const index = alvosAM[from].findIndex(a => a.id === alvoRemover)
 
   if (index === -1) {
@@ -1849,7 +1812,6 @@ async function removeAlvoAM(sock, from, message, mentions, cmd){
   }
 
   alvosAM[from].splice(index, 1)
-
   const numero = extrairNumero(alvoRemover)
 
   await enviarQuebrado(sock, from, [
@@ -1860,7 +1822,6 @@ async function removeAlvoAM(sock, from, message, mentions, cmd){
   
   return true
 }
-
 // =========================
 // COMANDO: !desligaram
 // =========================
@@ -2104,13 +2065,13 @@ async function handleAM(ctx) {
       return true
     }
 
-    if (cmdName === prefix + "amaddalvo") {
-      return await addAlvoAM(sock, from, message, ctx.mentions)
-    }
+if (cmdName === prefix + "amaddalvo") {
+  return await addAlvoAM(sock, from, message)
+}
 
-    if (cmdName === prefix + "amremovealvo") {
-      return await removeAlvoAM(sock, from, message, ctx.mentions)
-    }
+if (cmdName === prefix + "amremovealvo") {
+  return await removeAlvoAM(sock, from, message)
+}
 
     if (cmdName === prefix + "desligaram") {
       await desligarAM(sock, from, sender, isGroup, override)

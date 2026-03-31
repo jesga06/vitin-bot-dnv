@@ -4075,19 +4075,33 @@ setTimeout(() => {
     if (handledModerationCommand) return
     
 // =========================
-    // AM - PERSONALIDADE DRAMÁTICA
-    // =========================
-    const handledAM = await AM.handleAM({
-      sock,
-      from,
-      sender,
-      text,
-      cmd,
-      cmdName,
-      isGroup,
-      isOverride: isOverrideSender,
-    })
-    if (handledAM) return
+// AM 
+// =========================
+const handledAM = await AM.handleAM({
+  sock,
+  from,
+  sender,
+  text,
+  cmd,
+  cmdName,
+  isGroup,
+  isOverride: isOverrideSender,
+})
+if (handledAM) return
+
+// =========================
+// Validação
+// =========================
+if (!comandoExiste) {
+  return sugestao()
+}
+
+// =========================
+// OUTROS COMANDOS
+// =========================
+moeda
+menu
+etc
 
 
     // =========================

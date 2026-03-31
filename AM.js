@@ -1412,6 +1412,7 @@ async function AM_Ativar(sock, from, isOverride){
 // =========================
 // FUNÇÃO: PULAR MONÓLOGO INICIAL (SKIP INTRO) - CORRIGIDA
 // =========================
+
 async function AM_Skip(sock, from, isOverride){
   if (!isOverride) {
     return sock.sendMessage(from, {
@@ -1425,23 +1426,23 @@ async function AM_Skip(sock, from, isOverride){
     })
   }
 
-  //  CANCELA O MONÓLOGO EM ANDAMENTO
+  // CANCELA O MONÓLOGO EM ANDAMENTO
   monologoEmAndamento[from] = false
 
   //  CANCELA QUALQUER EVENTO EM ANDAMENTO
   AM_EVENTO_ATIVO[from] = false
   
+  // ENVIA A MENSAGEM DE SKIP PRIMEIRO
+  await sock.sendMessage(from, {
+    text: "✅ Monólogo pulado. Escolhendo alvo..."
+  })
+
   // Aguarda um pouco para garantir que tudo parou
-  await delay(500)
+  await delay(1000)
 
   // AGORA ESCOLHE O ALVO
   await AM_EscolherAlvoAposMonologo(sock, from)
-
-  return sock.sendMessage(from, {
-    text: "✅ Monólogo pulado. Escolhendo alvo..."
-  })
 }
-
 
 // =========================
 // FUNÇÃO: PERFIL DO ALVO - CORRIGIDA

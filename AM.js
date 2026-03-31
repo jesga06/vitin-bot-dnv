@@ -1136,7 +1136,7 @@ async function AM_CaosTotal(ctx){
 // =========================
 // FUNÇÃO: STATUS DO AM (MOSTRA BARRA DE ÓDIO) 
 // =========================
-async function AM_Status(ctx){
+async function AM_Status(sock, from, isOverride){
   console.log("AM_Status trigger")
   if (isOverride) {
     return sock.sendMessage(from, {
@@ -1327,7 +1327,6 @@ async function handleAM(ctx) {
     }
 
     if (cmdName === prefix + "amstatus") {
-      console.log("caiu no if de \"amstatus\"")
       await AM_Status(ctx)
       return true
     }

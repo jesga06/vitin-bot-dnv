@@ -885,6 +885,7 @@ function normalizeFilterComparable(value = "") {
     "8": "b",
     "9": "g",
     "2": "z",
+    "|_|": "u",
   }
 
   const ascii = String(value || "")

@@ -1303,7 +1303,7 @@ async function handleAM(ctx) {
     isOverride: isOverrideSender,
   } = ctx
   try {
-
+    console.log("dentro de handleAM, cmdName=", cmdName)
     // Registra a mensagem
     registrarMensagem(from, sender)
 
@@ -1326,6 +1326,7 @@ async function handleAM(ctx) {
     }
 
     if (cmdName === "amstatus") {
+      console.log("caiu no if de \"amstatus\"")
       await AM_Status(ctx)
       return true
     }

@@ -141,6 +141,18 @@ const COMMAND_HELP = {
     details: "Útil para consultar efeito, preço e categoria de itens antes de comprar/usar.",
   },
 
+  listaitens: {
+    name: "Listar Itens",
+    aliases: ["listaitens"],
+    description: "Lista os itens disponíveis na economia/loja (com IDs e preços)",
+    usage: "!listaitens [categoria|filtro]",
+    commonUsage: [
+      "!listaitens - Lista todos os itens visíveis",
+      "!listaitens armas - Lista apenas itens da categoria 'armas'",
+    ],
+    details: "Mostra nome, id, categoria e preço dos itens. Use filtros para reduzir a lista.",
+  },
+
   coinsranking: {
     name: "Ranking de coins",
     aliases: ["coinsranking"],

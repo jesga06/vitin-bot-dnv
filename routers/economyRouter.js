@@ -1126,6 +1126,27 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
       `- ${prefix}lootbox <quantidade>\n` +
       `- ${prefix}cassino <valor>\n` +
       `- ${prefix}cupom <codigo>\n` +
+      `- ${prefix}listaitens - Lista itens dispon edveis (id, pre o)\n` +
+      `- ${prefix}economia social | ${prefix}economia rotina\n\n` +
+      `Tutorial rapido (primeiros passos):\n` +
+      `1) Dia 1: use ${prefix}daily, rode 1 trabalho seguro (ifood/capinar) e resgate 1 missao.\n` +
+      `2) Dia 2-3: monte estoque na ${prefix}loja, teste ${prefix}comprar/${prefix}vender e acompanhe no ${prefix}extrato.\n` +
+      `3) Dia 4-5: entre em interacao social (time + escambo) com valores pequenos.\n` +
+      `4) Dia 6+: inclua risco controlado (cassino/lootbox) e foque em jogos multiplayer para acelerar riqueza.`
+
+    const guidePart3_fixed =
+      `GUIA DE ECONOMIA - SECAO 3/3 (DICAS + EXTRAS + TUTORIAL)\n\n` +
+      `Dicas essenciais:\n` +
+      `- Jogos multiplayer em grupo sao essenciais para ficar rico: *+15%* de recompensa em grupo e *-10%* em solo.\n` +
+      `- Nao arrisque todo saldo em uma jogada (cassino).\n` +
+      `- Antes de aceitar trocas, use ${prefix}escambo revisar <id>.\n` +
+      `- Subir nivel acelera sua economia com recompensas de progressao.\n\n` +
+      `Comandos extras que ajudam muito:\n` +
+      `- ${prefix}carepackage (alias ${prefix}cestabasica)\n` +
+      `- ${prefix}lootbox <quantidade>\n` +
+      `- ${prefix}cassino <valor>\n` +
+      `- ${prefix}cupom <codigo>\n` +
+      `- ${prefix}listaitens - Lista itens disponiveis (id, preco)\n` +
       `- ${prefix}economia social | ${prefix}economia rotina\n\n` +
       `Tutorial rapido (primeiros passos):\n` +
       `1) Dia 1: use ${prefix}daily, rode 1 trabalho seguro (ifood/capinar) e resgate 1 missao.\n` +
@@ -1136,7 +1157,7 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
     const guideTarget = isGroup ? sender : from
     await sock.sendMessage(guideTarget, { text: guidePart1 })
     await sock.sendMessage(guideTarget, { text: guidePart2 })
-    await sock.sendMessage(guideTarget, { text: guidePart3 })
+    await sock.sendMessage(guideTarget, { text: guidePart3_fixed })
 
     if (isGroup) {
       await sock.sendMessage(from, {
@@ -4668,7 +4689,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     return true
   }
 
-  if ((cmdName === prefix + "setcoins" || cmdName === prefix + "addcoins" || cmdName === prefix + "removecoins" || cmdName === prefix + "additem" || cmdName === prefix + "removeitem" || cmdName === prefix + "mudarapelido") && isGroup) {
+  if ((cmdName === prefix + "setcoins" || cmdName === prefix + "addcoins" || cmdName === prefix + "removecoins" || cmdName === prefix + "additem" || cmdName === prefix + "removeitem" || cmdName === prefix + "mudarapelido" || cmdName === prefix + "cooldowns") && isGroup) {
     if (!isOverrideSender) {
       await sock.sendMessage(from, { text: "Apenas overrides podem usar esse comando." })
       return true
@@ -4797,66 +4818,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       return true
     }
 
-    if (cmdName === prefix + "cooldowns") {
-      // Override-only admin: list/reset cooldowns for a user
-      const mentionedTarget = mentioned[0] || null
-      const target = mentionedTarget || sender
-      const localArgOffset = mentionedTarget ? 2 : 1
-      const action = String(cmdParts[localArgOffset] || "").trim().toLowerCase()
-
-      if (!action || action === "list") {
-        const cds = typeof economyService.getCooldowns === "function"
-          ? economyService.getCooldowns(target)
-          : {}
-        const now = Date.now()
-        const lines = []
-        if (cds.daily) lines.push(`Daily: ${cds.daily.remainingMs > 0 ? `Reseta em ${formatDuration(cds.daily.remainingMs)}` : "Disponível"}`)
-        if (cds.work) lines.push(`Trabalho: ${cds.work.remainingMs > 0 ? `Disponível em ${formatDuration(cds.work.remainingMs)}` : "Disponível"}`)
-        if (cds.carePackage) lines.push(`Cesta básica: ${cds.carePackage.remainingMs > 0 ? `Disponível em ${formatDuration(cds.carePackage.remainingMs)}` : "Disponível"}`)
-        if (cds.steal) lines.push(`Roubo: ${cds.steal.remainingMs > 0 ? `Disponível em ${formatDuration(cds.steal.remainingMs)}` : "Disponível"}`)
-        if (typeof storage?.getCoinRateLimits === "function" && isGroup) {
-          try {
-            const limits = storage.getCoinRateLimits(from) || {}
-            const plays = Array.isArray(limits[target]) ? limits[target] : []
-            const recent = plays.filter((ts) => now - Number(ts || 0) < (30 * 60_000))
-            lines.push(`Moeda (30m): ${recent.length}/5 jogadas usadas`)
-          } catch (_) {}
-        }
-        await sock.sendMessage(from, { text: `Cooldowns de @${target.split("@")[0]}:\n${lines.join("\n")}`, mentions: [target] })
-        return true
-      }
-
-      if (action === "reset" || action === "resetar") {
-        const keysRaw = String(cmdParts[localArgOffset + 1] || "").trim().toLowerCase()
-        if (!keysRaw) {
-          return sock.sendMessage(from, { text: `Use: !cooldowns reset [@user] <all|daily,work,cestabasica,steal,moeda>` })
-        }
-        const keys = keysRaw.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
-        let any = false
-        if (keys.includes("all")) {
-          any = economyService.resetAllCooldowns(target)
-        } else {
-          any = economyService.resetMultipleCooldowns(target, keys)
-        }
-        // If asked, also clear moeda rate-limits for the group
-        if (keys.includes("moeda") || keys.includes("coin") || keys.includes("coins")) {
-          try {
-            const limits = storage.getCoinRateLimits(from) || {}
-            if (limits && limits[target]) {
-              delete limits[target]
-              storage.setCoinRateLimits(from, limits)
-              any = true
-            }
-          } catch (_) {}
-        }
-
-        if (!any) return sock.sendMessage(from, { text: "Nenhum cooldown encontrado ou especificador inválido." })
-        await sock.sendMessage(from, { text: `✅ Cooldowns resetados para @${target.split("@")[0]}.`, mentions: [target] })
-        return true
-      }
-
-      return sock.sendMessage(from, { text: `Uso: !cooldowns [list] | !cooldowns reset <all|daily,work,cestabasica,steal,moeda>` })
-    }
+    
 
     if (cmdName === prefix + "mudarapelido") {
       if (!mentionedTarget) {
@@ -4895,6 +4857,72 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       })
       return true
     }
+  }
+
+  if (cmdName === prefix + "cooldowns") {
+    // Override-only admin: list/reset cooldowns for a user
+    if (!isOverrideSender) {
+      await sock.sendMessage(from, { text: "Apenas overrides podem usar esse comando." })
+      return true
+    }
+
+    const mentionedTarget = mentioned[0] || null
+    const target = mentionedTarget || sender
+    const localArgOffset = mentionedTarget ? 2 : 1
+    const action = String(cmdParts[localArgOffset] || "").trim().toLowerCase()
+
+    if (!action || action === "list") {
+      const cds = typeof economyService.getCooldowns === "function"
+        ? economyService.getCooldowns(target)
+        : {}
+      const now = Date.now()
+      const lines = []
+      if (cds.daily) lines.push(`Daily: ${cds.daily.remainingMs > 0 ? `Reseta em ${formatDuration(cds.daily.remainingMs)}` : "Disponível"}`)
+      if (cds.work) lines.push(`Trabalho: ${cds.work.remainingMs > 0 ? `Disponível em ${formatDuration(cds.work.remainingMs)}` : "Disponível"}`)
+      if (cds.carePackage) lines.push(`Cesta básica: ${cds.carePackage.remainingMs > 0 ? `Disponível em ${formatDuration(cds.carePackage.remainingMs)}` : "Disponível"}`)
+      if (cds.steal) lines.push(`Roubo: ${cds.steal.remainingMs > 0 ? `Disponível em ${formatDuration(cds.steal.remainingMs)}` : "Disponível"}`)
+      if (typeof storage?.getCoinRateLimits === "function" && isGroup) {
+        try {
+          const limits = storage.getCoinRateLimits(from) || {}
+          const plays = Array.isArray(limits[target]) ? limits[target] : []
+          const recent = plays.filter((ts) => now - Number(ts || 0) < (30 * 60_000))
+          lines.push(`Moeda (30m): ${recent.length}/5 jogadas usadas`)
+        } catch (_) {}
+      }
+      await sock.sendMessage(from, { text: `Cooldowns de @${target.split("@")[0]}:\n${lines.join("\n")}`, mentions: [target] })
+      return true
+    }
+
+    if (action === "reset" || action === "resetar") {
+      const keysRaw = String(cmdParts[localArgOffset + 1] || "").trim().toLowerCase()
+      if (!keysRaw) {
+        return sock.sendMessage(from, { text: `Use: !cooldowns reset [@user] <all|daily,work,cestabasica,steal,moeda>` })
+      }
+      const keys = keysRaw.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
+      let any = false
+      if (keys.includes("all")) {
+        any = economyService.resetAllCooldowns(target)
+      } else {
+        any = economyService.resetMultipleCooldowns(target, keys)
+      }
+      // If asked, also clear moeda rate-limits for the group
+      if (keys.includes("moeda") || keys.includes("coin") || keys.includes("coins")) {
+        try {
+          const limits = storage.getCoinRateLimits(from) || {}
+          if (limits && limits[target]) {
+            delete limits[target]
+            storage.setCoinRateLimits(from, limits)
+            any = true
+          }
+        } catch (_) {}
+      }
+
+      if (!any) return sock.sendMessage(from, { text: "Nenhum cooldown encontrado ou especificador inválido." })
+      await sock.sendMessage(from, { text: `✅ Cooldowns resetados para @${target.split("@")[0]}.`, mentions: [target] })
+      return true
+    }
+
+    return sock.sendMessage(from, { text: `Uso: !cooldowns [list] | !cooldowns reset <all|daily,work,cestabasica,steal,moeda>` })
   }
 
   return false

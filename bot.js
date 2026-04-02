@@ -443,6 +443,7 @@ const {
   applyPunishment,
   handlePunishmentEnforcement,
   handlePendingPunishmentChoice,
+  rehydrateActivePunishments,
 } = punishmentService
 
 // Sobrescrita de identidade para comandos administrativos especiais
@@ -1912,6 +1913,13 @@ async function startBot(){
       if (!lifetimeStats.authSessionStartedAt) {
         lifetimeStats.authSessionStartedAt = perfStats.connectedAt
         persistLifetimeStats()
+      }
+      try {
+        if (typeof rehydrateActivePunishments === "function") {
+          await rehydrateActivePunishments(sock)
+        }
+      } catch (e) {
+        console.error("Erro ao reidratar punições ativas:", e)
       }
     }
 
@@ -4518,6 +4526,7 @@ setTimeout(() => {
         sender !== sock.user.id &&
         !((senderIsAdmin || isOverrideSender) && isCommand)
       ) {
+        if (!botIsAdmin) return
         await measureStage("mutedDelete", async () => {
           try{
             await sock.sendMessage(from,{ delete: msg.key })

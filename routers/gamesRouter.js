@@ -667,7 +667,7 @@ async function handleGameCommands(ctx) {
 
       await sock.sendMessage(from, {
         text:
-          `⏳ Lobby *${lobbyId}* entra em período de aposta por 15s.\n` +
+          `⏳ Lobby *${lobbyId}* entra em período de aposta por ${Math.floor(LOBBY_BET_GRACE_MS / 1000)}s.\n` +
           `Cada jogador pode definir bet de *1x a 10x* para multiplicar o buy-in.\n` +
           `Use: *!aposta ${lobbyId} <1-10>* ou *!aposta ${lobbyId} skip*.\n` +
           `Se não escolher, fica em *1x*.`,
@@ -675,55 +675,76 @@ async function handleGameCommands(ctx) {
       })
 
       setTimeout(async () => {
-        const latestGraceState = storage.getGameState(from, graceStateKey)
-        if (!latestGraceState) return
-        latestGraceState.forceStart = true
-        storage.setGameState(from, graceStateKey, latestGraceState)
+        try {
+          const latestGraceState = storage.getGameState(from, graceStateKey)
+          if (!latestGraceState) return
+          latestGraceState.forceStart = true
+          storage.setGameState(from, graceStateKey, latestGraceState)
 
-        await handleGameCommands({
-          sock,
-          from,
-          sender: latestGraceState.startedBy,
-          cmd: `${prefix}começar ${lobbyId}`,
-          cmdName: `${prefix}comecar`,
-          cmdArg1: lobbyId,
-          cmdArg2: String(latestGraceState.rrBetValueToken || ""),
-          mentioned,
-          prefix,
-          isGroup,
-          text,
-          msg,
-          storage,
-          gameManager,
-          economyService,
-          caraOuCoroa,
-          adivinhacao,
-          batataquente,
-          dueloDados,
-          roletaRussa,
-          startPeriodicGame,
-          GAME_REWARDS,
-          BASE_GAME_REWARD,
-          normalizeUnifiedGameType,
-          normalizeLobbyId,
-          activeGameKey,
-          resolveActiveLobbyForPlayer,
-          getLobbyCreateBlockMessage,
-          getGameBuyIn,
-          collectLobbyBuyIn,
-          distributeLobbyBuyInPool,
-          parsePositiveInt,
-          isResenhaModeEnabled,
-          rewardPlayer,
-          rewardPlayers,
-          incrementUserStat,
-          applyRandomGamePunishment,
-          createPendingTargetForWinner,
-          jidNormalizedUser,
-          createLobbyWarningCallback,
-          createLobbyTimeoutCallback,
-          buildGameStatsText,
-        })
+          try {
+            telemetry.incrementCounter("game.lobby.graceTimeoutTriggered", 1, { gameType: session?.gameType })
+            telemetry.appendEvent("game.lobby.graceTimeoutTriggered", { groupId: from, lobbyId, gameType: session?.gameType, players: latestGraceState.players })
+          } catch (e) {
+            // best-effort telemetry, ignore errors
+          }
+
+          // Quick pre-check: if the opt-in session was removed meanwhile, bail early.
+          const preSession = gameManager.getOptInSession(from, lobbyId)
+          if (!preSession) {
+            return
+          }
+
+          await handleGameCommands({
+            sock,
+            from,
+            sender: latestGraceState.startedBy || sender,
+            cmd: `${prefix}começar ${lobbyId}`,
+            cmdName: `${prefix}comecar`,
+            cmdArg1: lobbyId,
+            cmdArg2: String(latestGraceState.rrBetValueToken || ""),
+            mentioned,
+            prefix,
+            isGroup,
+            text,
+            msg,
+            storage,
+            gameManager,
+            economyService,
+            caraOuCoroa,
+            adivinhacao,
+            batataquente,
+            dueloDados,
+            roletaRussa,
+            startPeriodicGame,
+            GAME_REWARDS,
+            BASE_GAME_REWARD,
+            normalizeUnifiedGameType,
+            normalizeLobbyId,
+            activeGameKey,
+            resolveActiveLobbyForPlayer,
+            getLobbyCreateBlockMessage,
+            getGameBuyIn,
+            collectLobbyBuyIn,
+            distributeLobbyBuyInPool,
+            parsePositiveInt,
+            isResenhaModeEnabled,
+            rewardPlayer,
+            rewardPlayers,
+            incrementUserStat,
+            applyRandomGamePunishment,
+            createPendingTargetForWinner,
+            jidNormalizedUser,
+            createLobbyWarningCallback,
+            createLobbyTimeoutCallback,
+            buildGameStatsText,
+          })
+        } catch (err) {
+          console.error(`Error in lobby grace timeout for ${lobbyId} @ ${from}:`, err)
+          try {
+            telemetry.incrementCounter("game.lobby.graceTimeoutError", 1, { gameType: session?.gameType })
+            telemetry.appendEvent("game.lobby.graceTimeoutError", { groupId: from, lobbyId, gameType: session?.gameType, error: String(err?.stack || err?.message || err) })
+          } catch (e) {}
+        }
       }, LOBBY_BET_GRACE_MS)
 
       return true

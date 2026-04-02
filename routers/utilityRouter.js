@@ -121,6 +121,7 @@ async function handleUtilityCommands(ctx) {
         { cmd: `${prefix}deletarconta`, aliases: [`${prefix}deleteconta`], usage: `${prefix}deletarconta confirmar -> frase exata`, effect: "exclui sua conta em 2 etapas", badges: ["GERAL"] },
         { cmd: `${prefix}loteria entrar`, usage: `${prefix}loteria entrar`, effect: "entrar em loteria opt-in ativa", badges: ["GRUPO"] },
         { cmd: `${prefix}loteria fechar`, usage: `${prefix}loteria fechar`, effect: "fechar participações (override apenas para sortear)", badges: ["GRUPO", "OVERRIDE"] },
+        { cmd: `${prefix}listaitens`, usage: `${prefix}listaitens [filtro]`, effect: "lista itens disponíveis na loja/inventário", badges: ["GERAL"] },
       ],
       avancado: [
         { cmd: `${prefix}trade`, usage: `${prefix}trade @usuario <coins> [item:qtd...]`, effect: "abre trade", badges: ["GRUPO"] },

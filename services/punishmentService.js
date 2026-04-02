@@ -75,13 +75,11 @@ function getPunishmentNameById(punishmentId) {
 function getPunishmentMenuText() {
   return [
     "Escolha a punição digitando um número de *1* a *13*:",
-    "--- Punições clássicas ---",
     "1. Mensagens com no máximo 5 caracteres por 5 minutos.",
     "2. Máximo de 1 mensagem a cada 20 segundos por 10 minutos.",
     "3. Bloqueio por duas letras aleatórias (indefinido até cumprir condição de saída).",
     "4. Só pode enviar emojis e figurinhas por 5 minutos.",
     "5. Mute total por 5 minutos (tudo que enviar será apagado).",
-    "--- Novas punições ---",
     "6. Sem vogais por 5 minutos (severidade escala tempo em 1.5x).",
     "7. Toda mensagem deve começar com URGENTE (🚨 e ':' opcionais) por 5 minutos (severidade escala tempo em 1.5x).",
     "8. Mensagem deve conter palavras da lista por 5 minutos (severidade escala tempo em 1.5x e quantidade +1 por nível).",
@@ -905,4 +903,5 @@ module.exports = {
   applyPunishment,
   handlePunishmentEnforcement,
   handlePendingPunishmentChoice,
+  rehydrateActivePunishments,
 }

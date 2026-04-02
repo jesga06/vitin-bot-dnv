@@ -1671,7 +1671,7 @@ async function handleGameMessageFlow(ctx) {
 
   if (!isGroup || isCommand) return false
 
-  if (await caraOuCoroa.handleDobroGuess(ctx)) {
+  if (typeof caraOuCoroa?.handleDobroGuess === "function" && await caraOuCoroa.handleDobroGuess(ctx)) {
     return true
   }
 

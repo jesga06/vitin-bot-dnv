@@ -892,6 +892,67 @@ async function handlePendingPunishmentChoice({ sock, from, sender, text, mention
   return true
 }
 
+async function rehydrateActivePunishments(sock) {
+  const activePunishments = storage.getActivePunishments()
+  const now = Date.now()
+  let changed = false
+
+  for (const [groupId, users] of Object.entries(activePunishments || {})) {
+    if (!users || typeof users !== "object") {
+      delete activePunishments[groupId]
+      changed = true
+      continue
+    }
+
+    for (const [userIdRaw, punishment] of Object.entries(users)) {
+      const userId = normalizeUserId(userIdRaw) || String(userIdRaw || "")
+      if (!userId || !punishment || typeof punishment !== "object") {
+        delete users[userIdRaw]
+        changed = true
+        continue
+      }
+
+      if (punishment.timerId) {
+        clearTimeout(punishment.timerId)
+        delete punishment.timerId
+        changed = true
+      }
+
+      const endsAt = Number(punishment.endsAt) || 0
+      if (!endsAt) {
+        continue
+      }
+
+      const remainingMs = endsAt - now
+      if (remainingMs <= 0) {
+        delete users[userIdRaw]
+        changed = true
+        continue
+      }
+
+      punishment.timerId = setTimeout(() => {
+        clearPunishment(groupId, userId)
+        if (sock && typeof sock.sendMessage === "function") {
+          sock.sendMessage(groupId, {
+            text: `@${userId.split("@")[0]}, sua punição expirou.`,
+            mentions: [userId],
+          }).catch(() => {})
+        }
+      }, remainingMs)
+      changed = true
+    }
+
+    if (Object.keys(users).length === 0) {
+      delete activePunishments[groupId]
+      changed = true
+    }
+  }
+
+  if (changed) {
+    storage.setActivePunishments(activePunishments)
+  }
+}
+
 module.exports = {
   getPunishmentChoiceFromText,
   getRandomPunishmentChoice,

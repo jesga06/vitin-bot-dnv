@@ -462,12 +462,12 @@ const COMMAND_HELP = {
     description: "Jogo Cara ou Coroa com apostas e modo Dobro ou Nada",
     usage: "!moeda [2-10] | !moeda dobro | !moeda continua | !moeda sair",
     commonUsage: [
-      "!moeda 2 - Apostar 2x (buy-in 50 coins)",
+      "!moeda 2 - Jogar com buy-in fixo de 25 (risco 2x para regras de punição)",
       "!moeda dobro - Iniciar Dobro ou Nada (modo contínuo)",
       "!moeda continua - Continuar Dobro ou Nada",
       "!moeda sair - Coletar ganhos do Dobro ou Nada",
     ],
-    details: "Jogue cara ou coroa com aposta (2-10x). Existem limites de uso (5 jogadas por 30 minutos por grupo) e suporte a streaks e modo Dobro ou Nada.",
+    details: "Buy-in fixo de 25 e prêmio fixo de 50 por vitória. O multiplicador 2-10x é usado para regras de risco/punição (ex.: modo resenha). Existem limites de uso (5 jogadas por 30 minutos por grupo) e suporte a streaks e modo Dobro ou Nada.",
   },
 
   streak: {
@@ -484,9 +484,9 @@ const COMMAND_HELP = {
 
 blackjack: {
     name: "Blackjack",
-    aliases: ["blackjack", "21"],
+  aliases: ["blackjack", "21", "bj"],
     description: "Jogo de Blackjack com sistema de apostas e lobby (máx 4 jogadores)",
-    usage: "!blackjack [comando] ou !21 [comando]",
+  usage: "!blackjack [comando] ou !21 [comando] ou !bj [comando]",
     commonUsage: [
       "!21 - Mostra menu do Blackjack",
       "!21 criar - Cria um novo jogo",

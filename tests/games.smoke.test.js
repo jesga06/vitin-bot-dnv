@@ -431,45 +431,85 @@ test("roletaRussa chamber selection hits on expected shot index", () => {
   }
 })
 
-test("dobro ou nada resets cycle at 2 and rewards every cycle", async () => {
-  const groupId = `__dobro_cycle_${Date.now()}@g.us`
-  const sender = "winner@s.whatsapp.net"
+test("dobro ou nada charges buy-in 50 and doubles payout by streak", async () => {
+  const economyService = require("../services/economyService")
+  const groupId = `__dobro_curve_${Date.now()}@g.us`
+  const sender = `winner_${Date.now()}@s.whatsapp.net`
   const { sock } = createSockCapture()
-  let rewards = 0
-  let rewardMultiplierSum = 0
 
-  caraOuCoroa.startDobroOuNada(groupId, sender)
+  economyService.creditCoins(sender, 1000, { type: "test-credit" })
+  const beforeCoins = Number(economyService.getProfile(sender)?.coins || 0)
 
-  for (let round = 1; round <= 4; round++) {
-    setCoinRound(groupId, sender, "cara")
-    const handled = await caraOuCoroa.handleCoinGuess({
-      sock,
-      from: groupId,
-      sender,
-      cmd: "cara",
-      isGroup: true,
-      overrideJid: "",
-      overridePhoneNumber: "",
-      overrideIdentifiers: [],
-      getPunishmentMenuText: () => "",
-      getRandomPunishmentChoice: () => "1",
-      getPunishmentNameById: () => "teste",
-      applyPunishment: async () => {},
-      clearPendingPunishment: () => {},
-      rewardWinner: async (_winnerId, rewardMultiplier = 1) => {
-        rewards += 1
-        rewardMultiplierSum += Number(rewardMultiplier) || 0
-      },
-      chargeLoser: async () => {},
-    })
-    assert.equal(handled, true)
-  }
+  const started = await caraOuCoroa.startDobroGame({
+    sock,
+    from: groupId,
+    sender,
+    storage,
+    economyService,
+    incrementUserStat: () => {},
+  })
+  assert.equal(started, true)
 
-  const state = caraOuCoroa.getDobroState(groupId)
-  assert.equal(rewards, 2)
-  assert.equal(rewardMultiplierSum, 4)
-  assert.equal(state.activeStreak, 0)
-  assert.equal(state.streakPlayer, sender)
+  const afterBuyInCoins = Number(economyService.getProfile(sender)?.coins || 0)
+  assert.equal(afterBuyInCoins, beforeCoins - 50)
+
+  const firstWin = await caraOuCoroa.handleDobroGuess({
+    sock,
+    from: groupId,
+    sender,
+    text: "cara",
+    storage,
+    economyService,
+    incrementUserStat: () => {},
+    overrideChecksEnabled: true,
+    overrideJid: "",
+    overridePhoneNumber: "",
+    overrideIdentifiers: [sender],
+  })
+  assert.equal(firstWin, true)
+  const afterFirstWinState = caraOuCoroa.getDobroState(groupId, sender)
+  assert.equal(afterFirstWinState?.streak, 1)
+  assert.equal(afterFirstWinState?.status, "waiting_for_choice")
+
+  const continued = await caraOuCoroa.continueDobroGame({
+    sock,
+    from: groupId,
+    sender,
+    storage,
+  })
+  assert.equal(continued, true)
+
+  const secondWin = await caraOuCoroa.handleDobroGuess({
+    sock,
+    from: groupId,
+    sender,
+    text: "cara",
+    storage,
+    economyService,
+    incrementUserStat: () => {},
+    overrideChecksEnabled: true,
+    overrideJid: "",
+    overridePhoneNumber: "",
+    overrideIdentifiers: [sender],
+  })
+  assert.equal(secondWin, true)
+  const afterSecondWinState = caraOuCoroa.getDobroState(groupId, sender)
+  assert.equal(afterSecondWinState?.streak, 2)
+  assert.equal(afterSecondWinState?.status, "waiting_for_choice")
+
+  const exited = await caraOuCoroa.exitDobroGame({
+    sock,
+    from: groupId,
+    sender,
+    storage,
+    economyService,
+    incrementUserStat: () => {},
+  })
+  assert.equal(exited, true)
+
+  const finalCoins = Number(economyService.getProfile(sender)?.coins || 0)
+  assert.equal(finalCoins, beforeCoins + 50)
+  assert.equal(caraOuCoroa.getDobroState(groupId, sender), null)
 })
 
 test("override coin guess uses player guess as resolved result", async () => {

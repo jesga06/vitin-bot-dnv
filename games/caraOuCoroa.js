@@ -2,13 +2,17 @@ const crypto = require("crypto")
 const storage = require("../storage")
 const economyService = require("../services/economyService")
 const SAFE_LIMIT_STATE_KEY = "coinSafeRateLimits"
+const COIN_TOSS_BUY_IN = 25
+const COIN_TOSS_WIN_PAYOUT = 50
+const DOBRO_BUY_IN = 50
 
 function getDobroStateKey(from, senderId) {
   return `dobroOuNada:${from}:${senderId}`
 }
 
 async function startDobroGame(ctx) {
-  const { sock, from, sender, storage } = ctx
+  const { sock, from, sender, storage, incrementUserStat } = ctx
+  const service = ctx.economyService || economyService
   const stateKey = getDobroStateKey(from, sender)
   if (storage.getGameState(from, stateKey)) {
     await sock.sendMessage(from, {
@@ -18,15 +22,46 @@ async function startDobroGame(ctx) {
     return true
   }
 
+  const currentCoins = Math.max(0, Math.floor(Number(service.getProfile(sender)?.coins) || 0))
+  if (currentCoins < DOBRO_BUY_IN) {
+    await sock.sendMessage(from, {
+      text: `🎲 @${sender.split("@")[0]}, você precisa de *${DOBRO_BUY_IN}* Epsteincoins para iniciar o Dobro ou Nada. Saldo atual: *${currentCoins}*.`,
+      mentions: [sender],
+    })
+    return true
+  }
+
+  const debited = service.debitCoins(sender, DOBRO_BUY_IN, {
+    type: "game-buyin",
+    details: "Entrada Dobro ou Nada",
+    meta: { game: "dobro-ou-nada", buyInAmount: DOBRO_BUY_IN },
+  })
+  if (!debited) {
+    await sock.sendMessage(from, {
+      text: `🎲 @${sender.split("@")[0]}, não foi possível cobrar o buy-in de *${DOBRO_BUY_IN}*. Tente novamente.`,
+      mentions: [sender],
+    })
+    return true
+  }
+  if (typeof incrementUserStat === "function") {
+    incrementUserStat(sender, "moneyGameLost", DOBRO_BUY_IN)
+  }
+
   const newState = {
     streak: 0,
     status: "waiting_for_guess", // 'waiting_for_guess' or 'waiting_for_choice'
     sender: sender,
+    buyInAmount: DOBRO_BUY_IN,
+    buyInCharged: true,
   }
   storage.setGameState(from, stateKey, newState)
 
   await sock.sendMessage(from, {
-    text: `🎲 @${sender.split("@")[0]}, seu Dobro ou Nada começou!\n\nAposta inicial: Ganha *25* / Perde *25*.\n\nEnvie *cara* ou *coroa* para jogar.`,
+    text:
+      `🎲 @${sender.split("@")[0]}, seu Dobro ou Nada começou!\n\n` +
+      `Buy-in cobrado: *${DOBRO_BUY_IN}* Epsteincoins.\n` +
+      `Se sair com streak 1, recebe *${DOBRO_BUY_IN}* (break-even).\n\n` +
+      `Envie *cara* ou *coroa* para jogar.`,
     mentions: [sender],
   })
   return true
@@ -56,18 +91,23 @@ async function continueDobroGame(ctx) {
   state.status = "waiting_for_guess"
   storage.setGameState(from, stateKey, state)
 
-  const nextPotentialReward = 25 * Math.pow(2, state.streak)
-  const nextPotentialLoss = Math.min(1200, 25 * Math.pow(2, state.streak))
+  const buyInAmount = Math.max(1, Math.floor(Number(state.buyInAmount) || DOBRO_BUY_IN))
+  const nextPotentialReward = buyInAmount * Math.pow(2, state.streak)
 
   await sock.sendMessage(from, {
-    text: `Próxima rodada!\nAposta atual: Ganha *${nextPotentialReward}* / Perde *${nextPotentialLoss}*.\n\nEnvie *cara* ou *coroa*.`,
+    text:
+      `Próxima rodada!\n` +
+      `Se acertar, você poderá sair com *${nextPotentialReward}* Epsteincoins.\n` +
+      `Se errar, perde apenas o buy-in já cobrado (*${buyInAmount}*).\n\n` +
+      `Envie *cara* ou *coroa*.`,
     mentions: [sender],
   })
   return true
 }
 
 async function exitDobroGame(ctx) {
-  const { sock, from, sender, storage, economyService, incrementUserStat } = ctx
+  const { sock, from, sender, storage, incrementUserStat } = ctx
+  const service = ctx.economyService || economyService
   const stateKey = getDobroStateKey(from, sender)
   const state = storage.getGameState(from, stateKey)
 
@@ -90,9 +130,16 @@ async function exitDobroGame(ctx) {
     return true
   }
 
-  const reward = 25 * Math.pow(2, state.streak - 1)
-  economyService.creditCoins(sender, reward, { type: "game-win", details: `Dobro ou Nada (streak ${state.streak})`, meta: { game: "dobro-ou-nada", streak: state.streak } })
-  incrementUserStat(sender, "moneyGameWin", reward)
+  const buyInAmount = Math.max(1, Math.floor(Number(state.buyInAmount) || DOBRO_BUY_IN))
+  const reward = buyInAmount * Math.pow(2, state.streak - 1)
+  service.creditCoins(sender, reward, {
+    type: "game-win",
+    details: `Dobro ou Nada (streak ${state.streak})`,
+    meta: { game: "dobro-ou-nada", streak: state.streak, buyInAmount },
+  })
+  if (typeof incrementUserStat === "function") {
+    incrementUserStat(sender, "moneyGameWon", reward)
+  }
   incrementUserStat(sender, "gameDobroWin", 1)
   incrementUserStat(sender, "gameDobroStreak", state.streak)
   storage.clearGameState(from, stateKey)
@@ -365,6 +412,7 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
 
   const rawBet = String(coinMatch[1] || "").trim()
   const profile = economyService.getProfile(sender)
+  const resenhaOn = storage.isResenhaEnabled(from)
   const betMultiplier = rawBet ? Number.parseInt(rawBet, 10) : 2
   if (rawBet && !/^\d+$/.test(rawBet)) {
     await sock.sendMessage(from, {
@@ -380,10 +428,10 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
   }
 
   // Coin balance check & buy-in deduction
-  const buyInAmount = betMultiplier * 25
+  const buyInAmount = COIN_TOSS_BUY_IN
   if (profile.coins < buyInAmount) {
     await sock.sendMessage(from, {
-      text: `Você precisa de pelo menos *${buyInAmount}* moedas para fazer uma aposta de *${betMultiplier}x*. Saldo atual: ${profile.coins}`,
+      text: `Você precisa de pelo menos *${buyInAmount}* moedas para jogar Cara ou Coroa. Saldo atual: ${profile.coins}`,
     })
     return true
   }
@@ -459,7 +507,11 @@ async function startCoinRound({ sock, from, sender, cmd, prefix, isGroup }) {
   }
 
   await sock.sendMessage(from, {
-    text: `Cara ou Coroa, ladrão?\nAposta: *${betMultiplier}x*\nPunições só disparam a partir de *4x* em modo resenha.`
+    text:
+      `Cara ou Coroa, ladrão?\n` +
+      `Buy-in fixo: *${COIN_TOSS_BUY_IN}* | Prêmio por vitória: *${COIN_TOSS_WIN_PAYOUT}*.\n` +
+      `Aposta: *${betMultiplier}x* (risco usado para regras de punição).\n` +
+      `Punições só disparam a partir de *4x* em modo resenha.`
   })
 
   setTimeout(() => {
@@ -513,8 +565,9 @@ async function handleDobroGuess(ctx) {
       state.status = "waiting_for_choice"
       storage.setGameState(from, stateKey, state)
 
-      const currentReward = 25 * Math.pow(2, state.streak - 1)
-      const nextPotentialReward = 25 * Math.pow(2, state.streak)
+      const buyInAmount = Math.max(1, Math.floor(Number(state.buyInAmount) || DOBRO_BUY_IN))
+      const currentReward = buyInAmount * Math.pow(2, state.streak - 1)
+      const nextPotentialReward = buyInAmount * Math.pow(2, state.streak)
 
       await sock.sendMessage(from, {
         text: `✅ Você acertou! A moeda deu *${resolvedResult}*.\n\n` +
@@ -524,18 +577,48 @@ async function handleDobroGuess(ctx) {
         mentions: [sender],
       })
     } else {
-      const lossAmount = Math.min(1200, 25 * Math.pow(2, state.streak))
-      if (lossAmount > 0) {
-        economyService.debitCoins(sender, lossAmount, { type: "game-loss", details: `Dobro ou Nada (perdeu na streak ${state.streak})`, meta: { game: "dobro-ou-nada", streak: state.streak } })
-        incrementUserStat(sender, "moneyGameLost", lossAmount)
-      }
+      const buyInAmount = Math.max(1, Math.floor(Number(state.buyInAmount) || DOBRO_BUY_IN))
       incrementUserStat(sender, "gameDobroLoss", 1)
       storage.clearGameState(from, stateKey)
-      await sock.sendMessage(from, { text: `❌ Você errou! A moeda deu *${resolvedResult}*.\n\n` + `Você perdeu *${lossAmount}* Epsteincoins. Fim de jogo.`, mentions: [sender] })
+      await sock.sendMessage(from, {
+        text:
+          `❌ Você errou! A moeda deu *${resolvedResult}*.\n\n` +
+          `Você perdeu o buy-in de *${buyInAmount}* Epsteincoins. Fim de jogo.`,
+        mentions: [sender],
+      })
     }
     return true
   }
   return false
+}
+
+// Compat helper kept for older integrations/tests that still call the legacy function name.
+function startDobroOuNada(from, senderId) {
+  const stateKey = getDobroStateKey(from, senderId)
+  storage.setGameState(from, stateKey, {
+    streak: 0,
+    status: "waiting_for_guess",
+    sender: senderId,
+    buyInAmount: DOBRO_BUY_IN,
+    buyInCharged: false,
+  })
+}
+
+// Compat helper used by older tests to inspect active Dobro state by group.
+function getDobroState(from, senderId = "") {
+  if (senderId) {
+    return storage.getGameState(from, getDobroStateKey(from, senderId))
+  }
+  const states = storage.getGameStates(from) || {}
+  const key = Object.keys(states).find((entry) => entry.startsWith(`dobroOuNada:${from}:`))
+  const state = key ? states[key] : null
+  if (!state) return null
+  const playerFromKey = key.split(":").slice(2).join(":")
+  return {
+    ...state,
+    activeStreak: Math.max(0, Math.floor(Number(state.streak) || 0)),
+    streakPlayer: state.sender || playerFromKey,
+  }
 }
 
 async function sendStreakRanking({ sock, from, cmd, prefix, isGroup }) {
@@ -597,7 +680,9 @@ module.exports = {
   sendStreakRanking,
   sendStreakValue,
   startDobroGame,
+  startDobroOuNada,
   continueDobroGame,
   exitDobroGame,
   handleDobroGuess,
+  getDobroState,
 }

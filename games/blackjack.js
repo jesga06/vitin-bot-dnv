@@ -67,12 +67,12 @@ function initStats(sender) {
 
 async function handleBlackjack({ sock, from, sender, text, prefix, cmd, cmdName, isGroup, isOverrideSender }) {
   const normalizedCmd = String(cmdName || "").toLowerCase().trim().replace(/^!+/, "");
-  if (normalizedCmd !== 'blackjack' && normalizedCmd !== '21') return false;
+  if (normalizedCmd !== 'blackjack' && normalizedCmd !== '21' && normalizedCmd !== 'bj') return false;
 
-  const numero = sender.split("@");
+  const numero = String(sender || "").split("@")[0];
   
-  const textParts = text.trim().split(/\s+/);
-  const acao = (textParts || "").toLowerCase();
+  const textParts = String(text || "").trim().split(/\s+/).filter(Boolean);
+  const acao = String(textParts[1] || "").toLowerCase();
 
   const stateKey = getBlackjackStateKey(from);
   let lobby = storage.getGameState(from, stateKey) || {
@@ -94,7 +94,7 @@ async function handleBlackjack({ sock, from, sender, text, prefix, cmd, cmdName,
 🃏 *Blackjack (21)* 
 
 ✅ Comandos:
-${prefix}21 ou ${prefix}blackjack → Mostra este menu
+${prefix}21 ou ${prefix}blackjack ou ${prefix}bj → Mostra este menu
 ${prefix}21 criar ou ${prefix}blackjack criar → Cria um novo jogo
 ${prefix}21 aposta [multiplicador] ou ${prefix}blackjack aposta [multiplicador] → Define multiplicador (só criador)
 ${prefix}21 entrar ou ${prefix}blackjack entrar → Entra no jogo com aposta
@@ -174,7 +174,7 @@ ${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override
       return true;
     }
 
-    const multiplier = parseInt(cmdParts) || 1;
+    const multiplier = Number.parseInt(String(textParts[2] || ""), 10) || 1;
     if (multiplier < 1 || multiplier > 100) {
       await sock.sendMessage(from, { text: '❌ Multiplicador inválido! Use um valor entre 1 e 100.' });
       return true;
@@ -353,7 +353,7 @@ ${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override
       const betText = lobby.isPovertyMode ? "Modo pobreza" : `Aposta: 💰 ${bet}`;
       msg += `@${player}: ${formatHand(hand)} (Valor: ${value}) | ${betText}\n`;
     }
-    msg += `\n Dealer: ${formatHand([lobby.dealerCards])} ?`;
+    msg += `\nDealer: ${formatHand([lobby.dealerCards[0]])} ?`;
 
     await sock.sendMessage(from, { 
       text: msg, 

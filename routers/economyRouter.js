@@ -4868,8 +4868,12 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 
     const mentionedTarget = mentioned[0] || null
     const target = mentionedTarget || sender
-    const localArgOffset = mentionedTarget ? 2 : 1
-    const action = String(cmdParts[localArgOffset] || "").trim().toLowerCase()
+    const args = (cmdParts || [])
+      .slice(1)
+      .map((part) => String(part || "").trim())
+      .filter(Boolean)
+    const argsWithoutMentions = args.filter((token) => !token.startsWith("@"))
+    const action = String(argsWithoutMentions[0] || "list").trim().toLowerCase()
 
     if (!action || action === "list") {
       const cds = typeof economyService.getCooldowns === "function"
@@ -4889,12 +4893,15 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
           lines.push(`Moeda (30m): ${recent.length}/5 jogadas usadas`)
         } catch (_) {}
       }
+      if (lines.length === 0) {
+        lines.push("Nenhum cooldown registrado.")
+      }
       await sock.sendMessage(from, { text: `Cooldowns de @${target.split("@")[0]}:\n${lines.join("\n")}`, mentions: [target] })
       return true
     }
 
     if (action === "reset" || action === "resetar") {
-      const keysRaw = String(cmdParts[localArgOffset + 1] || "").trim().toLowerCase()
+      const keysRaw = String(argsWithoutMentions.slice(1).join(" ") || "").trim().toLowerCase()
       if (!keysRaw) {
         return sock.sendMessage(from, { text: `Use: !cooldowns reset [@user] <all|daily,work,cestabasica,steal,moeda>` })
       }

@@ -64,15 +64,13 @@ function initStats(sender) {
   }
   return stats;
 }
-
-async function handleBlackjack({ sock, from, sender, text, prefix, cmd, cmdName, isGroup, isOverrideSender }) {
+  async function handleBlackjack({ sock, from, sender, text, prefix, cmd, cmdName, isGroup, isOverrideSender }) {
   const normalizedCmd = String(cmdName || "").toLowerCase().trim().replace(/^!+/, "");
   if (normalizedCmd !== 'blackjack' && normalizedCmd !== '21' && normalizedCmd !== 'bj') return false;
 
-  const numero = String(sender || "").split("@");
-  
-  const textParts = String(text || "").trim().split(/\s+/).filter(Boolean);
-  const acao = String(textParts || "").toLowerCase();
+const numero = String(sender || "").split("@");
+const textParts = String(text || "").trim().split(/\s+/).filter(Boolean);
+const acao = String(textParts || "").toLowerCase();
 
   const stateKey = getBlackjackStateKey(from);
   let lobby = storage.getGameState(from, stateKey) || {

@@ -70,8 +70,9 @@ async function handleBlackjack({ sock, from, sender, text, prefix, cmd, cmdName,
   if (normalizedCmd !== 'blackjack' && normalizedCmd !== '21') return false;
 
   const numero = sender.split("@");
-  const cmdParts = text.split(/\s+/).slice(1); // Pega argumentos após o comando
-  const acao = (cmdParts || "").toLowerCase();
+  
+  const textParts = text.trim().split(/\s+/);
+  const acao = (textParts || "").toLowerCase();
 
   const stateKey = getBlackjackStateKey(from);
   let lobby = storage.getGameState(from, stateKey) || {

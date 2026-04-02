@@ -88,6 +88,7 @@ const { handleGameCommands, handleGameMessageFlow } = require("./routers/gamesRo
 const { handleUtilityCommands } = require("./routers/utilityRouter")
 const { handleModerationCommands } = require("./routers/moderationRouter")
 const { handleEconomyCommands, cleanupUserLinkedState, parseTradeOffer, getTradeBracketForOffer } = require("./routers/economyRouter")
+const { handleBlackjack } = require('./handlers/blackjack');
 
 const app = express()
 const logger = pino({ level: "silent" })
@@ -4473,7 +4474,24 @@ setTimeout(() => {
       })
     )
     if (handledModerationCommand) return
-    
+      
+// =========================
+// BLACKJACK
+// =========================
+const handledBlackjack = await measureStage("BlackjackHandler", async () =>
+  handleBlackjack({
+    sock,
+    from,
+    sender,
+    text,
+    prefix,
+    cmd,
+    cmdName,
+    isGroup,
+  })
+)
+if (handledBlackjack) return
+  
     // =========================
     // AM 
     // =========================

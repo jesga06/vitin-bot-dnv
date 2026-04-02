@@ -88,7 +88,7 @@ async function handleBlackjack({ sock, from, sender, text, prefix, cmd, cmdName,
     totalPot: 0
   };
 
-  // Menu inicial
+  // Menu inicial (deus me leva)
   if (!acao) {
     const menu = `
 🃏 *Blackjack (21)* 

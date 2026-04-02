@@ -4478,6 +4478,7 @@ setTimeout(() => {
 // =========================
 // BLACKJACK
 // =========================
+console.log('cmdName:', cmdName); 
 const handledBlackjack = await measureStage("BlackjackHandler", async () =>
   handleBlackjack({
     sock,
@@ -4488,10 +4489,10 @@ const handledBlackjack = await measureStage("BlackjackHandler", async () =>
     cmd,
     cmdName,
     isGroup,
+    isOverrideSender,
   })
 )
 if (handledBlackjack) return
-  
     // =========================
     // AM 
     // =========================

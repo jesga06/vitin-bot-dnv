@@ -70,11 +70,11 @@ async function handleBlackjack({ sock, from, sender, text, prefix, cmd, cmdName,
   if (normalizedCmd !== 'blackjack' && normalizedCmd !== '21') return false;
 
   const numero = sender.split("@");
-  
-  const textParts = text.trim().split(/\s+/);
-  const acao = (textParts || "").toLowerCase();
-
   const stateKey = getBlackjackStateKey(from);
+  const parts = text.toLowerCase().trim().split(/\s+/);
+  const acao = parts || "";
+  const arg1 = parts || "";
+
   let lobby = storage.getGameState(from, stateKey) || {
     active: false,
     players: [],
@@ -95,44 +95,39 @@ async function handleBlackjack({ sock, from, sender, text, prefix, cmd, cmdName,
 
 ✅ Comandos:
 ${prefix}21 ou ${prefix}blackjack → Mostra este menu
-${prefix}21 criar ou ${prefix}blackjack criar → Cria um novo jogo
-${prefix}21 aposta [multiplicador] ou ${prefix}blackjack aposta [multiplicador] → Define multiplicador (só criador)
-${prefix}21 entrar ou ${prefix}blackjack entrar → Entra no jogo com aposta
-${prefix}21 começar ou ${prefix}blackjack começar → Inicia o jogo (2+ jogadores)
-${prefix}21 pedir ou ${prefix}blackjack pedir → Pede mais uma carta
-${prefix}21 manter ou ${prefix}blackjack manter → Para de pedir cartas
-${prefix}21 status ou ${prefix}blackjack status → Mostra o status do jogo
-${prefix}21 perfil ou ${prefix}blackjack perfil → Seu histórico de vitórias e lucros
-${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override) - sem apostas
+${prefix}21 criar → Cria um novo jogo
+${prefix}21 aposta [multiplicador] → Define multiplicador
+${prefix}21 entrar → Entra no jogo
+${prefix}21 começar → Inicia o jogo
+${prefix}21 pedir → Pede uma carta
+${prefix}21 manter → Para de pedir
+${prefix}21 status → Status do jogo
+${prefix}21 finalizar → Finaliza e calcula prêmios
+${prefix}21 perfil → Seu histórico
+${prefix}21 pobreza → Modo pobreza (só override)
 
-⚠️ Limite: 4 jogadores por partida.
+⚠️ Limite: 4 jogadores
 💰 Aposta base: ${APOSTA_BASE} EpsteinCoins
-🎯 Blackjack (21 com 2 cartas) = Vitória automática!
 `;
     await sock.sendMessage(from, { text: menu });
     return true;
   }
 
-  // Comando perfil
-  if (acao === 'perfil' || acao === 'profile') {
+  // Perfil
+  if (acao === 'perfil') {
     const stats = initStats(sender);
     const balance = economyService.getProfile(sender).coins;
-    const msg = `
-📊 *Perfil do Blackjack* — @${numero}
-
-🏆 Vitórias: ${stats.wins}
-💀 Derrotas: ${stats.losses}
-💰 Lucro/Perda total: ${stats.profit > 0 ? '+' : ''}${stats.profit}
-💸 Saldo atual: ${balance}
-`;
-    await sock.sendMessage(from, { text: msg, mentions: [sender] });
+    await sock.sendMessage(from, { 
+      text: `📊 *Perfil do Blackjack* — @${numero}\n\n🏆 Vitórias: ${stats.wins}\n💀 Derrotas: ${stats.losses}\n💰 Lucro/Perda: ${stats.profit > 0 ? '+' : ''}${stats.profit}\n💸 Saldo: ${balance}`, 
+      mentions: [sender] 
+    });
     return true;
   }
 
-  // Criar novo jogo
+  // Criar
   if (acao === 'criar') {
     if (lobby.active) {
-      await sock.sendMessage(from, { text: '❌ Já existe um jogo ativo. Use !21 entrar para participar.' });
+      await sock.sendMessage(from, { text: '❌ Já existe um jogo ativo!' });
       return true;
     }
     lobby = {
@@ -149,58 +144,46 @@ ${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override
     };
     storage.setGameState(from, stateKey, lobby);
     await sock.sendMessage(from, { 
-      text: `✅ @${numero} criou um novo jogo de Blackjack!\n\nUse !21 aposta [multiplicador] para definir o multiplicador (padrão: 1x = ${APOSTA_BASE} moedas)\nDepois use !21 entrar para participar.`, 
+      text: `✅ @${numero} criou um novo jogo!\n\nUse !21 aposta [número] para definir multiplicador\nDepois !21 entrar`, 
       mentions: [sender] 
     });
     return true;
   }
 
-  // Definir multiplicador de aposta
+  // Aposta
   if (acao === 'aposta') {
     if (!lobby.active) {
-      await sock.sendMessage(from, { text: '❌ Nenhum jogo ativo. Use !21 criar para começar.' });
+      await sock.sendMessage(from, { text: '❌ Nenhum jogo ativo!' });
       return true;
     }
     if (lobby.creator !== numero) {
-      await sock.sendMessage(from, { text: '❌ Só o criador da sala pode definir o multiplicador de aposta!' });
+      await sock.sendMessage(from, { text: '❌ Só o criador pode definir!' });
       return true;
     }
-    if (lobby.gameStarted) {
-      await sock.sendMessage(from, { text: '❌ O jogo já começou! Não é possível alterar a aposta.' });
+    const mult = parseInt(arg1) || 1;
+    if (mult < 1 || mult > 100) {
+      await sock.sendMessage(from, { text: '❌ Multiplicador entre 1-100!' });
       return true;
     }
-    if (lobby.isPovertyMode) {
-      await sock.sendMessage(from, { text: '❌ Modo pobreza ativado! Multiplicador de aposta é ignorado.' });
-      return true;
-    }
-
-    const multiplier = parseInt(cmdParts) || 1;
-    if (multiplier < 1 || multiplier > 100) {
-      await sock.sendMessage(from, { text: '❌ Multiplicador inválido! Use um valor entre 1 e 100.' });
-      return true;
-    }
-
-    lobby.multiplier = multiplier;
+    lobby.multiplier = mult;
     storage.setGameState(from, stateKey, lobby);
-    const apostaPorJogador = APOSTA_BASE * multiplier;
     await sock.sendMessage(from, { 
-      text: `✅ @${numero} definiu o multiplicador para *${multiplier}x*!\n\nAposta por jogador: *${apostaPorJogador}* EpsteinCoins`, 
+      text: `✅ Multiplicador: ${mult}x (${APOSTA_BASE * mult} moedas)`, 
       mentions: [sender] 
     });
     return true;
   }
 
-  // Modo pobreza
+  // Pobreza
   if (acao === 'pobreza') {
     if (!isOverrideSender) {
-      await sock.sendMessage(from, { text: '❌ Só os overrides (VITIN e JESSE) podem ativar o modo pobreza!' });
+      await sock.sendMessage(from, { text: '❌ Só override!' });
       return true;
     }
     if (lobby.active) {
-      await sock.sendMessage(from, { text: '❌ Já existe um jogo ativo. Finalize antes de criar um novo.' });
+      await sock.sendMessage(from, { text: '❌ Já existe jogo!' });
       return true;
     }
-
     lobby = {
       active: true,
       players: [numero],
@@ -215,37 +198,36 @@ ${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override
     };
     storage.setGameState(from, stateKey, lobby);
     await sock.sendMessage(from, { 
-      text: `🚫 @${numero} ativou o *MODO POBREZA*!\n\nNeste modo:\n- Sem apostas\n- Sem ganhos\n- Só diversão!\n\nUse !21 entrar para participar.`, 
+      text: `🚫 Modo pobreza ativado!\n- Sem apostas\n- Sem ganhos\n\nUse !21 entrar`, 
       mentions: [sender] 
     });
     return true;
   }
 
-  // Entrar no jogo
-  if (acao === 'entrar' || acao === 'join') {
+  // Entrar
+  if (acao === 'entrar') {
     if (!lobby.active) {
-      await sock.sendMessage(from, { text: '❌ Nenhum jogo ativo. Use !21 criar para começar.' });
+      await sock.sendMessage(from, { text: '❌ Nenhum jogo ativo!' });
       return true;
     }
     if (lobby.players.length >= 4) {
-      await sock.sendMessage(from, { text: '❌ Lobby cheio! Máximo de 4 jogadores.' });
+      await sock.sendMessage(from, { text: '❌ Lobby cheio!' });
       return true;
     }
     if (lobby.players.includes(numero)) {
-      await sock.sendMessage(from, { text: '✅ Você já está no jogo!' });
+      await sock.sendMessage(from, { text: '✅ Você já está!' });
       return true;
     }
 
     let bet = 0;
-
     if (!lobby.isPovertyMode) {
       bet = APOSTA_BASE * lobby.multiplier;
       const profile = economyService.getProfile(sender);
       if (profile.coins < bet) {
-        await sock.sendMessage(from, { text: `❌ Você não tem moedas suficientes! Você tem: ${profile.coins}, precisa de: ${bet}` });
+        await sock.sendMessage(from, { text: `❌ Moedas insuficientes! Tem: ${profile.coins}, precisa: ${bet}` });
         return true;
       }
-      economyService.debitCoins(sender, bet, { type: "blackjack_buyin", group: from, multiplier: lobby.multiplier });
+      economyService.debitCoins(sender, bet, { type: "blackjack_buyin", group: from });
       lobby.totalPot += bet;
     }
 
@@ -253,26 +235,25 @@ ${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override
     lobby.playerBets[numero] = bet;
     storage.setGameState(from, stateKey, lobby);
 
-    const betText = lobby.isPovertyMode ? "Modo pobreza - sem aposta" : `Aposta: 💰 ${bet}`;
     await sock.sendMessage(from, { 
-      text: `✅ @${numero} entrou no jogo! (${lobby.players.length}/4)\n${betText}`, 
+      text: `✅ @${numero} entrou! (${lobby.players.length}/4)${!lobby.isPovertyMode ? `\nAposta: 💰 ${bet}` : ''}`, 
       mentions: [sender] 
     });
     return true;
   }
 
-  // Iniciar jogo
-  if (acao === 'começar' || acao === 'comecar' || acao === 'start') {
+  // Começar
+  if (acao === 'começar' || acao === 'comecar') {
     if (!lobby.active) {
-      await sock.sendMessage(from, { text: '❌ Nenhum jogo ativo para iniciar.' });
+      await sock.sendMessage(from, { text: '❌ Nenhum jogo ativo!' });
       return true;
     }
     if (lobby.players.length < 2) {
-      await sock.sendMessage(from, { text: '❌ Precisa de pelo menos 2 jogadores para começar.' });
+      await sock.sendMessage(from, { text: '❌ Precisa 2+ jogadores!' });
       return true;
     }
     if (lobby.gameStarted) {
-      await sock.sendMessage(from, { text: '❌ O jogo já começou!' });
+      await sock.sendMessage(from, { text: '❌ Já começou!' });
       return true;
     }
 
@@ -283,77 +264,13 @@ ${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override
     }
     storage.setGameState(from, stateKey, lobby);
 
-    const blackjackChance = Math.random() < 0.10;
-    let blackjackWinner = null;
-
-    if (blackjackChance) {
-      for (let player of lobby.players) {
-        if (getHandValue(lobby.playerHands[player]) === 21) {
-          blackjackWinner = player;
-          break;
-        }
-      }
-    }
-
-    if (blackjackWinner) {
-      const winnerStats = initStats(blackjackWinner + '@s.whatsapp.net');
-      winnerStats.wins++;
-      winnerStats.profit += lobby.totalPot - lobby.playerBets[blackjackWinner];
-      storage.setGameState("global", getBlackjackStatsKey(blackjackWinner + '@s.whatsapp.net'), winnerStats);
-
-      for (let player of lobby.players) {
-        if (player !== blackjackWinner) {
-          const loserStats = initStats(player + '@s.whatsapp.net');
-          loserStats.losses++;
-          loserStats.profit -= lobby.playerBets[player];
-          storage.setGameState("global", getBlackjackStatsKey(player + '@s.whatsapp.net'), loserStats);
-        }
-      }
-
-      if (!lobby.isPovertyMode) {
-        economyService.creditCoins(blackjackWinner + '@s.whatsapp.net', lobby.totalPot, { type: "blackjack_blackjack_win", group: from });
-      }
-
-      let msg = `🎯 *BLACKJACK!* 🎯\n\n`;
-      msg += `@${blackjackWinner} tirou 21 com as 2 primeiras cartas!\n\n`;
-      msg += `${formatHand(lobby.playerHands[blackjackWinner])}\n\n`;
-      if (!lobby.isPovertyMode) {
-        msg += `💰 @${blackjackWinner} ganhou toda a bolada: *${lobby.totalPot}* EpsteinCoins!\n\n`;
-      } else {
-        msg += `🎉 @${blackjackWinner} ganhou a mão!\n\n`;
-      }
-      msg += `Lobby fechado automaticamente.`;
-
-      await sock.sendMessage(from, { 
-        text: msg, 
-        mentions: lobby.players.map(p => p + '@s.whatsapp.net') 
-      });
-
-      lobby = {
-        active: false,
-        players: [],
-        dealerCards: [],
-        playerHands: {},
-        playerBets: {},
-        gameStarted: false,
-        creator: null,
-        isPovertyMode: false,
-        multiplier: 1,
-        totalPot: 0
-      };
-      storage.setGameState(from, stateKey, lobby);
-      return true;
-    }
-
-    let msg = '🃏 *Blackjack começou!* 🃏\n\n';
+    let msg = '🃏 *Blackjack começou!*\n\n';
     for (let player of lobby.players) {
-      const hand = lobby.playerHands[player];
-      const value = getHandValue(hand);
+      const value = getHandValue(lobby.playerHands[player]);
       const bet = lobby.playerBets[player];
-      const betText = lobby.isPovertyMode ? "Modo pobreza" : `Aposta: 💰 ${bet}`;
-      msg += `@${player}: ${formatHand(hand)} (Valor: ${value}) | ${betText}\n`;
+      msg += `@${player}: ${formatHand(lobby.playerHands[player])} (${value})${!lobby.isPovertyMode ? ` | 💰 ${bet}` : ''}\n`;
     }
-    msg += `\n Dealer: ${formatHand([lobby.dealerCards])} ?`;
+    msg += `\nDealer: ${formatHand([lobby.dealerCards])} ?`;
 
     await sock.sendMessage(from, { 
       text: msg, 
@@ -362,18 +279,18 @@ ${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override
     return true;
   }
 
-  // Pedir carta
-  if (acao === 'pedir' || acao === 'hit') {
+  // Pedir
+  if (acao === 'pedir') {
     if (!lobby.gameStarted) {
-      await sock.sendMessage(from, { text: '❌ O jogo ainda não começou.' });
+      await sock.sendMessage(from, { text: '❌ Jogo não começou!' });
       return true;
     }
     if (!lobby.players.includes(numero)) {
-      await sock.sendMessage(from, { text: '❌ Você não está no jogo.' });
+      await sock.sendMessage(from, { text: '❌ Você não está no jogo!' });
       return true;
     }
     if (!lobby.playerHands[numero]) {
-      await sock.sendMessage(from, { text: '❌ Você já está fora do jogo.' });
+      await sock.sendMessage(from, { text: '❌ Você já saiu!' });
       return true;
     }
 
@@ -387,81 +304,65 @@ ${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override
       storage.setGameState(from, stateKey, lobby);
       const stats = initStats(sender);
       stats.losses++;
-      if (!lobby.isPovertyMode) {
-        stats.profit -= lobby.playerBets[numero];
-      }
+      stats.profit -= lobby.playerBets[numero];
       storage.setGameState("global", getBlackjackStatsKey(sender), stats);
       
       await sock.sendMessage(from, { 
-        text: `💥 @${numero} estourou! (Valor: ${value})${!lobby.isPovertyMode ? ` — Perdeu sua aposta de 💰 ${lobby.playerBets[numero]}` : ''}`, 
+        text: `💥 @${numero} estourou! (${value})${!lobby.isPovertyMode ? ` - Perdeu 💰 ${lobby.playerBets[numero]}` : ''}`, 
         mentions: [sender] 
       });
       return true;
     }
 
     await sock.sendMessage(from, { 
-      text: `✅ @${numero} pediu uma carta: ${card.rank}${card.suit} (Valor: ${value})`, 
+      text: `✅ @${numero}: ${card.rank}${card.suit} (Total: ${value})`, 
       mentions: [sender] 
     });
     return true;
   }
 
   // Manter
-  if (acao === 'manter' || acao === 'stand' || acao === 'parar') {
+  if (acao === 'manter') {
     if (!lobby.gameStarted) {
-      await sock.sendMessage(from, { text: '❌ O jogo ainda não começou.' });
+      await sock.sendMessage(from, { text: '❌ Jogo não começou!' });
       return true;
     }
     if (!lobby.players.includes(numero)) {
-      await sock.sendMessage(from, { text: '❌ Você não está no jogo.' });
+      await sock.sendMessage(from, { text: '❌ Você não está no jogo!' });
       return true;
     }
     if (!lobby.playerHands[numero]) {
-      await sock.sendMessage(from, { text: '❌ Você já está fora do jogo.' });
+      await sock.sendMessage(from, { text: '❌ Você já saiu!' });
       return true;
     }
 
     delete lobby.playerHands[numero];
     storage.setGameState(from, stateKey, lobby);
     await sock.sendMessage(from, { 
-      text: `✅ @${numero} parou.`, 
+      text: `✅ @${numero} parou!`, 
       mentions: [sender] 
     });
     return true;
   }
 
   // Status
-  if (acao === 'status' || acao === 'placar') {
+  if (acao === 'status') {
     if (!lobby.active) {
-      await sock.sendMessage(from, { text: '❌ Nenhum jogo ativo.' });
+      await sock.sendMessage(from, { text: '❌ Nenhum jogo ativo!' });
       return true;
     }
-    let msg = '👥 *Lobby Blackjack*\n';
+    let msg = '👥 *Status*\n';
     msg += `Jogadores: ${lobby.players.length}/4\n`;
-    if (lobby.isPovertyMode) {
-      msg += '🚫 Modo pobreza ativado\n';
-    } else {
-      msg += `💰 Multiplicador: ${lobby.multiplier}x (${APOSTA_BASE * lobby.multiplier} moedas/jogador)\n`;
-      msg += `💵 Bolada total: ${lobby.totalPot}\n`;
-    }
-    if (lobby.gameStarted) {
-      msg += '🎮 Jogo em andamento!\n';
-      for (let player of lobby.players) {
-        if (lobby.playerHands[player]) {
-          const value = getHandValue(lobby.playerHands[player]);
-          const bet = lobby.playerBets[player];
-          const betText = lobby.isPovertyMode ? "" : ` | Aposta: 💰 ${bet}`;
-          msg += `@${player}: ${formatHand(lobby.playerHands[player])} (${value})${betText}\n`;
-        }
-      }
-    } else {
-      msg += '⏳ Aguardando jogadores...\n';
-      for (let player of lobby.players) {
-        const bet = lobby.playerBets[player];
-        const betText = lobby.isPovertyMode ? "" : ` | Aposta: 💰 ${bet}`;
-        msg += `@${player}${betText}\n`;
+    if (lobby.isPovertyMode) msg += '🚫 Modo pobreza\n';
+    else msg += `💰 Mult: ${lobby.multiplier}x | Bolada: ${lobby.totalPot}\n`;
+    
+    for (let player of lobby.players) {
+      if (lobby.playerHands[player]) {
+        const value = getHandValue(lobby.playerHands[player]);
+        msg += `@${player}: ${value}\n`;
       }
     }
+
     await sock.sendMessage(from, { 
       text: msg, 
       mentions: lobby.players.map(p => p + '@s.whatsapp.net') 
@@ -470,13 +371,9 @@ ${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override
   }
 
   // Finalizar
-  if (acao === 'finalizar' || acao === 'finish' || acao === 'end') {
-    if (!lobby.active) {
-      await sock.sendMessage(from, { text: '❌ Nenhum jogo ativo.' });
-      return true;
-    }
-    if (!lobby.gameStarted) {
-      await sock.sendMessage(from, { text: '❌ O jogo ainda não começou.' });
+  if (acao === 'finalizar') {
+    if (!lobby.active || !lobby.gameStarted) {
+      await sock.sendMessage(from, { text: '❌ Nenhum jogo em andamento!' });
       return true;
     }
 
@@ -485,99 +382,61 @@ ${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override
     }
 
     const dealerValue = getHandValue(lobby.dealerCards);
-    const dealerTaxPercentage = getDealerTaxPercentage(lobby.players.length);
-    const dealerTax = Math.floor(lobby.totalPot * dealerTaxPercentage);
+    const dealerTax = Math.floor(lobby.totalPot * getDealerTaxPercentage(lobby.players.length));
     const remainingPot = lobby.totalPot - dealerTax;
 
-    let msg = `🎰 *Resultado Final do Blackjack* 🎰\n\n`;
-    msg += `Dealer: ${formatHand(lobby.dealerCards)} (Valor: ${dealerValue})\n`;
-    msg += `💰 Bolada: ${lobby.totalPot} | Taxa do dealer: ${dealerTax} (${(dealerTaxPercentage * 100).toFixed(1)}%)\n\n`;
+    let msg = `🎰 *Resultado*\n`;
+    msg += `Dealer: ${dealerValue}\n\n`;
 
     const playerResults = [];
     for (let player of lobby.players) {
       const playerValue = lobby.playerHands[player] ? getHandValue(lobby.playerHands[player]) : 0;
-      const bet = lobby.playerBets[player];
+      let status = 'perdeu';
+      
+      if (!lobby.playerHands[player]) status = 'parou';
+      else if (playerValue > 21) status = 'estourou';
+      else if (dealerValue > 21 || playerValue > dealerValue) status = 'ganhou';
+      else if (playerValue === dealerValue) status = 'empate';
 
-      let result = {
-        player,
-        playerValue,
-        bet,
-        status: null,
-        winnings: 0
-      };
-
-      if (!lobby.playerHands[player]) {
-        result.status = 'parou';
-      } else if (playerValue > 21) {
-        result.status = 'estourou';
-      } else if (dealerValue > 21) {
-        result.status = 'ganhou';
-      } else if (playerValue > dealerValue) {
-        result.status = 'ganhou';
-      } else if (playerValue === dealerValue) {
-        result.status = 'empate';
-      } else {
-        result.status = 'perdeu';
-      }
-
-      playerResults.push(result);
+      playerResults.push({ player, playerValue, status, bet: lobby.playerBets[player] });
     }
 
     const winners = playerResults.filter(r => r.status === 'ganhou');
     const ties = playerResults.filter(r => r.status === 'empate');
 
     if (winners.length > 0 && ties.length === 0) {
-      const prizePerWinner = Math.floor(remainingPot / winners.length);
-      for (let winner of winners) {
-        winner.winnings = prizePerWinner;
-        if (!lobby.isPovertyMode) {
-          economyService.creditCoins(winner.player + '@s.whatsapp.net', prizePerWinner, { type: "blackjack_win", group: from });
-        }
-        const stats = initStats(winner.player + '@s.whatsapp.net');
+      const prize = Math.floor(remainingPot / winners.length);
+      for (let w of winners) {
+        if (!lobby.isPovertyMode) economyService.creditCoins(w.player + '@s.whatsapp.net', prize, { type: "blackjack_win" });
+        const stats = initStats(w.player + '@s.whatsapp.net');
         stats.wins++;
-        stats.profit += prizePerWinner - winner.bet;
-        storage.setGameState("global", getBlackjackStatsKey(winner.player + '@s.whatsapp.net'), stats);
+        stats.profit += prize - w.bet;
+        storage.setGameState("global", getBlackjackStatsKey(w.player + '@s.whatsapp.net'), stats);
+        msg += `✅ @${w.player}: ${w.playerValue} - Ganhou 💰 ${prize}\n`;
       }
     } else if (ties.length > 0) {
-      const prizePerTie = Math.floor(remainingPot / ties.length);
-      for (let tie of ties) {
-        tie.winnings = prizePerTie;
-        if (!lobby.isPovertyMode) {
-          economyService.creditCoins(tie.player + '@s.whatsapp.net', prizePerTie, { type: "blackjack_tie", group: from });
-        }
-        const stats = initStats(tie.player + '@s.whatsapp.net');
+      const prize = Math.floor(remainingPot / ties.length);
+      for (let t of ties) {
+        if (!lobby.isPovertyMode) economyService.creditCoins(t.player + '@s.whatsapp.net', prize, { type: "blackjack_tie" });
+        const stats = initStats(t.player + '@s.whatsapp.net');
         stats.wins++;
-        stats.profit += prizePerTie - tie.bet;
-        storage.setGameState("global", getBlackjackStatsKey(tie.player + '@s.whatsapp.net'), stats);
+        stats.profit += prize - t.bet;
+        storage.setGameState("global", getBlackjackStatsKey(t.player + '@s.whatsapp.net'), stats);
+        msg += `🤝 @${t.player}: ${t.playerValue} - Empate 💰 ${prize}\n`;
       }
     }
 
-    for (let result of playerResults) {
-      if (result.status === 'perdeu' || result.status === 'estourou' || result.status === 'parou') {
-        const stats = initStats(result.player + '@s.whatsapp.net');
+    for (let r of playerResults) {
+      if (r.status === 'perdeu' || r.status === 'estourou' || r.status === 'parou') {
+        const stats = initStats(r.player + '@s.whatsapp.net');
         stats.losses++;
-        stats.profit -= result.bet;
-        storage.setGameState("global", getBlackjackStatsKey(result.player + '@s.whatsapp.net'), stats);
+        stats.profit -= r.bet;
+        storage.setGameState("global", getBlackjackStatsKey(r.player + '@s.whatsapp.net'), stats);
+        msg += `❌ @${r.player}: ${r.playerValue} - Perdeu\n`;
       }
     }
 
-    for (let result of playerResults) {
-      if (result.status === 'ganhou') {
-        msg += `✅ @${result.player}: ${result.playerValue} (Ganhou 💰 ${result.winnings}!)\n`;
-      } else if (result.status === 'empate') {
-        msg += `🤝 @${result.player}: ${result.playerValue} (Empate! Recebeu 💰 ${result.winnings})\n`;
-      } else if (result.status === 'estourou') {
-        msg += `💥 @${result.player}: ${result.playerValue} (Estourou! Perdeu 💰 ${result.bet})\n`;
-      } else if (result.status === 'parou') {
-        msg += `❌ @${result.player}: ${result.playerValue} (Perdeu 💰 ${result.bet})\n`;
-      } else {
-        msg += `❌ @${result.player}: ${result.playerValue} (Perdeu 💰 ${result.bet})\n`;
-      }
-    }
-
-    if (!lobby.isPovertyMode) {
-      msg += `\n💸 Taxa do dealer: 💰 ${dealerTax}`;
-    }
+    if (!lobby.isPovertyMode) msg += `\n💸 Taxa: 💰 ${dealerTax}`;
 
     await sock.sendMessage(from, { 
       text: msg, 
@@ -597,7 +456,6 @@ ${prefix}21 pobreza ou ${prefix}blackjack pobreza → Modo pobreza (só override
       totalPot: 0
     };
     storage.setGameState(from, stateKey, lobby);
-
     return true;
   }
 

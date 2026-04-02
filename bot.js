@@ -69,6 +69,7 @@ ffmpeg.setFfmpegPath(ffmpegPath)
 const storage = require("./storage")
 const punishmentService = require("./services/punishmentService")
 const caraOuCoroa = require("./games/caraOuCoroa")
+const { handleBlackjack } = require('./games/blackjack');
 const AM = require("./AM")
 const gameManager = require("./gameManager")
 const adivinhacao = require("./games/adivinhacao")
@@ -4481,7 +4482,7 @@ setTimeout(() => {
       })
     )
     if (handledModerationCommand) return
-    
+      
     // =========================
     // AM 
     // =========================
@@ -4537,6 +4538,25 @@ setTimeout(() => {
         return
       }
     }
+      
+    // =========================
+    // BLACKJACK
+    // =========================
+    const handledBlackjack = await measureStage("BlackjackHandler", async () =>
+      handleBlackjack({
+        sock,
+        from,
+        sender,
+        text,
+        prefix,
+        cmd,
+        cmdName,
+        isGroup,
+        isOverrideSender,
+      })
+    )
+    if (handledBlackjack) return
+      
     // =========================
     // COMANDOS DE STREAKS
     // =========================

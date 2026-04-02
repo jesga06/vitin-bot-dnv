@@ -482,6 +482,27 @@ const COMMAND_HELP = {
     details: "Exibe quantas vitórias consecutivas (streak) um usuário tem no jogo de Cara ou Coroa neste grupo.",
   },
 
+blackjack: {
+    name: "Blackjack",
+    aliases: ["blackjack", "21"],
+    description: "Jogo de Blackjack com sistema de apostas e lobby (máx 4 jogadores)",
+    usage: "!blackjack [comando] ou !21 [comando]",
+    commonUsage: [
+      "!21 - Mostra menu do Blackjack",
+      "!21 criar - Cria um novo jogo",
+      "!21 aposta 2 - Define multiplicador de aposta (2x = 50 moedas)",
+      "!21 entrar - Entra no jogo com aposta",
+      "!21 começar - Inicia o jogo (2+ jogadores)",
+      "!21 pedir - Pede mais uma carta",
+      "!21 manter - Para de pedir cartas",
+      "!21 status - Mostra status do jogo",
+      "!21 finalizar - Finaliza e calcula prêmios",
+      "!21 perfil - Mostra vitórias, derrotas e lucro/perda",
+      "!21 pobreza - Modo pobreza (só override) - sem apostas",
+    ],
+    details: "Jogo de cartas com sistema de lobby. Máximo 4 jogadores por partida. Blackjack (21 com 2 cartas) fecha o lobby automaticamente com 10% de chance. Dealer para em 17+. Taxa do dealer: 10% (4 players), 7.5% (3 players), 5% (2 players). Empates dividem a bolada.",
+  },
+  
   streakranking: {
     name: "Ranking de Streaks",
     aliases: ["streakranking"],

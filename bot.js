@@ -138,6 +138,7 @@ const pendingUnregisterBySender = new Map()
 const knownGroupIds = new Set()
 const groupNameCache = {}
 const userNameCache = {}
+const botAdminFlagWarningByGroup = new Map()
 const terminalMirrorLines = []
 function execFileAsync(file, args = [], options = {}) {
   return new Promise((resolve, reject) => {
@@ -3264,16 +3265,13 @@ setTimeout(() => {
       // Best effort warning; never block message processing.
     }
 
-    const botAdminWarningShown = new Map()
-    if (isGroup && !botIsAdmin && !botAdminWarningShown.has(from)) {
-      botAdminWarningShown.set(from, true)
-      const coinPunishmentPending = storage.getCoinPunishmentPending()
-      if (coinPunishmentPending[from]) {
-        const pendingKeys = Object.keys(coinPunishmentPending[from])
-        for (const key of pendingKeys) {
-          delete coinPunishmentPending[from][key]
-        }
-        storage.setCoinPunishmentPending(coinPunishmentPending)
+    if (isGroup && !botIsAdmin) {
+      const lastWarnAt = Number(botAdminFlagWarningByGroup.get(from) || 0)
+      const now = Date.now()
+      if (now - lastWarnAt >= (5 * 60 * 1000)) {
+        botAdminFlagWarningByGroup.set(from, now)
+        // Metadata snapshots can be inconsistent; never purge pending state from this flag alone.
+        console.log("[bot] botIsAdmin flag is false for this group snapshot", { from })
       }
     }
 
@@ -3348,14 +3346,21 @@ setTimeout(() => {
         !hasIdentityAliasOverlap(botIdentityAliasSet, sender) &&
         !((senderIsAdmin || isOverrideSender) && isCommand)
       ) {
-        if (!botIsAdmin) return
+        if (!botIsAdmin) {
+          console.log("[bot] mutedDelete - botIsAdmin flag is false; attempting delete anyway")
+        }
+        let deleteSucceeded = false
         await measureStage("mutedDelete", async () => {
           try {
             await sock.sendMessage(from, { delete: msg.key })
+            deleteSucceeded = true
           } catch (e) {
             console.error("Erro ao apagar mensagem de usuário mutado", e)
           }
         })
+        if (!deleteSucceeded) {
+          console.log("[bot] mutedDelete - delete attempt failed; keeping message blocked")
+        }
         return
       }
     }

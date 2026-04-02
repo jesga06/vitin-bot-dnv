@@ -929,9 +929,7 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
     return false
   }
 
-  if (!botIsAdmin) {
-    console.log("[punishment] handlePunishmentEnforcement - bot is not admin, cannot delete")
-    return false
+  if (!botIsAdmin) {    console.log("[punishment] handlePunishmentEnforcement - botIsAdmin flag is false; attempting delete anyway")
   }
 
   console.log("[punishment] handlePunishmentEnforcement - DELETING MESSAGE", { senderId, punishmentType: punishment.type })
@@ -946,9 +944,11 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
     action: "delete",
   })
 
+  let deleteSucceeded = false
   try {
     console.log("[punishment] handlePunishmentEnforcement - attempting to delete message", { msgKey: msg.key })
     await sock.sendMessage(from, { delete: msg.key })
+    deleteSucceeded = true
     console.log("[punishment] handlePunishmentEnforcement - message deleted successfully")
     if (punishment.type === "deleteAndRepost") {
       console.log("[punishment] handlePunishmentEnforcement - reposting content")
@@ -956,6 +956,9 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
     }
   } catch (e) {
     console.error("[punishment] Erro ao apagar mensagem por punição", e)
+  }
+  if (!deleteSucceeded) {
+    console.log("[punishment] handlePunishmentEnforcement - delete attempt failed but punishment remains enforced")
   }
   return true
 }

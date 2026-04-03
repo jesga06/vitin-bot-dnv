@@ -81,7 +81,7 @@ function getPunishmentMenuText() {
     "4. Só pode enviar emojis e figurinhas por 5 minutos.",
     "5. Mute total por 5 minutos (tudo que enviar será apagado).",
     "6. Sem vogais por 5 minutos (severidade escala tempo em 1.5x).",
-    "7. Toda mensagem deve começar com URGENTE (🚨 e ':' opcionais) por 5 minutos (severidade escala tempo em 1.5x).",
+    "7. Toda mensagem deve começar com \"🚨URGENTE:\" por 5 minutos, EXATAMENTE como está entre aspas. (severidade escala tempo em 1.5x).",
     "8. Mensagem deve conter palavras da lista por 5 minutos (severidade escala tempo em 1.5x e quantidade +1 por nível).",
     "9. Mensagens em caixa alta por 10 minutos (severidade adiciona +2 minutos por nível).",
     "10. Mensagens são apagadas e repostadas pelo bot por 5 minutos (severidade não escala).",
@@ -121,7 +121,7 @@ function getPunishmentDetailsText() {
     "- Duração: 5 minutos, escala x1.5 por severidade.",
     "",
     "7. Prefixo obrigatório",
-    "- Regra: mensagem sem início em 🚨URGENTE: é apagada.",
+    "- Regra: mensagem sem início em \"🚨URGENTE:\" é apagada. O início deve ser exatamente como descrito.",
     "- Duração: 5 minutos, escala x1.5 por severidade.",
     "",
     "8. Palavra(s) da lista",
@@ -585,7 +585,7 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
       endsAt: now + durationMs,
       requiredPrefix: "🚨URGENTE:",
     }
-    warningText = `${mentionTag}, punição ativada: por *${Math.ceil(durationMs / 60_000)} minutos* toda mensagem deve começar com *URGENTE* (🚨 e ':' são opcionais).`
+    warningText = `${mentionTag}, punição ativada: por *${Math.ceil(durationMs / 60_000)} minutos* toda mensagem deve começar com *🚨URGENTE:* (deve ser EXATAMENTE como descrito).`
   }
 
   if (normalizedPunishmentId === "8") {

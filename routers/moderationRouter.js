@@ -719,7 +719,7 @@ async function handleModerationCommands(ctx) {
       if (active.type === "emojiOnly") lines.push("- Somente emojis e figurinhas")
       if (active.type === "mute5m") lines.push("- Mute total 5 minutos")
       if (active.type === "noVowels") lines.push("- Sem vogais")
-      if (active.type === "urgentPrefix") lines.push("- Prefixo urgente obrigatório (aceita URGENTE com emoji/':' opcionais)")
+      if (active.type === "urgentPrefix") lines.push("- Prefixo \"🚨URGENTE:\" obrigatório")
       if (active.type === "wordListRequired") lines.push(`- Palavras da lista (${(active.wordList || []).join(", ")})`)
       if (active.type === "allCaps") lines.push("- Somente caixa alta")
       if (active.type === "deleteAndRepost") lines.push("- Apagar e repostar")

@@ -3,6 +3,7 @@ const { getCommandHelp, getPublicCommandNames } = require("../commandHelp")
 const os = require("os")
 const child_process = require("child_process")
 const { normalizeUserId } = require("../services/registrationService")
+const { normalizeMentionJid, getFirstMentionedJid } = require("../services/mentionService")
 
 const pendingPrivateFeedbackBySender = new Map()
 const pendingQuestionBySender = new Map()
@@ -895,8 +896,8 @@ ${feedbackText}`,
   }
 
   if (cmd === prefix + "teste" || cmd.startsWith(prefix + "teste ")) {
-    const rawMentioned = String(msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || "").trim()
-    const targetMentioned = String(mentioned[0] || "").trim()
+    const rawMentioned = getFirstMentionedJid(msg?.message?.extendedTextMessage?.contextInfo || {})
+    const targetMentioned = normalizeMentionJid(mentioned[0] || "")
     const baseIdentity = rawMentioned || targetMentioned
 
     if (!baseIdentity) {
@@ -979,7 +980,8 @@ ${feedbackText}`,
       )
 
       if (variant.mentionable) {
-        mentionSet.add(variant.value)
+        const normalizedMention = normalizeMentionJid(variant.value)
+        if (normalizedMention) mentionSet.add(normalizedMention)
       }
     })
 

@@ -50,6 +50,12 @@ npm test
 5. Os handlers games/utility/economy/moderation fazem o trabalho deles.
 6. Estado e economia são armazenados por storage.js e economyService.js.
 
+### Segurança de menções e JIDs
+- Toda mensagem enviada passa pelo pipeline de menções em `services/mentionService.js` (aplicado no wrapper global de `sock.sendMessage` em `bot.js`).
+- JIDs de menção são normalizados para formato de dígitos antes do `@` (remove `+`, espaços e sufixo de device como `:N`).
+- Quando o texto/caption contém `@numero`, o bot preenche/corrige automaticamente `mentions[]` para refletir as menções reais.
+- Leitura de menções recebidas também usa normalização, evitando arrays quebrados ou JIDs inválidos.
+
 ### Modelo de persistência
 
 #### Estado geral

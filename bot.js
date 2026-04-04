@@ -82,6 +82,11 @@ const comando = require("./games/comando")
 const memoriaGame = require("./games/memoria")
 const economyService = require("./services/economyService")
 const registrationService = require("./services/registrationService")
+const {
+  normalizeMentionArray,
+  applyMentionSafetyToMessage,
+  getMentionHandleFromJid,
+} = require("./services/mentionService")
 const telemetry = require("./services/telemetryService")
 const { COMMAND_HELP } = require("./commandHelp")
 const { getLikelyCommandSuggestions } = require("./services/commandSuggestionService")
@@ -1906,20 +1911,20 @@ async function startBot(){
   // keep a reference for graceful shutdown and external checks
   activeSock = sock
 
-  const originalSendMessage = sock.sendMessage.bind(sock)
-  sock.sendMessage = async (...args) => {
-    const messageContent = args[1]
-    if (messageContent && typeof messageContent === "object" && shouldAppendMassMentionHint(messageContent)) {
-      const baseText = String(messageContent.text || "").trimEnd()
-      messageContent.text = `${baseText}\n\n${MASS_MENTION_OPT_OUT_HINT}`
-    }
+  const groupMentionLookupByGroup = new Map()
 
-    const startedAt = Date.now()
-    try {
-      return await originalSendMessage(...args)
-    } finally {
-      recordMetric(perfStats.sendMessageMs, Date.now() - startedAt)
+  const rebuildGroupMentionLookup = (groupId, participants = []) => {
+    if (!groupId) return
+    const lookup = new Map()
+    for (const participant of participants || []) {
+      const normalizedParticipant = normalizeMentionArray([
+        jidNormalizedUser(participant?.id || ""),
+      ])[0]
+      const handle = getMentionHandleFromJid(normalizedParticipant)
+      if (!normalizedParticipant || !handle || lookup.has(handle)) continue
+      lookup.set(handle, normalizedParticipant)
     }
+    groupMentionLookupByGroup.set(groupId, lookup)
   }
 
   const originalGroupMetadata = sock.groupMetadata.bind(sock)
@@ -1933,10 +1938,54 @@ async function startBot(){
         if (metadata?.subject) {
           groupNameCache[groupId] = String(metadata.subject)
         }
+        rebuildGroupMentionLookup(groupId, metadata?.participants || [])
       }
       return metadata
     } finally {
       recordMetric(perfStats.groupMetadataMs, Date.now() - startedAt)
+    }
+  }
+
+  const originalSendMessage = sock.sendMessage.bind(sock)
+  sock.sendMessage = async (...args) => {
+    const destinationJid = String(args[0] || "")
+    const messageContent = args[1]
+
+    if (messageContent && typeof messageContent === "object") {
+      args[1] = await applyMentionSafetyToMessage(messageContent, {
+        resolveMentionByHandle: async (handle) => {
+          const cachedLookup = groupMentionLookupByGroup.get(destinationJid)
+          if (cachedLookup?.has(handle)) {
+            return cachedLookup.get(handle)
+          }
+
+          if (destinationJid.endsWith("@g.us")) {
+            try {
+              await sock.groupMetadata(destinationJid)
+            } catch (err) {
+              // Ignore metadata fetch failures and fallback to digits@s.whatsapp.net.
+            }
+            const refreshedLookup = groupMentionLookupByGroup.get(destinationJid)
+            if (refreshedLookup?.has(handle)) {
+              return refreshedLookup.get(handle)
+            }
+          }
+
+          return `${handle}@s.whatsapp.net`
+        },
+      })
+
+      if (shouldAppendMassMentionHint(args[1])) {
+        const baseText = String(args[1].text || "").trimEnd()
+        args[1].text = `${baseText}\n\n${MASS_MENTION_OPT_OUT_HINT}`
+      }
+    }
+
+    const startedAt = Date.now()
+    try {
+      return await originalSendMessage(...args)
+    } finally {
+      recordMetric(perfStats.sendMessageMs, Date.now() - startedAt)
     }
   }
 
@@ -2077,7 +2126,9 @@ setTimeout(() => {
     const cmdName = cmdParts[0] || ""
     const cmdArg1 = cmdParts[1] || ""
     const cmdArg2 = cmdParts[2] || ""
-    const mentioned = (msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []).map(jidNormalizedUser)
+    const mentioned = normalizeMentionArray(
+      (msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []).map((jid) => jidNormalizedUser(jid))
+    )
     let quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
     const overrideChecksEnabled = getOverrideChecksEnabled()
     const isMaintenanceToggleCommand = cmdName === prefix + "manutencao" || cmdName === prefix + "manutenção"

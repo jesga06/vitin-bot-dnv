@@ -1,3 +1,9 @@
+const {
+  normalizeMentionJid,
+  normalizeMentionArray,
+  getFirstMentionedJid,
+} = require("./services/mentionService")
+
 // =========================
 // DONOS
 // =========================
@@ -127,11 +133,14 @@ function capturarResposta(sender, from, text){
 // ENVIO DRAMÁTICO - CORRIGIDO (SEM SPAM DE MENTIONS) n sei praq eu boto essas notas
 // =========================
 async function enviarQuebrado(sock, from, linhas, mentions = [], usarMentions = true){
-  for (const l of linhas){
+  const mentionsNormalizadas = normalizeMentionArray(mentions)
+
+  for (let i = 0; i < linhas.length; i++){
+    const l = linhas[i]
     await digitarLento(sock, from)
     // Só usa mentions na primeira mensagem
-    if (usarMentions && linhas.indexOf(l) === 0) {
-      await sock.sendMessage(from, { text: l, mentions })
+    if (usarMentions && i === 0 && mentionsNormalizadas.length > 0) {
+      await sock.sendMessage(from, { text: l, mentions: mentionsNormalizadas })
     } else {
       await sock.sendMessage(from, { text: l })
     }
@@ -143,7 +152,9 @@ async function enviarQuebrado(sock, from, linhas, mentions = [], usarMentions = 
 // FUNÇÃO AUXILIAR: EXTRAIR NÚMERO DO JID
 // =========================
 function extrairNumero(jid) {
-  return jid.replace(/@.*/, '')
+  const normalized = normalizeMentionJid(jid)
+  if (normalized) return normalized.split("@")[0]
+  return String(jid || "").replace(/\D+/g, "")
 }
 
 // =========================
@@ -789,7 +800,7 @@ async function AM_Enquete(sock, from) {
 
   return sock.sendMessage(from, {
     text: enquete,
-    mentions: [alvo1.id, alvo2.id]
+    mentions: normalizeMentionArray([alvo1.id, alvo2.id])
   })
 }
 
@@ -986,7 +997,7 @@ async function AM_Comparar(sock, from) {
 
   return sock.sendMessage(from, {
     text: comparacao,
-    mentions: [alvo1.id, alvo2.id]
+    mentions: normalizeMentionArray([alvo1.id, alvo2.id])
   })
 }
 
@@ -1318,7 +1329,7 @@ async function AM_Status(sock, from, isOverride){
     status += `├ Nível: ${mem.nivel}\n`
     status += `└ Status: Ativo\n\n`
     
-    mentions.push(alvo.id)
+    mentions.push(normalizeMentionJid(alvo.id) || alvo.id)
   }
 
   if (grupoOdio[from]) {
@@ -1328,7 +1339,7 @@ async function AM_Status(sock, from, isOverride){
     status += `└ Quanto mais você ofender, mais eu fico ativo.\n`
   }
 
-  return sock.sendMessage(from, { text: status, mentions })
+  return sock.sendMessage(from, { text: status, mentions: normalizeMentionArray(mentions) })
 }
 
 // =========================
@@ -1460,10 +1471,10 @@ async function AM_Perfil(sock, from, isOverride){
     perfil += `├ Nível: ${mem.nivel}\n`
     perfil += `└ Status: Ativo\n\n`
     
-    mentions.push(alvo.id)
+    mentions.push(normalizeMentionJid(alvo.id) || alvo.id)
   }
 
-  return sock.sendMessage(from, { text: perfil, mentions })
+  return sock.sendMessage(from, { text: perfil, mentions: normalizeMentionArray(mentions) })
 }
 // =========================
 // FUNÇÃO: PERSEGUIÇÃO INTELIGENTE 
@@ -1642,7 +1653,7 @@ async function statusAM(sock, from){
   if (alvosAM[from] && alvosAM[from].length > 0) {
     alvosTexto = alvosAM[from]
       .map(a => {
-        mentions.push(a.id)
+        mentions.push(normalizeMentionJid(a.id) || a.id)
         return `@${extrairNumero(a.id)} (${a.personagem})`
       })
       .join("\n")
@@ -1672,7 +1683,7 @@ ${alvosTexto}
 - !amperfil → Ver perfil dos alvos
 - !amaddalvo @user → Adicionar alvo
 - !amremovealvo @user → Remover alvo`,
-    mentions: mentions.length > 0 ? mentions : undefined
+    mentions: mentions.length > 0 ? normalizeMentionArray(mentions) : undefined
   })
 }
 // =========================
@@ -1695,11 +1706,7 @@ async function addAlvoAM(sock, from, message){
     return true
   }
 
-  let mentionedJid = null
-
-  if (message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
-    mentionedJid = message.extendedTextMessage.contextInfo.mentionedJid  // PEGA PRIMEIRO ELEMENTO
-  }
+  const mentionedJid = getFirstMentionedJid(message?.extendedTextMessage?.contextInfo || {})
 
   if (!mentionedJid) {
     sock.sendMessage(from, {
@@ -1751,11 +1758,7 @@ async function removeAlvoAM(sock, from, message){
     return true
   }
 
-  let mentionedJid = null
-
-  if (message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
-    mentionedJid = message.extendedTextMessage.contextInfo.mentionedJid  // PEGA PRIMEIRO ELEMENTO
-  }
+  const mentionedJid = getFirstMentionedJid(message?.extendedTextMessage?.contextInfo || {})
 
   if (!mentionedJid) {
     sock.sendMessage(from, {

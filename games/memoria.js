@@ -1,3 +1,4 @@
+const { formatMentionTag } = require("../services/mentionService")
 /**
  * JOGO DA MEMORIA (Jogo da Memória)
  * O bot mostra uma sequência de 12 caracteres por 5 segundos e depois a apaga.
@@ -83,8 +84,8 @@ module.exports = {
     }
 
     return includePunishmentNotice
-      ? (`🏆 @${state.winner.split("@")[0]} se lembrou corretamente!\n` +
+      ? (`🏆 ${formatMentionTag(state.winner)} se lembrou corretamente!\n` +
         `Agora escolha quem punir!`)
-      : `🏆 @${state.winner.split("@")[0]} se lembrou corretamente!`
+      : `🏆 ${formatMentionTag(state.winner)} se lembrou corretamente!`
   },
 }

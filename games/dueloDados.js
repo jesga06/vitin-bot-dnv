@@ -1,3 +1,4 @@
+const { formatMentionTag } = require("../services/mentionService")
 /**
  * DUELO DE DADOS (Dice Duel)
  * 2 jogadores rolam um d20 (1-20).
@@ -91,8 +92,8 @@ module.exports = {
     const [p1, p2] = state.players
     let msg = `🎲 Duelo de Dados!\n\n`
 
-    msg += `@${p1.split("@")[0]}: ${state.rolls[p1]}\n`
-    msg += `@${p2.split("@")[0]}: ${state.rolls[p2]}\n\n`
+    msg += `${formatMentionTag(p1)}: ${state.rolls[p1]}\n`
+    msg += `${formatMentionTag(p2)}: ${state.rolls[p2]}\n\n`
 
     if (results.type === "both_critical") {
       msg += `💥 AMBOS ROLARAM 1!\n`
@@ -105,13 +106,13 @@ module.exports = {
         ? `Os dois serão punidos.`
         : `Rodada empatada.`
     } else {
-      msg += `🏆 @${results.winner.split("@")[0]} ganhou!\n`
+      msg += `🏆 ${formatMentionTag(results.winner)} ganhou!\n`
       if (!includePunishmentWarnings) {
-        msg += `@${results.loser.split("@")[0]} perdeu a rodada`
+        msg += `${formatMentionTag(results.loser)} perdeu a rodada`
       } else if (results.severity === 2) {
-        msg += `⚠️ @${results.loser.split("@")[0]} recebe punição 2x`
+        msg += `⚠️ ${formatMentionTag(results.loser)} recebe punição 2x`
       } else {
-        msg += `@${results.loser.split("@")[0]} foi punido`
+        msg += `${formatMentionTag(results.loser)} foi punido`
       }
     }
 

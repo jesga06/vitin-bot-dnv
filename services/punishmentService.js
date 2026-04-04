@@ -1,3 +1,4 @@
+const { normalizeMentionArray, getMentionHandleFromJid, formatMentionTag } = require("./mentionService")
 const crypto = require("crypto")
 const { downloadMediaMessage } = require("@whiskeysockets/baileys")
 const storage = require("../storage")
@@ -272,14 +273,14 @@ function getResendText(msg, text = "") {
 }
 
 async function resendPunishedContent(sock, from, sender, msg, text = "") {
-  const mentionTag = `@${sender.split("@")[0]}`
+  const mentionTag = `${formatMentionTag(sender)}`
   const resendPrefix = `📢 Repost de ${mentionTag}: `
 
   const sendFallbackText = async () => {
     const resendText = getResendText(msg, text)
     await sock.sendMessage(from, {
       text: `${resendPrefix}${resendText}`,
-      mentions: [sender],
+      mentions: normalizeMentionArray([sender]),
     })
   }
 
@@ -289,7 +290,7 @@ async function resendPunishedContent(sock, from, sender, msg, text = "") {
       await sock.sendMessage(from, { sticker: stickerBuffer })
       await sock.sendMessage(from, {
         text: `${resendPrefix}[figurinha reenviada pelo bot]`,
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
       return
     }
@@ -299,7 +300,7 @@ async function resendPunishedContent(sock, from, sender, msg, text = "") {
       await sock.sendMessage(from, {
         image: imageBuffer,
         caption: `${resendPrefix}${getResendText(msg, text)}`,
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
       return
     }
@@ -309,7 +310,7 @@ async function resendPunishedContent(sock, from, sender, msg, text = "") {
       await sock.sendMessage(from, {
         video: videoBuffer,
         caption: `${resendPrefix}${getResendText(msg, text)}`,
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
       return
     }
@@ -323,7 +324,7 @@ async function resendPunishedContent(sock, from, sender, msg, text = "") {
       })
       await sock.sendMessage(from, {
         text: `${resendPrefix}[audio reenviado pelo bot]`,
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
       return
     }
@@ -350,7 +351,7 @@ function buildUserIdentityAliases(value = "") {
   if (!normalized) return []
 
   const aliases = new Set([normalized])
-  const userPart = normalized.includes("@") ? normalized.split("@")[0] : normalized
+  const userPart = normalized.includes("@") ? getMentionHandleFromJid(normalized) : normalized
   if (userPart) {
     aliases.add(userPart)
     aliases.add(`${userPart}@s.whatsapp.net`)
@@ -509,8 +510,8 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
         reason: "shield",
       })
       await sock.sendMessage(groupId, {
-        text: `🛡️ @${targetUserId.split("@")[0]} bloqueou a punição com escudo!`,
-        mentions: [targetUserId],
+        text: `🛡️ ${formatMentionTag(targetUserId)} bloqueou a punição com escudo!`,
+        mentions: normalizeMentionArray([targetUserId]),
       })
       return { blockedByShield: true }
     }
@@ -525,7 +526,7 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
   clearPunishment(groupId, targetUserId)
   if (!activePunishments[groupId]) activePunishments[groupId] = {}
 
-  const mentionTag = `@${targetUserId.split("@")[0]}`
+  const mentionTag = `${formatMentionTag(targetUserId)}`
   const now = Date.now()
   let punishmentState = null
   let warningText = ""
@@ -681,8 +682,8 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
     const timerId = setTimeout(() => {
       clearPunishment(groupId, targetUserId)
       sock.sendMessage(groupId, {
-        text: `@${targetUserId.split("@")[0]}, sua punição expirou.`,
-        mentions: [targetUserId],
+        text: `${formatMentionTag(targetUserId)}, sua punição expirou.`,
+        mentions: normalizeMentionArray([targetUserId]),
       }).catch(() => {})
     }, msRemaining)
     activePunishments[groupId][targetUserId].timerId = timerId
@@ -713,7 +714,7 @@ async function applyPunishment(sock, groupId, userId, punishmentId, options = {}
   console.log("[punishment] applyPunishment - sending warning message", { groupId, targetUserId })
   await sock.sendMessage(groupId, {
     text: warningText,
-    mentions: [targetUserId]
+    mentions: normalizeMentionArray([targetUserId])
   })
   console.log("[punishment] applyPunishment COMPLETE", { groupId, targetUserId, normalizedPunishmentId })
 }
@@ -764,8 +765,8 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
           meta: { groupId: from },
         })
         await sock.sendMessage(from, {
-          text: `❌ Spam detectado @${senderId.split("@")[0]}. 3ª ocorrência: mute de 5 minutos + multa de 50 moedas.`,
-          mentions: [senderId],
+          text: `❌ Spam detectado ${formatMentionTag(senderId)}. 3ª ocorrência: mute de 5 minutos + multa de 50 moedas.`,
+          mentions: normalizeMentionArray([senderId]),
         })
       } else if (current.offenseCount >= 2) {
         activePunishments[from][senderId] = {
@@ -773,13 +774,13 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
           endsAt: now + 60_000,
         }
         await sock.sendMessage(from, {
-          text: `❌ Spam detectado @${senderId.split("@")[0]}. 2ª ocorrência: mute temporário de 1 minuto.`,
-          mentions: [senderId],
+          text: `❌ Spam detectado ${formatMentionTag(senderId)}. 2ª ocorrência: mute temporário de 1 minuto.`,
+          mentions: normalizeMentionArray([senderId]),
         })
       } else {
         await sock.sendMessage(from, {
-          text: `❌ Spam detectado @${senderId.split("@")[0]}. Evite flood de letras isoladas.`,
-          mentions: [senderId],
+          text: `❌ Spam detectado ${formatMentionTag(senderId)}. Evite flood de letras isoladas.`,
+          mentions: normalizeMentionArray([senderId]),
         })
       }
 
@@ -821,8 +822,8 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
     console.log("[punishment] handlePunishmentEnforcement - punishment expired", { senderId, endsAt: punishment.endsAt, now })
     clearPunishment(from, senderId)
     await sock.sendMessage(from, {
-      text: `@${senderId.split("@")[0]}, sua punição expirou.`,
-      mentions: [senderId],
+      text: `${formatMentionTag(senderId)}, sua punição expirou.`,
+      mentions: normalizeMentionArray([senderId]),
     })
     return false
   }
@@ -855,8 +856,8 @@ async function handlePunishmentEnforcement(sock, msg, from, sender, text, isGrou
       console.log("[punishment] handlePunishmentEnforcement - lettersBlock - UNLOCK condition met!", { senderId, letters: lettersLabel })
       clearPunishment(from, senderId)
       await sock.sendMessage(from, {
-        text: `@${senderId.split("@")[0]}, você cumpriu a condição e foi liberado da punição das letras (${lettersLabel}).`,
-        mentions: [senderId]
+        text: `${formatMentionTag(senderId)}, você cumpriu a condição e foi liberado da punição das letras (${lettersLabel}).`,
+        mentions: normalizeMentionArray([senderId])
       })
       return false
     }
@@ -1129,8 +1130,8 @@ async function rehydrateActivePunishments(sock) {
         clearPunishment(groupId, userId)
         if (sock && typeof sock.sendMessage === "function") {
           sock.sendMessage(groupId, {
-            text: `@${userId.split("@")[0]}, sua punição expirou.`,
-            mentions: [userId],
+            text: `${formatMentionTag(userId)}, sua punição expirou.`,
+            mentions: normalizeMentionArray([userId]),
           }).catch(() => {})
         }
       }, remainingMs)

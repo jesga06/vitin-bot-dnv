@@ -1,3 +1,4 @@
+const { getMentionHandleFromJid } = require("./mentionService")
 const fs = require("fs")
 const path = require("path")
 const telemetry = require("./telemetryService")
@@ -2837,7 +2838,7 @@ function getStablePublicLabel(userId = "") {
   const user = ensureUser(normalized)
   const custom = String(user?.preferences?.publicLabel || "").trim()
   if (custom) return custom
-  const userPart = normalized.split("@")[0] || normalized || "anon"
+  const userPart = getMentionHandleFromJid(normalized) || normalized || "anon"
   const suffix = userPart.slice(-4).toUpperCase().padStart(4, "0")
   return `USR-${suffix}`
 }

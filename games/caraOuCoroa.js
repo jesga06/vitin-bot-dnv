@@ -1,3 +1,4 @@
+const { normalizeMentionArray, getMentionHandleFromJid, formatMentionTag } = require("../services/mentionService")
 const crypto = require("crypto")
 const storage = require("../storage")
 const economyService = require("../services/economyService")
@@ -16,8 +17,8 @@ async function startDobroGame(ctx) {
   const stateKey = getDobroStateKey(from, sender)
   if (storage.getGameState(from, stateKey)) {
     await sock.sendMessage(from, {
-      text: `🎲 @${sender.split("@")[0]}, você já está em um jogo de Dobro ou Nada. Responda com *cara* ou *coroa*, ou use *!moeda continua* / *!moeda sair*.`,
-      mentions: [sender],
+      text: `🎲 ${formatMentionTag(sender)}, você já está em um jogo de Dobro ou Nada. Responda com *cara* ou *coroa*, ou use *!moeda continua* / *!moeda sair*.`,
+      mentions: normalizeMentionArray([sender]),
     })
     return true
   }
@@ -25,8 +26,8 @@ async function startDobroGame(ctx) {
   const currentCoins = Math.max(0, Math.floor(Number(service.getProfile(sender)?.coins) || 0))
   if (currentCoins < DOBRO_BUY_IN) {
     await sock.sendMessage(from, {
-      text: `🎲 @${sender.split("@")[0]}, você precisa de *${DOBRO_BUY_IN}* Epsteincoins para iniciar o Dobro ou Nada. Saldo atual: *${currentCoins}*.`,
-      mentions: [sender],
+      text: `🎲 ${formatMentionTag(sender)}, você precisa de *${DOBRO_BUY_IN}* Epsteincoins para iniciar o Dobro ou Nada. Saldo atual: *${currentCoins}*.`,
+      mentions: normalizeMentionArray([sender]),
     })
     return true
   }
@@ -38,8 +39,8 @@ async function startDobroGame(ctx) {
   })
   if (!debited) {
     await sock.sendMessage(from, {
-      text: `🎲 @${sender.split("@")[0]}, não foi possível cobrar o buy-in de *${DOBRO_BUY_IN}*. Tente novamente.`,
-      mentions: [sender],
+      text: `🎲 ${formatMentionTag(sender)}, não foi possível cobrar o buy-in de *${DOBRO_BUY_IN}*. Tente novamente.`,
+      mentions: normalizeMentionArray([sender]),
     })
     return true
   }
@@ -58,11 +59,11 @@ async function startDobroGame(ctx) {
 
   await sock.sendMessage(from, {
     text:
-      `🎲 @${sender.split("@")[0]}, seu Dobro ou Nada começou!\n\n` +
+      `🎲 ${formatMentionTag(sender)}, seu Dobro ou Nada começou!\n\n` +
       `Buy-in cobrado: *${DOBRO_BUY_IN}* Epsteincoins.\n` +
       `Se sair com streak 1, recebe *${DOBRO_BUY_IN}* (break-even).\n\n` +
       `Envie *cara* ou *coroa* para jogar.`,
-    mentions: [sender],
+    mentions: normalizeMentionArray([sender]),
   })
   return true
 }
@@ -74,16 +75,16 @@ async function continueDobroGame(ctx) {
 
   if (!state) {
     await sock.sendMessage(from, {
-      text: `🎲 @${sender.split("@")[0]}, você não está em um jogo de Dobro ou Nada. Comece com *!moeda dobro*.`,
-      mentions: [sender],
+      text: `🎲 ${formatMentionTag(sender)}, você não está em um jogo de Dobro ou Nada. Comece com *!moeda dobro*.`,
+      mentions: normalizeMentionArray([sender]),
     })
     return true
   }
 
   if (state.status !== "waiting_for_choice") {
     await sock.sendMessage(from, {
-      text: `🎲 @${sender.split("@")[0]}, você precisa acertar a rodada atual antes de continuar.`,
-      mentions: [sender],
+      text: `🎲 ${formatMentionTag(sender)}, você precisa acertar a rodada atual antes de continuar.`,
+      mentions: normalizeMentionArray([sender]),
     })
     return true
   }
@@ -100,7 +101,7 @@ async function continueDobroGame(ctx) {
       `Se acertar, você poderá sair com *${nextPotentialReward}* Epsteincoins.\n` +
       `Se errar, perde apenas o buy-in já cobrado (*${buyInAmount}*).\n\n` +
       `Envie *cara* ou *coroa*.`,
-    mentions: [sender],
+    mentions: normalizeMentionArray([sender]),
   })
   return true
 }
@@ -113,15 +114,15 @@ async function exitDobroGame(ctx) {
 
   if (!state || state.status !== "waiting_for_choice") {
     await sock.sendMessage(from, {
-      text: `🎲 @${sender.split("@")[0]}, não há um jogo ativo para sair ou você ainda não jogou a rodada.`,
-      mentions: [sender],
+      text: `🎲 ${formatMentionTag(sender)}, não há um jogo ativo para sair ou você ainda não jogou a rodada.`,
+      mentions: normalizeMentionArray([sender]),
     })
     return true
   }
 
   if (state.streak === 0) {
     storage.clearGameState(from, stateKey)
-    await sock.sendMessage(from, { text: "Você saiu sem ganhos.", mentions: [sender] })
+    await sock.sendMessage(from, { text: "Você saiu sem ganhos.", mentions: normalizeMentionArray([sender]) })
     // Dobro ou Nada exits at 0, 1, or 2 wins count as "safe" plays
     // This means the user quit before accumulating too many high-risk wins.
     if (state.streak <= 2) {
@@ -148,7 +149,7 @@ async function exitDobroGame(ctx) {
   if (state.streak <= 2) {
     recordSafeCoinPlay(from, sender)
   }
-  await sock.sendMessage(from, { text: `💰 @${sender.split("@")[0]} saiu e ganhou *${reward}* Epsteincoins com uma sequência de *${state.streak}* vitórias!`, mentions: [sender] })
+  await sock.sendMessage(from, { text: `💰 ${formatMentionTag(sender)} saiu e ganhou *${reward}* Epsteincoins com uma sequência de *${state.streak}* vitórias!`, mentions: normalizeMentionArray([sender]) })
   return true
 }
 
@@ -275,14 +276,14 @@ async function handleCoinGuess({
       `Você acertou! A moeda caiu em *${resolvedResult}*.\n` +
       `Streak: *${streak}*`
 
-    await sock.sendMessage(from, { text: winText, mentions: [sender] })
+    await sock.sendMessage(from, { text: winText, mentions: normalizeMentionArray([sender]) })
 
     await sock.sendMessage(from, {
       text:
         `Escolha um alvo e a punição dele em até 30 segundos.\n` +
         `${getPunishmentMenuText()}\n` +
         `Formato: @mention <número da punição>`,
-      mentions: [sender],
+      mentions: normalizeMentionArray([sender]),
     })
 
     const coinPunishmentPending = storage.getCoinPunishmentPending()
@@ -350,7 +351,7 @@ async function handleCoinGuess({
     text:
       `A moeda caiu em *${resolvedResult}*.\nSe fudeu.\n${lossLabel}` +
       (usedStreakSaver ? "\n🛟 Salva-streak consumido: sua sequência foi preservada." : ""),
-    mentions: [sender]
+    mentions: normalizeMentionArray([sender])
   })
 
   if (resenhaAveriguada[from]) {
@@ -359,7 +360,7 @@ async function handleCoinGuess({
         text:
           `Aposta de *${wagerMultiplier}x* abaixo do minimo de *${minPunishmentBet}x* para punicoes no Cara ou Coroa.\n` +
           `Sem punicao nesta rodada.`,
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
       return true
     }
@@ -367,7 +368,7 @@ async function handleCoinGuess({
     const randomPunishment = getRandomPunishmentChoice()
     await sock.sendMessage(from, {
       text: `Punição sorteada: *${getPunishmentNameById(randomPunishment)}*`,
-      mentions: [sender]
+      mentions: normalizeMentionArray([sender])
     })
     await applyPunishment(sock, from, sender, randomPunishment, { origin: "game" })
   }
@@ -574,7 +575,7 @@ async function handleDobroGuess(ctx) {
         .filter(Boolean)
     )
     const normalizedSender = String(sender || "").trim().toLowerCase().split(":")[0]
-    const senderUserPart = normalizedSender.split("@")[0]
+    const senderUserPart = getMentionHandleFromJid(normalizedSender)
     const isOverride = Boolean(overrideChecksEnabled) &&
       (overrideIdentitySet.has(normalizedSender) || overrideIdentitySet.has(senderUserPart))
 
@@ -596,7 +597,7 @@ async function handleDobroGuess(ctx) {
               `Sua sequência de vitórias é: *${state.streak}*.\n` +
               `Você pode usar *!moeda sair* para coletar *${currentReward}* Epsteincoins.\n` +
               `Ou use *!moeda continua* para arriscar e tentar ganhar *${nextPotentialReward}* Epsteincoins.`,
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
     } else {
       const buyInAmount = Math.max(1, Math.floor(Number(state.buyInAmount) || DOBRO_BUY_IN))
@@ -606,7 +607,7 @@ async function handleDobroGuess(ctx) {
         text:
           `❌ Você errou! A moeda deu *${resolvedResult}*.\n\n` +
           `Você perdeu o buy-in de *${buyInAmount}* Epsteincoins. Fim de jogo.`,
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
     }
     return true
@@ -668,7 +669,7 @@ async function sendStreakRanking({ sock, from, cmd, prefix, isGroup }) {
   const hist = coinHistoricalMax[from] || top[0].max || 0
 
   const rankingLines = top.map((u, i) =>
-    `${i + 1}. @${u.jid.split("@")[0]} - max: *${u.max}* | atual: *${u.current}*`
+    `${i + 1}. ${formatMentionTag(u.jid)} - max: *${u.max}* | atual: *${u.current}*`
   )
 
   await sock.sendMessage(from, {
@@ -689,8 +690,8 @@ async function sendStreakValue({ sock, from, sender, mentioned, cmd, prefix, isG
   const alvo = mentioned[0] || sender
   const valor = coinStreaks[from]?.[alvo] || 0
   await sock.sendMessage(from, {
-    text: `Streak de @${alvo.split("@")[0]}: *${valor}*`,
-    mentions: [alvo]
+    text: `Streak de ${formatMentionTag(alvo)}: *${valor}*`,
+    mentions: normalizeMentionArray([alvo])
   })
   return true
 }

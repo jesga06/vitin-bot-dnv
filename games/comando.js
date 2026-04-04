@@ -4,6 +4,7 @@
  * Last person to comply gets punished. Or if instruction is silence, first to break it gets punished.
  */
 
+const { formatMentionTag } = require("../services/mentionService")
 const gameManager = require("../gameManager")
 
 const instructions = [
@@ -149,8 +150,8 @@ module.exports = {
 				return "Todos respeitaram o silêncio!"
 			}
 			return includePunishmentNotice
-				? `💬 @${loser.split("@")[0]} quebrou o silêncio e será punido!`
-				: `💬 @${loser.split("@")[0]} quebrou o silêncio!`
+				? `💬 ${formatMentionTag(loser)} quebrou o silêncio e será punido!`
+				: `💬 ${formatMentionTag(loser)} quebrou o silêncio!`
 		}
 
 		if (!loser) {
@@ -158,7 +159,7 @@ module.exports = {
 		}
 
 		return includePunishmentNotice
-			? `🐢 @${loser.split("@")[0]} foi o último no Comando e será punido!`
-			: `🐢 @${loser.split("@")[0]} foi o último no Comando!`
+			? `🐢 ${formatMentionTag(loser)} foi o último no Comando e será punido!`
+			: `🐢 ${formatMentionTag(loser)} foi o último no Comando!`
 	},
 }

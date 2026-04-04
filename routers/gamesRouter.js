@@ -1,3 +1,4 @@
+const { normalizeMentionArray, formatMentionTag } = require("../services/mentionService")
 const telemetry = require("../services/telemetryService")
 const storageModule = require("../storage.js")
 const RR_TURN_TIMEOUT_MS = 60_000
@@ -278,11 +279,11 @@ async function handleGameCommands(ctx) {
 
       await sock.sendMessage(from, {
         text:
-          `⏱️ Lobby *${lobbyId}*: @${timedOutPlayer.split("@")[0]} não usou *!atirar* em ${RR_TURN_TIMEOUT_SECONDS}s.\n` +
+          `⏱️ Lobby *${lobbyId}*: ${formatMentionTag(timedOutPlayer)} não usou *!atirar* em ${RR_TURN_TIMEOUT_SECONDS}s.\n` +
           (winners.length > 0
-            ? `🏆 Vitória automática para ${winners.map((p) => `@${p.split("@")[0]}`).join(" ")} (multiplicador ${betMultiplier}x).`
+            ? `🏆 Vitória automática para ${winners.map((p) => `${formatMentionTag(p)}`).join(" ")} (multiplicador ${betMultiplier}x).`
             : "Partida encerrada por timeout."),
-        mentions: [timedOutPlayer, ...winners],
+        mentions: normalizeMentionArray([timedOutPlayer, ...winners]),
       })
 
       telemetry.incrementCounter("game.rr.completed", 1, {
@@ -513,8 +514,8 @@ async function handleGameCommands(ctx) {
       telemetry.appendEvent("game.lobby.joined", { groupId: from, lobbyId, gameType: session.gameType, userId: sender })
       const maxPlayersLabel = Number.isFinite(session.maxPlayers) ? String(session.maxPlayers) : "∞"
       await sock.sendMessage(from, {
-        text: `✅ @${sender.split("@")[0]} entrou no lobby *${lobbyId}*!\nJogadores: ${session.players.length}/${maxPlayersLabel}`,
-        mentions: [sender],
+        text: `✅ ${formatMentionTag(sender)} entrou no lobby *${lobbyId}*!\nJogadores: ${session.players.length}/${maxPlayersLabel}`,
+        mentions: normalizeMentionArray([sender]),
       })
     } else {
       await sock.sendMessage(from, {
@@ -568,8 +569,8 @@ async function handleGameCommands(ctx) {
       graceState.forceStart = true
       storage.setGameState(from, graceKey, graceState)
       await sock.sendMessage(from, {
-        text: `⏩ Lobby *${targetLobbyId}*: fase de aposta pulada por @${sender.split("@")[0]}.`,
-        mentions: [sender],
+        text: `⏩ Lobby *${targetLobbyId}*: fase de aposta pulada por ${formatMentionTag(sender)}.`,
+        mentions: normalizeMentionArray([sender]),
       })
 
       await handleGameCommands({
@@ -635,9 +636,9 @@ async function handleGameCommands(ctx) {
     const multipliedBuyIn = baseBuyIn * betRaw
     await sock.sendMessage(from, {
       text:
-        `🎯 Lobby *${targetLobbyId}*: bet de @${sender.split("@")[0]} ajustada para *${betRaw}x*.\n` +
+        `🎯 Lobby *${targetLobbyId}*: bet de ${formatMentionTag(sender)} ajustada para *${betRaw}x*.\n` +
         `Buy-in deste jogador: *${multipliedBuyIn}* Epsteincoins (base ${baseBuyIn}).`,
-      mentions: [sender],
+      mentions: normalizeMentionArray([sender]),
     })
     return true
   }
@@ -800,7 +801,7 @@ async function handleGameCommands(ctx) {
       const buyInResult = collectLobbyBuyInWithBets(session.players, buyInAmount, session.gameType, graceBetByPlayer)
       if (!buyInResult.ok) {
         await sock.sendMessage(from, {
-          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `${formatMentionTag(p)}`).join(" ")}`,
           mentions: buyInResult.insufficient,
         })
         return true
@@ -818,7 +819,7 @@ async function handleGameCommands(ctx) {
       await sock.sendMessage(from, {
         text:
           `🎰 Adivinhação iniciada no lobby *${lobbyId}*!\n` +
-          `${mentions.map((p) => `@${p.split("@")[0]}`).join(" ")}\n\n` +
+          `${mentions.map((p) => `${formatMentionTag(p)}`).join(" ")}\n\n` +
           `Resposta: *!resposta <número>* (auto)\n` +
           `Ou: *!resposta ${lobbyId} <número>*\n` +
           `Faixa: 1-100`,
@@ -837,7 +838,7 @@ async function handleGameCommands(ctx) {
       const buyInResult = collectLobbyBuyInWithBets(session.players, buyInAmount, session.gameType, graceBetByPlayer)
       if (!buyInResult.ok) {
         await sock.sendMessage(from, {
-          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `${formatMentionTag(p)}`).join(" ")}`,
           mentions: buyInResult.insufficient,
         })
         return true
@@ -854,7 +855,7 @@ async function handleGameCommands(ctx) {
       await sock.sendMessage(from, {
         text:
           `🥔 Batata Quente iniciada no lobby *${lobbyId}*!\n` +
-          `${session.players.map((p) => `@${p.split("@")[0]}`).join(" ")}\n\n` +
+          `${session.players.map((p) => `${formatMentionTag(p)}`).join(" ")}\n\n` +
           `${batataquente.formatStatus(state)}\n` +
           `Comando de passe: *!passa @usuario* (auto)\n` +
           `Ou: *!passa ${lobbyId} @usuario*`,
@@ -869,8 +870,8 @@ async function handleGameCommands(ctx) {
           if (!currentState) return
           const holder = currentState.currentHolder
           await sock.sendMessage(from, {
-            text: `⏱️ *${secs}s* restantes no lobby *${lobbyId}*\nBatata com @${holder.split("@")[0]}`,
-            mentions: [holder],
+            text: `⏱️ *${secs}s* restantes no lobby *${lobbyId}*\nBatata com ${formatMentionTag(holder)}`,
+            mentions: normalizeMentionArray([holder]),
           })
         }, delayMs)
       }
@@ -882,9 +883,9 @@ async function handleGameCommands(ctx) {
           const resenhaOn = isResenhaModeEnabled()
           await sock.sendMessage(from, {
             text: resenhaOn
-              ? `⏰ Tempo acabou no lobby *${lobbyId}*!\n🔴 @${loser.split("@")[0]} foi punido!`
-              : `⏰ Tempo acabou no lobby *${lobbyId}*!\n🔴 @${loser.split("@")[0]} perdeu a rodada!`,
-            mentions: [loser],
+              ? `⏰ Tempo acabou no lobby *${lobbyId}*!\n🔴 ${formatMentionTag(loser)} foi punido!`
+              : `⏰ Tempo acabou no lobby *${lobbyId}*!\n🔴 ${formatMentionTag(loser)} perdeu a rodada!`,
+            mentions: normalizeMentionArray([loser]),
           })
 
           const winners = (finalState.players || []).filter((playerId) => playerId !== loser)
@@ -924,7 +925,7 @@ async function handleGameCommands(ctx) {
       const buyInResult = collectLobbyBuyInWithBets(session.players, buyInAmount, session.gameType, graceBetByPlayer)
       if (!buyInResult.ok) {
         await sock.sendMessage(from, {
-          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `${formatMentionTag(p)}`).join(" ")}`,
           mentions: buyInResult.insufficient,
         })
         return true
@@ -941,7 +942,7 @@ async function handleGameCommands(ctx) {
       await sock.sendMessage(from, {
         text:
           `🎲 Duelo de Dados iniciado no lobby *${lobbyId}*!\n` +
-          `${session.players.map((p) => `@${p.split("@")[0]}`).join(" vs ")}\n\n` +
+          `${session.players.map((p) => `${formatMentionTag(p)}`).join(" vs ")}\n\n` +
           `Cada jogador usa: *!rolar* (auto)\n` +
           `Ou: *!rolar ${lobbyId}*`,
         mentions: session.players,
@@ -978,7 +979,7 @@ async function handleGameCommands(ctx) {
         : collectLobbyBuyInWithBets(session.players, buyInAmount, session.gameType, graceBetByPlayer)
       if (!buyInResult.ok) {
         await sock.sendMessage(from, {
-          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+          text: `Sem saldo para entrada multiplicada (base ${buyInAmount}) para: ${buyInResult.insufficient.map((p) => `${formatMentionTag(p)}`).join(" ")}`,
           mentions: buyInResult.insufficient,
         })
         return true
@@ -1005,7 +1006,7 @@ async function handleGameCommands(ctx) {
       await sock.sendMessage(from, {
         text:
           `🔫 Roleta Russa iniciada no lobby *${lobbyId}*!\n` +
-          `${session.players.map((p) => `@${p.split("@")[0]}`).join(" ")}\n\n` +
+          `${session.players.map((p) => `${formatMentionTag(p)}`).join(" ")}\n\n` +
           `Aposta: *${state.betValue || 0}*\n` +
           `Multiplicador (aposta + 1): *${state.betMultiplier || 1}x*\n` +
           `${roletaRussa.formatStatus(state)}\n` +
@@ -1159,7 +1160,7 @@ async function handleGameCommands(ctx) {
       if (results.chooser) {
         await createPendingTargetForWinner(
           results.chooser,
-          `🎯 @${results.chooser.split("@")[0]}, você acertou exatamente!`,
+          `🎯 ${formatMentionTag(results.chooser)}, você acertou exatamente!`,
           results.choiceSeverity || 2,
           state.players.filter((p) => p !== results.chooser)
         )
@@ -1212,8 +1213,8 @@ async function handleGameCommands(ctx) {
 
     storage.setGameState(from, stateKey, state)
     await sock.sendMessage(from, {
-      text: `✅ Lobby *${lobbyId}*: @${sender.split("@")[0]} passou a batata para @${target.split("@")[0]}!`,
-      mentions: [sender, target],
+      text: `✅ Lobby *${lobbyId}*: ${formatMentionTag(sender)} passou a batata para ${formatMentionTag(target)}!`,
+      mentions: normalizeMentionArray([sender, target]),
     })
     return true
   }
@@ -1243,8 +1244,8 @@ async function handleGameCommands(ctx) {
 
     storage.setGameState(from, stateKey, state)
     await sock.sendMessage(from, {
-      text: `🎲 Lobby *${lobbyId}*: @${sender.split("@")[0]} rolou ${result.roll}!`,
-      mentions: [sender],
+      text: `🎲 Lobby *${lobbyId}*: ${formatMentionTag(sender)} rolou ${result.roll}!`,
+      mentions: normalizeMentionArray([sender]),
     })
 
     if (Object.keys(state.rolls).length === 2) {
@@ -1317,8 +1318,8 @@ async function handleGameCommands(ctx) {
     const currentPlayer = roletaRussa.getCurrentPlayer(state)
     if (sender !== currentPlayer) {
       await sock.sendMessage(from, {
-        text: `Não é sua vez no lobby *${lobbyId}*! É de @${currentPlayer.split("@")[0]}`,
-        mentions: [currentPlayer],
+        text: `Não é sua vez no lobby *${lobbyId}*! É de ${formatMentionTag(currentPlayer)}`,
+        mentions: normalizeMentionArray([currentPlayer]),
       })
       return true
     }
@@ -1356,7 +1357,7 @@ async function handleGameCommands(ctx) {
         await sock.sendMessage(from, {
           text:
             `🍀 *SORTE NA RR!*\n` +
-            `@${sender.split("@")[0]} desviou do tiro com o efeito do *rrtokensorte* no lobby *${lobbyId}*.\n` +
+            `${formatMentionTag(sender)} desviou do tiro com o efeito do *rrtokensorte* no lobby *${lobbyId}*.\n` +
             `O token só é consumido em vitória sem ser atingido.\n\n` +
             `${roletaRussa.formatStatus(state)}`,
           mentions: dodgeMentions,
@@ -1412,7 +1413,7 @@ async function handleGameCommands(ctx) {
       await sock.sendMessage(from, {
         text:
           `*CLICK*\n` +
-          `✅ @${sender.split("@")[0]} sobreviveu e ultrapassou a aposta (*${betValue}*) no lobby *${lobbyId}*!\n` +
+          `✅ ${formatMentionTag(sender)} sobreviveu e ultrapassou a aposta (*${betValue}*) no lobby *${lobbyId}*!\n` +
           `🏆 Vitória automática no modo solo.` +
           (consumedRrLuck.length > 0 ? "\n🍀 rrtokensorte consumido por vitória sem tiro." : ""),
         mentions: winners,
@@ -1455,7 +1456,7 @@ async function handleGameCommands(ctx) {
           await distributeLobbyBuyInPool(winners, state.buyInPool, "Roleta Russa", getLobbyPayoutOptions(state))
           if (consumedRrLuck.length > 0) {
             await sock.sendMessage(from, {
-              text: `🍀 rrtokensorte consumido por vitória sem tiro: ${consumedRrLuck.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+              text: `🍀 rrtokensorte consumido por vitória sem tiro: ${consumedRrLuck.map((p) => `${formatMentionTag(p)}`).join(" ")}`,
               mentions: consumedRrLuck,
             })
           }
@@ -1466,9 +1467,9 @@ async function handleGameCommands(ctx) {
             `Lobby *${lobbyId}*\n` +
             `✅ O jogador da vez ultrapassou a aposta (*${betValue}*), mas quem tomou tiro não recebe prêmio.\n` +
             (winners.length > 0
-              ? `🏆 Premiação para: ${winners.map((p) => `@${p.split("@")[0]}`).join(" ")}`
+              ? `🏆 Premiação para: ${winners.map((p) => `${formatMentionTag(p)}`).join(" ")}`
               : "Sem jogadores elegíveis para premiação nesta rodada."),
-          mentions: [shotPlayer, ...winners],
+          mentions: normalizeMentionArray([shotPlayer, ...winners]),
         })
         telemetry.incrementCounter("game.rr.completed", 1, {
           result: result.guaranteed ? "guaranteed-all-win" : "all-win-surpass",
@@ -1491,9 +1492,9 @@ async function handleGameCommands(ctx) {
       const resenhaOn = isResenhaModeEnabled()
       await sock.sendMessage(from, {
         text: resenhaOn
-          ? `💥 ${result.guaranteed ? "Garantido!!!" : "ACERTADO!"}\nLobby *${lobbyId}*\n🔴 @${result.loser.split("@")[0]} foi atingido e punido!`
-          : `💥 ${result.guaranteed ? "Garantido!!!" : "ACERTADO!"}\nLobby *${lobbyId}*\n🔴 @${result.loser.split("@")[0]} foi atingido!`,
-        mentions: [result.loser],
+          ? `💥 ${result.guaranteed ? "Garantido!!!" : "ACERTADO!"}\nLobby *${lobbyId}*\n🔴 ${formatMentionTag(result.loser)} foi atingido e punido!`
+          : `💥 ${result.guaranteed ? "Garantido!!!" : "ACERTADO!"}\nLobby *${lobbyId}*\n🔴 ${formatMentionTag(result.loser)} foi atingido!`,
+        mentions: normalizeMentionArray([result.loser]),
       })
 
       const rrLoss = state.players.length === 1
@@ -1507,8 +1508,8 @@ async function handleGameCommands(ctx) {
       if (rrTaken > 0) {
         incrementUserStat(result.loser, "moneyGameLost", rrTaken)
         await sock.sendMessage(from, {
-          text: `💸 @${result.loser.split("@")[0]} perdeu *${rrTaken}* Epsteincoins na Roleta Russa.`,
-          mentions: [result.loser],
+          text: `💸 ${formatMentionTag(result.loser)} perdeu *${rrTaken}* Epsteincoins na Roleta Russa.`,
+          mentions: normalizeMentionArray([result.loser]),
         })
       }
 
@@ -1530,7 +1531,7 @@ async function handleGameCommands(ctx) {
       await distributeLobbyBuyInPool(winners, state.buyInPool, "Roleta Russa", getLobbyPayoutOptions(state))
       if (consumedRrLuck.length > 0) {
         await sock.sendMessage(from, {
-          text: `🍀 rrtokensorte consumido por vitória sem tiro: ${consumedRrLuck.map((p) => `@${p.split("@")[0]}`).join(" ")}`,
+          text: `🍀 rrtokensorte consumido por vitória sem tiro: ${consumedRrLuck.map((p) => `${formatMentionTag(p)}`).join(" ")}`,
           mentions: consumedRrLuck,
         })
       }
@@ -1555,7 +1556,7 @@ async function handleGameCommands(ctx) {
         ...(currentPlayer ? [currentPlayer] : []),
       ]))
       await sock.sendMessage(from, {
-        text: `*CLICK*\n✅ @${sender.split("@")[0]} sobreviveu no lobby *${lobbyId}*!\n\n${roletaRussa.formatStatus(state)}`,
+        text: `*CLICK*\n✅ ${formatMentionTag(sender)} sobreviveu no lobby *${lobbyId}*!\n\n${roletaRussa.formatStatus(state)}`,
         mentions: clickMentions,
       })
       scheduleRrTurnTimeout(lobbyId, stateKey)
@@ -1769,7 +1770,7 @@ async function handleGameMessageFlow(ctx) {
         const resenhaOn = isResenhaModeEnabled()
         await sock.sendMessage(from, {
           text: memoryGame.formatResults(memActive, resenhaOn),
-          mentions: [result.winner],
+          mentions: normalizeMentionArray([result.winner]),
         })
 
         await rewardPlayer(result.winner, GAME_REWARDS.MEMORIA, 1, "Memória")

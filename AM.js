@@ -1,10 +1,4 @@
-const {
-  normalizeMentionJid,
-  normalizeMentionArray,
-  getFirstMentionedJid,
-} = require("./services/mentionService")
-
-// =========================
+const { normalizeMentionJid, normalizeMentionArray, getFirstMentionedJid, getMentionHandleFromJid } = require("./services/mentionService")// =========================
 // DONOS
 // =========================
 const VITIN = process.env.VITIN_ID || "183563009966181@lid"
@@ -153,7 +147,7 @@ async function enviarQuebrado(sock, from, linhas, mentions = [], usarMentions = 
 // =========================
 function extrairNumero(jid) {
   const normalized = normalizeMentionJid(jid)
-  if (normalized) return normalized.split("@")[0]
+  if (normalized) return getMentionHandleFromJid(normalized)
   return String(jid || "").replace(/\D+/g, "")
 }
 

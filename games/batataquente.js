@@ -5,6 +5,7 @@
  * Passe a batata com !passa + @menção
  */
 
+const { formatMentionTag } = require("../services/mentionService")
 const gameManager = require("../gameManager")
 
 module.exports = {
@@ -56,7 +57,7 @@ module.exports = {
 
     return (
       `🥔 Batata Quente! ⏱️ ${secs}s restantes\n` +
-      `Holder: @${state.currentHolder.split("@")[0]}\n` +
+      `Holder: ${formatMentionTag(state.currentHolder)}\n` +
       `Passes: ${state.passes.length}\n\n` +
       `Use !passa @menção para passar!`
     )

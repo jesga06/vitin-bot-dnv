@@ -1,3 +1,4 @@
+const { normalizeMentionArray } = require("../services/mentionService")
 const storage = require("../storage");
 const economyService = require("../services/economyService");
 
@@ -177,7 +178,7 @@ const acao = String(textParts || "").toLowerCase();
 💰 Lucro/Perda total: ${stats.profit > 0 ? '+' : ''}${stats.profit}
 💸 Saldo atual: ${balance}
 `;
-    await sock.sendMessage(from, { text: msg, mentions: [sender] });
+    await sock.sendMessage(from, { text: msg, mentions: normalizeMentionArray([sender]) });
     return true;
   }
 
@@ -203,7 +204,7 @@ const acao = String(textParts || "").toLowerCase();
     storage.setGameState(from, stateKey, lobby);
     await sock.sendMessage(from, { 
       text: `✅ @${numero} criou um novo jogo de Blackjack!\n\nUse !21 aposta [multiplicador] para definir o multiplicador (padrão: 1x = ${APOSTA_BASE} moedas)\nDepois use !21 entrar para participar.`, 
-      mentions: [sender] 
+      mentions: normalizeMentionArray([sender]) 
     });
     return true;
   }
@@ -238,7 +239,7 @@ const acao = String(textParts || "").toLowerCase();
     const apostaPorJogador = APOSTA_BASE * multiplier;
     await sock.sendMessage(from, { 
       text: `✅ @${numero} definiu o multiplicador para *${multiplier}x*!\n\nAposta por jogador: *${apostaPorJogador}* EpsteinCoins`, 
-      mentions: [sender] 
+      mentions: normalizeMentionArray([sender]) 
     });
     return true;
   }
@@ -270,7 +271,7 @@ const acao = String(textParts || "").toLowerCase();
     storage.setGameState(from, stateKey, lobby);
     await sock.sendMessage(from, { 
       text: `🚫 @${numero} ativou o *MODO POBREZA*!\n\nNeste modo:\n- Sem apostas\n- Sem ganhos\n- Só diversão!\n\nUse !21 entrar para participar.`, 
-      mentions: [sender] 
+      mentions: normalizeMentionArray([sender]) 
     });
     return true;
   }
@@ -310,7 +311,7 @@ const acao = String(textParts || "").toLowerCase();
     const betText = lobby.isPovertyMode ? "Modo pobreza - sem aposta" : `Aposta: 💰 ${bet}`;
     await sock.sendMessage(from, { 
       text: `✅ @${numero} entrou no jogo! (${lobby.players.length}/4)\n${betText}`, 
-      mentions: [sender] 
+      mentions: normalizeMentionArray([sender]) 
     });
     return true;
   }
@@ -450,14 +451,14 @@ const acao = String(textParts || "").toLowerCase();
       
       await sock.sendMessage(from, { 
         text: `💥 @${numero} estourou! (Valor: ${value})${!lobby.isPovertyMode ? ` — Perdeu sua aposta de 💰 ${lobby.playerBets[numero]}` : ''}`, 
-        mentions: [sender] 
+        mentions: normalizeMentionArray([sender]) 
       });
       return true;
     }
 
     await sock.sendMessage(from, { 
       text: `✅ @${numero} pediu uma carta: ${card.rank}${card.suit} (Valor: ${value})`, 
-      mentions: [sender] 
+      mentions: normalizeMentionArray([sender]) 
     });
     return true;
   }
@@ -486,7 +487,7 @@ const acao = String(textParts || "").toLowerCase();
 
     await sock.sendMessage(from, { 
       text: `✅ @${numero} parou.`, 
-      mentions: [sender] 
+      mentions: normalizeMentionArray([sender]) 
     });
 
     // Verifica se todos os jogadores mantiveram

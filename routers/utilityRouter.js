@@ -3,7 +3,7 @@ const { getCommandHelp, getPublicCommandNames } = require("../commandHelp")
 const os = require("os")
 const child_process = require("child_process")
 const { normalizeUserId } = require("../services/registrationService")
-const { normalizeMentionJid, getFirstMentionedJid } = require("../services/mentionService")
+const { normalizeMentionJid, getFirstMentionedJid, normalizeMentionArray, getMentionHandleFromJid, formatMentionTag } = require("../services/mentionService")
 
 const pendingPrivateFeedbackBySender = new Map()
 const pendingQuestionBySender = new Map()
@@ -357,8 +357,8 @@ async function handleUtilityCommands(ctx) {
     if (isGroup) {
       await sock.sendMessage(sender, { text: helpText })
       await sock.sendMessage(from, {
-        text: `📩 @${sender.split("@")[0]}, te enviei a ajuda de *${requested}* no privado.`,
-        mentions: [sender],
+        text: `📩 ${formatMentionTag(sender)}, te enviei a ajuda de *${requested}* no privado.`,
+        mentions: normalizeMentionArray([sender]),
       })
     } else {
       await sock.sendMessage(from, { text: helpText })
@@ -541,7 +541,7 @@ ${answerText}`,
       answeredBy: "",
     })
 
-    const senderLabel = String(sender || "").split("@")[0]
+    const senderLabel = getMentionHandleFromJid(String(sender || ""))
     await sock.sendMessage(overrideTarget, {
       text:
 `📩 PERGUNTA PRIVADA (${questionId})
@@ -552,7 +552,7 @@ ${questionText}
 Fluxo de Resposta:
 1) ${prefix}pergunta ${questionId}
 2) Enviar a resposta na mensagem seguinte`,
-      mentions: [sender],
+      mentions: normalizeMentionArray([sender]),
     })
     await sock.sendMessage(from, {
       text:
@@ -767,7 +767,7 @@ Envie sua resposta na próxima mensagem.`,
 
     enqueteRecord.responses.push({
       respondent: sender,
-      respondentName: userNameCache[sender] || sender.split("@")[0],
+      respondentName: userNameCache[sender] || getMentionHandleFromJid(sender),
       response: responseText,
       respondedAt: Date.now(),
     })
@@ -780,9 +780,9 @@ Envie sua resposta na próxima mensagem.`,
 
 *${enqueteRecord.title}*
 
-De: @${sender.split("@")[0]}
+De: ${formatMentionTag(sender)}
 Resposta: ${responseText}`,
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
     }
 
@@ -874,7 +874,7 @@ ${feedbackText}`,
     const senderRaw = String(sender || "").trim()
     const senderNormalized = jidNormalizedUser(senderRaw)
     const senderWithoutDevice = senderRaw.split(":")[0]
-    const senderUserPart = senderWithoutDevice.split("@")[0]
+    const senderUserPart = getMentionHandleFromJid(senderWithoutDevice)
     const senderSWh = senderUserPart ? `${senderUserPart}@s.whatsapp.net` : ""
     const senderLid = senderUserPart ? `${senderUserPart}@lid` : ""
 
@@ -931,7 +931,7 @@ ${feedbackText}`,
     addVariant("REGISTRATION_CANONICAL", registrationCanonical)
 
     const baseForParts = registrationCanonical || baileysNormalized || String(baseIdentity || "").trim().toLowerCase()
-    const userPart = baseForParts.includes("@") ? baseForParts.split("@")[0] : baseForParts
+    const userPart = baseForParts.includes("@") ? getMentionHandleFromJid(baseForParts) : baseForParts
     const userPartWithoutDevice = String(userPart || "").split(":")[0]
     const digitsOnly = userPartWithoutDevice.replace(/\D+/g, "")
 
@@ -951,7 +951,7 @@ ${feedbackText}`,
       const normalized = String(value || "").trim().toLowerCase()
       if (!normalized) return "@desconhecido"
 
-      const beforeAt = normalized.includes("@") ? normalized.split("@")[0] : normalized
+      const beforeAt = normalized.includes("@") ? getMentionHandleFromJid(normalized) : normalized
       const withoutDevice = beforeAt.split(":")[0]
       const digits = withoutDevice.replace(/\D+/g, "")
       const handle = digits || withoutDevice || normalized
@@ -1090,7 +1090,7 @@ ${feedbackText}`,
     const uptimeText = formatUptime(process.uptime())
     const hours = new Date().getHours()
     const greeting = hours >= 5 && hours < 12 ? "bom dia" : hours >= 12 && hours < 18 ? "boa tarde" : "boa noite"
-    const userShort = String(sender || "").split("@")[0]
+    const userShort = getMentionHandleFromJid(String(sender || ""))
 
     const box = `╔┉✼┉═══༺◈✼☁️✼◈༻═══┉✼┉╗
 ║
@@ -1112,7 +1112,7 @@ ${feedbackText}`,
 ║
 ╚┉✼┉═══༺◈✼☁️✼◈༻═══┉✼┉╝`
 
-    await sock.sendMessage(from, { text: box, mentions: [sender] })
+    await sock.sendMessage(from, { text: box, mentions: normalizeMentionArray([sender]) })
     trackUtility("perf", "success", { latencyMs })
     return true
   }
@@ -1126,8 +1126,8 @@ ${feedbackText}`,
     await sock.sendMessage(sender, { text: detailsText })
     if (isGroup) {
       await sock.sendMessage(from, {
-        text: `📩 @${sender.split("@")[0]}, te enviei a lista de punições no privado.`,
-        mentions: [sender],
+        text: `📩 ${formatMentionTag(sender)}, te enviei a lista de punições no privado.`,
+        mentions: normalizeMentionArray([sender]),
       })
     }
     return true
@@ -1192,7 +1192,7 @@ ${feedbackText}`,
     }
 
     const alvo = participantes[Math.floor(Math.random() * participantes.length)]
-    const numero = alvo.split("@")[0]
+    const numero = getMentionHandleFromJid(alvo)
 
     const frases = [
       `@${numero} foi agraciado a rebolar lentinho pra todos do grupo!`,
@@ -1217,7 +1217,7 @@ ${feedbackText}`,
     ]
 
     const frase = frases[Math.floor(Math.random() * frases.length)]
-    await sock.sendMessage(from, { text: frase, mentions: [alvo] })
+    await sock.sendMessage(from, { text: frase, mentions: normalizeMentionArray([alvo]) })
     trackUtility("roleta", "success")
     return true
   }
@@ -1232,23 +1232,23 @@ ${feedbackText}`,
     const dispositivos = ["Android", "iOS", "Windows PC", "Linux PC"]
     const dispositivo = dispositivos[Math.floor(Math.random() * dispositivos.length)]
 
-    const numero = alvo.split("@")[0]
+    const numero = getMentionHandleFromJid(alvo)
     const ddd = numero.substring(0, 2)
     const regiao = dddMap[ddd] || "desconhecida"
 
     const crimes = ["furto", "roubo", "estelionato", "tráfico", "lesão corporal", "homicídio", "contrabando", "vandalismo", "pirataria", "crime cibernético", "fraude", "tráfico de animais", "lavagem de dinheiro", "crime ambiental", "corrupção", "sequestro", "ameaça", "falsificação", "invasão de propriedade", "crime eleitoral"]
     const crime = crimes[Math.floor(Math.random() * crimes.length)]
 
-    await sock.sendMessage(from, { text: `📡 Analisando ficha criminal... (1 crime encontrado: ${crime})`, mentions: [alvo] })
+    await sock.sendMessage(from, { text: `📡 Analisando ficha criminal... (1 crime encontrado: ${crime})`, mentions: normalizeMentionArray([alvo]) })
 
     setTimeout(async () => {
-      await sock.sendMessage(from, { text: `💻 IP rastreado: ${ip}`, mentions: [alvo] })
+      await sock.sendMessage(from, { text: `💻 IP rastreado: ${ip}`, mentions: normalizeMentionArray([alvo]) })
     }, 1500)
 
     setTimeout(async () => {
       await sock.sendMessage(from, {
         text: `🎯 Alvo identificado!\n📍 Região: ${regiao}\n💻 Provedor: ${provedor}\n📱 Dispositivo: ${dispositivo}\n⚠️ Vulnerabilidade encontrada!\n💣 Iniciando ataque em breve...`,
-        mentions: [alvo],
+        mentions: normalizeMentionArray([alvo]),
       })
     }, 3000)
 
@@ -1258,18 +1258,18 @@ ${feedbackText}`,
 
   if (cmd.startsWith(prefix + "gay") && mentioned[0]) {
     const alvo = mentioned[0]
-    const numero = alvo.split("@")[0]
+    const numero = getMentionHandleFromJid(alvo)
     const p = Math.floor(Math.random() * 101)
-    await sock.sendMessage(from, { text: `@${numero} é ${p}% gay 🌈`, mentions: [alvo] })
+    await sock.sendMessage(from, { text: `@${numero} é ${p}% gay 🌈`, mentions: normalizeMentionArray([alvo]) })
     trackUtility("gay", "success", { target: alvo })
     return true
   }
 
   if (cmd.startsWith(prefix + "gado") && mentioned[0]) {
     const alvo = mentioned[0]
-    const numero = alvo.split("@")[0]
+    const numero = getMentionHandleFromJid(alvo)
     const p = Math.floor(Math.random() * 101)
-    await sock.sendMessage(from, { text: `@${numero} é ${p}% gado 🐂`, mentions: [alvo] })
+    await sock.sendMessage(from, { text: `@${numero} é ${p}% gado 🐂`, mentions: normalizeMentionArray([alvo]) })
     trackUtility("gado", "success", { target: alvo })
     return true
   }
@@ -1277,12 +1277,12 @@ ${feedbackText}`,
   if (cmd.startsWith(prefix + "ship") && mentioned.length >= 2) {
     const p1 = mentioned[0]
     const p2 = mentioned[1]
-    const n1 = p1.split("@")[0]
-    const n2 = p2.split("@")[0]
+    const n1 = getMentionHandleFromJid(p1)
+    const n2 = getMentionHandleFromJid(p2)
     const chance = Math.floor(Math.random() * 101)
     await sock.sendMessage(from, {
       text: `💘 @${n1} + @${n2} = ${chance}%`,
-      mentions: [p1, p2],
+      mentions: normalizeMentionArray([p1, p2]),
     })
     trackUtility("ship", "success", { targetA: p1, targetB: p2 })
     return true
@@ -1304,8 +1304,8 @@ ${feedbackText}`,
     const p1 = participantes[Math.floor(Math.random() * participantes.length)]
     let p2 = participantes[Math.floor(Math.random() * participantes.length)]
     while (p1 === p2) p2 = participantes[Math.floor(Math.random() * participantes.length)]
-    const n1 = p1.split("@")[0]
-    const n2 = p2.split("@")[0]
+    const n1 = getMentionHandleFromJid(p1)
+    const n2 = getMentionHandleFromJid(p2)
 
     const motivos = [
       "brigaram por causa de comida",
@@ -1323,8 +1323,8 @@ ${feedbackText}`,
     if (motivo === "brigaram pra ver quem tem o maior pinto") {
       const vencedor = Math.random() < 0.5 ? p1 : p2
       const perdedor = vencedor === p1 ? p2 : p1
-      const nv = vencedor.split("@")[0]
-      const np = perdedor.split("@")[0]
+      const nv = getMentionHandleFromJid(vencedor)
+      const np = getMentionHandleFromJid(perdedor)
       const tamanhoVencedor = (Math.random() * 20 + 5).toFixed(1)
       const tamanhoPerdedor = (Math.random() * 23 - 20).toFixed(1)
       const finais = [
@@ -1334,7 +1334,7 @@ ${feedbackText}`,
       const resultado = finais[Math.floor(Math.random() * finais.length)]
       await sock.sendMessage(from, {
         text: `Ih, os corno começaram a tretar\n\n@${n1} VS @${n2}\n\nMotivo: ${motivo}\nResultado: ${resultado}`,
-        mentions: [p1, p2],
+        mentions: normalizeMentionArray([p1, p2]),
       })
       trackUtility("treta", "success", { players: [p1, p2] })
       return true
@@ -1350,7 +1350,7 @@ ${feedbackText}`,
     const resultado = resultados[Math.floor(Math.random() * resultados.length)]
     await sock.sendMessage(from, {
       text: `Ih, os corno começaram a tretar\n\n@${n1} VS @${n2}\n\nMotivo: ${motivo}\nResultado: ${resultado}`,
-      mentions: [p1, p2],
+      mentions: normalizeMentionArray([p1, p2]),
     })
     trackUtility("treta", "success", { players: [p1, p2] })
     return true

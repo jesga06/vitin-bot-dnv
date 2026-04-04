@@ -1,3 +1,4 @@
+const { formatMentionTag } = require("./mentionService")
 const LOOTBOX_FIXED_EFFECTS = [
   { id: "daily_reset", name: "Resetar cooldown !daily", weight: 30, description: "Reseta !daily" },
   { id: "work_reset", name: "Resetar cooldown !trabalho", weight: 30, description: "Reseta !trabalho" },
@@ -236,7 +237,7 @@ function openLootboxEngine({
 
     let resultText = ""
     const targetIsOther = normalizeUserId(targetUser) !== normalizeUserId(userId)
-    const targetPrefix = targetIsOther ? `@${targetUser.split("@")[0]}: ` : "Você: "
+    const targetPrefix = targetIsOther ? `${formatMentionTag(targetUser)}: ` : "Você: "
     let punishment = null
 
     if (Number.isFinite(Number(effect.percentDelta)) && Number(effect.percentDelta) !== 0) {

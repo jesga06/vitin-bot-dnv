@@ -1,3 +1,4 @@
+const { getMentionHandleFromJid } = require("./services/mentionService")
 const fs = require("fs")
 const path = require("path")
 
@@ -189,7 +190,7 @@ const storage = {
     if (!normalized) return false
     const blocked = stateCache.globalBlockedUsers || {}
     if (blocked[normalized]) return true
-    const userPart = normalized.split("@")[0]
+    const userPart = getMentionHandleFromJid(normalized)
     return Boolean(userPart && blocked[userPart])
   },
 

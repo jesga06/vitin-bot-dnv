@@ -5,6 +5,7 @@
  * Inicia com !começar rr (ou aliases !comecar/!start) e os tiros são com !atirar
  */
 
+const { formatMentionTag } = require("../services/mentionService")
 const gameManager = require("../gameManager")
 
 module.exports = {
@@ -117,7 +118,7 @@ module.exports = {
   // Formata status
   formatStatus: (state) => {
     const currentPlayer = state.players[state.currentPlayerIndex]
-    const currentTag = currentPlayer ? `@${currentPlayer.split("@")[0]}` : "desconhecido"
+    const currentTag = currentPlayer ? `${formatMentionTag(currentPlayer)}` : "desconhecido"
     return (
       `🔫 Roleta Russa!\n` +
       `Turno: ${state.currentPlayerIndex + 1}/${state.players.length}\n` +

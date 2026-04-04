@@ -1,4 +1,5 @@
 const CURRENCY_LABEL = "Epsteincoins"
+const { normalizeMentionArray, getMentionHandleFromJid, formatMentionTag } = require("../services/mentionService")
 const telemetry = require("../services/telemetryService")
 
 const pendingForgeTypeByUser = new Map()
@@ -720,7 +721,7 @@ async function handleEconomyCommands(ctx) {
     const knownName = String(registeredEntry?.lastKnownName || "").trim()
     const stableLabel = typeof economyService.getStablePublicLabel === "function"
       ? economyService.getStablePublicLabel(userId)
-      : (String(userId || "").split("@")[0] || "Jogador")
+      : (getMentionHandleFromJid(String(userId || "")) || "Jogador")
     const publicIdentityLabel = publicLabel || knownName || stableLabel
     const requirePublicIdentity = Boolean(options?.requirePublicIdentity)
 
@@ -734,7 +735,7 @@ async function handleEconomyCommands(ctx) {
         ? mentionJidByNormalized.get(normalizedRankingUserId) || mentionJidByNormalized.get(jidNormalizedUser(userId)) || null
         : userId
       if (mentionJid) {
-        const tag = String(mentionJid).split("@")[0].split(":")[0]
+        const tag = getMentionHandleFromJid(String(mentionJid)).split(":")[0]
         if (!tag) return { visible: false, label: "", mentionId: null }
         return {
           visible: true,
@@ -812,7 +813,7 @@ async function handleEconomyCommands(ctx) {
         : false
       const current = typeof economyService.getStablePublicLabel === "function"
         ? economyService.getStablePublicLabel(sender)
-        : sender.split("@")[0]
+        : getMentionHandleFromJid(sender)
       await sock.sendMessage(from, {
         text:
           `Seu identificador público atual: *${current}*\n` +
@@ -950,13 +951,13 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
     const xp = getXpSnapshot(economyService, sender)
     await sock.sendMessage(from, {
       text:
-        `Progressão de @${sender.split("@")[0]}\n` +
+        `Progressão de ${formatMentionTag(sender)}\n` +
         `Nível: *${xp.level}*\n` +
         `XP atual: *${xp.xpNow}/${xp.xpToNext}*\n` +
         `Pontos de temporada: *${xp.seasonPoints}*\n` +
         `Posição global XP: *${xp.globalPosition || "N/A"}*\n\n` +
         `Dica: esse bloco também aparece em *${prefix}perfil*.`,
-      mentions: [sender],
+      mentions: normalizeMentionArray([sender]),
     })
     return true
   }
@@ -1181,8 +1182,8 @@ Vínculos limpos: *${linkedCleanup.teamsLeft}* saída(s) de equipe, *${linkedCle
 
     if (isGroup) {
       await sock.sendMessage(from, {
-        text: `📩 @${sender.split("@")[0]}, te enviei o guia de economia no privado em 3 partes.`,
-        mentions: [sender],
+        text: `📩 ${formatMentionTag(sender)}, te enviei o guia de economia no privado em 3 partes.`,
+        mentions: normalizeMentionArray([sender]),
       })
     }
 
@@ -1345,16 +1346,16 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       const inviteResults = []
       for (const targetId of inviteTargets) {
         if (team.members.includes(targetId)) {
-          inviteResults.push(`@${targetId.split("@")[0]} ja esta no time.`)
+          inviteResults.push(`${formatMentionTag(targetId)} ja esta no time.`)
           continue
         }
         const targetCurrentTeam = storage.getUserTeamId(targetId)
         if (targetCurrentTeam) {
-          inviteResults.push(`@${targetId.split("@")[0]} ja faz parte de outro time.`)
+          inviteResults.push(`${formatMentionTag(targetId)} ja faz parte de outro time.`)
           continue
         }
         storage.inviteToTeam(userTeamId, targetId, "pending")
-        inviteResults.push(`@${targetId.split("@")[0]} convidado.`)
+        inviteResults.push(`${formatMentionTag(targetId)} convidado.`)
       }
 
       await sock.sendMessage(from, {
@@ -1416,8 +1417,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         }
 
         await sock.sendMessage(from, {
-          text: `✅ @${requestedUser.split("@")[0]} entrou no time *${team.name || approvalTeamId}*.`,
-          mentions: [requestedUser],
+          text: `✅ ${formatMentionTag(requestedUser)} entrou no time *${team.name || approvalTeamId}*.`,
+          mentions: normalizeMentionArray([requestedUser]),
         })
         return true
       }
@@ -1502,8 +1503,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         return true
       }
       await sock.sendMessage(from, {
-        text: `✅ @${target.split("@")[0]} foi promovido a tenente do time *${team.name || userTeamId}*.`,
-        mentions: [target],
+        text: `✅ ${formatMentionTag(target)} foi promovido a tenente do time *${team.name || userTeamId}*.`,
+        mentions: normalizeMentionArray([target]),
       })
       return true
     }
@@ -1528,8 +1529,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         return true
       }
       await sock.sendMessage(from, {
-        text: `✅ @${target.split("@")[0]} voltou ao cargo de membro no time *${team.name || userTeamId}*.`,
-        mentions: [target],
+        text: `✅ ${formatMentionTag(target)} voltou ao cargo de membro no time *${team.name || userTeamId}*.`,
+        mentions: normalizeMentionArray([target]),
       })
       return true
     }
@@ -1584,7 +1585,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       await sock.sendMessage(from, {
         text:
           `*${team?.name || userTeamId}* (${userTeamId})\n` +
-          `Criado por: @${String(team?.createdBy || "").split("@")[0] || "-"}\n` +
+          `Criado por: @${getMentionHandleFromJid(String(team?.createdBy || "")) || "-"}\n` +
           `Membros: ${(team?.members || []).length}\n` +
           `Pool coins: *${poolCoins}* ${CURRENCY_LABEL}\n` +
           `Pool itens:\n${poolItemsText}\n\n` +
@@ -1629,7 +1630,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 
       await sock.sendMessage(from, {
         text: `⚠️ Disputa registrada para o trade ${tradeId}. A equipe de override pode revisar pelos logs.`,
-        mentions: [trade.initiator, trade.counterparty],
+        mentions: normalizeMentionArray([trade.initiator, trade.counterparty]),
       })
       return true
     }
@@ -1681,9 +1682,9 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 
       await sock.sendMessage(from, {
         text:
-          `✅ @${sender.split("@")[0]} depositou *${amount}* ${CURRENCY_LABEL} no pool do time.` +
+          `✅ ${formatMentionTag(sender)} depositou *${amount}* ${CURRENCY_LABEL} no pool do time.` +
           (poolAmount !== amount ? `\n⚡ Multiplicador de contribuições ativo: pool recebeu *${poolAmount}*.` : ""),
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
       return true
     }
@@ -1736,9 +1737,9 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 
       await sock.sendMessage(from, {
         text:
-          `✅ @${sender.split("@")[0]} depositou *${quantity}x ${formatItemWithId(economyService, normalizedItem)}* no pool do time.` +
+          `✅ ${formatMentionTag(sender)} depositou *${quantity}x ${formatItemWithId(economyService, normalizedItem)}* no pool do time.` +
           (poolQuantity !== quantity ? `\n⚡ Multiplicador de contribuições ativo: pool recebeu *${poolQuantity}x*.` : ""),
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
       return true
     }
@@ -1805,8 +1806,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       }
 
       await sock.sendMessage(from, {
-        text: `✅ Retirada concluida: *${credited}* ${CURRENCY_LABEL} do pool para @${sender.split("@")[0]}.`,
-        mentions: [sender],
+        text: `✅ Retirada concluida: *${credited}* ${CURRENCY_LABEL} do pool para ${formatMentionTag(sender)}.`,
+        mentions: normalizeMentionArray([sender]),
       })
       return true
     }
@@ -1888,8 +1889,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       }
 
       await sock.sendMessage(from, {
-        text: `✅ Retirada concluida: *${credited}x ${formatItemWithId(economyService, normalizedItem)}* do pool para @${sender.split("@")[0]}.`,
-        mentions: [sender],
+        text: `✅ Retirada concluida: *${credited}x ${formatItemWithId(economyService, normalizedItem)}* do pool para ${formatMentionTag(sender)}.`,
+        mentions: normalizeMentionArray([sender]),
       })
       return true
     }
@@ -2116,8 +2117,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     if (now >= pendingTypeChoice.expiresAt) {
       pendingForgeTypeByUser.delete(sender)
       await sock.sendMessage(from, {
-        text: `⏰ @${sender.split("@")[0]}, tempo expirado. A escolha de tipo da falsificação foi cancelada.`,
-        mentions: [sender],
+        text: `⏰ ${formatMentionTag(sender)}, tempo expirado. A escolha de tipo da falsificação foi cancelada.`,
+        mentions: normalizeMentionArray([sender]),
       })
       return true
     }
@@ -2155,12 +2156,12 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     pendingForgeTypeByUser.delete(sender)
     await sock.sendMessage(from, {
       text:
-        `✅ @${sender.split("@")[0]} conversão concluída!\n` +
+        `✅ ${formatMentionTag(sender)} conversão concluída!\n` +
         `Tipo original: *${pendingTypeChoice.fromType}*\n` +
         `Novo tipo escolhido: *${applied.toType}*\n` +
         `Quantidade convertida: *${applied.quantity}*\n` +
         `Severidade: *${applied.severity}x*.`,
-      mentions: [sender],
+      mentions: normalizeMentionArray([sender]),
     })
     return true
   }
@@ -2428,8 +2429,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       })
 
       await sock.sendMessage(from, {
-        text: `✅ @${sender.split("@")[0]} resgatou *${received}* ${CURRENCY_LABEL} com o cupom *${codeRaw}*.`,
-        mentions: [sender],
+        text: `✅ ${formatMentionTag(sender)} resgatou *${received}* ${CURRENCY_LABEL} com o cupom *${codeRaw}*.`,
+        mentions: normalizeMentionArray([sender]),
       })
       return true
     }
@@ -2693,11 +2694,11 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       }
 
       const lines = allTrades.slice(0, 10).map((trade) =>
-        `- ${trade.tradeId} | ${trade.status} | ${trade.phase} | @${trade.initiator.split("@")[0]} x @${trade.counterparty.split("@")[0]}`
+        `- ${trade.tradeId} | ${trade.status} | ${trade.phase} | ${formatMentionTag(trade.initiator)} x ${formatMentionTag(trade.counterparty)}`
       )
       await sock.sendMessage(from, {
         text: `Seus trades (até 10):\n${lines.join("\n")}`,
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
       return true
     }
@@ -2722,12 +2723,12 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         text:
           `Trade ${trade.tradeId}\n` +
           `Status: *${trade.status}* | Fase: *${trade.phase}*\n` +
-          `Iniciador: @${trade.initiator.split("@")[0]}\n` +
-          `Contraparte: @${trade.counterparty.split("@")[0]}\n` +
+          `Iniciador: ${formatMentionTag(trade.initiator)}\n` +
+          `Contraparte: ${formatMentionTag(trade.counterparty)}\n` +
           `Oferta iniciador: ${formatTradeOffer(trade.offers?.initiator, economyService)}\n` +
           `Oferta contraparte: ${formatTradeOffer(trade.offers?.counterparty, economyService)}\n` +
           `Expira em: ${new Date(trade.expiresAt || Date.now()).toLocaleString()}`,
-        mentions: [trade.initiator, trade.counterparty],
+        mentions: normalizeMentionArray([trade.initiator, trade.counterparty]),
       })
       return true
     }
@@ -2778,7 +2779,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
           `Oferta iniciador: ${formatTradeOffer(trade.offers.initiator, economyService)}\n` +
           `Oferta contraparte: ${formatTradeOffer(trade.offers.counterparty, economyService)}\n` +
           `Agora ambos precisam confirmar com: !escambo revisar ${trade.tradeId}`,
-        mentions: [trade.initiator, trade.counterparty],
+        mentions: normalizeMentionArray([trade.initiator, trade.counterparty]),
       })
       return true
     }
@@ -2815,7 +2816,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         text: trade.phase === "phase4-negotiation"
           ? `Ambos revisaram o trade ${trade.tradeId}. Fase de negociação iniciada. Use !escambo aceitar ${trade.tradeId}, !escambo counter ${trade.tradeId} ... ou !escambo rejeitar ${trade.tradeId}.`
           : `Revisão registrada para ${trade.tradeId}. Falta o outro participante revisar.`,
-        mentions: [trade.initiator, trade.counterparty],
+        mentions: normalizeMentionArray([trade.initiator, trade.counterparty]),
       })
       return true
     }
@@ -2849,7 +2850,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         setTradeState(storage, from, tradeState)
         await sock.sendMessage(from, {
           text: `Aceite registrado para ${trade.tradeId}. Aguardando confirmação da outra parte.`,
-          mentions: [trade.initiator, trade.counterparty],
+          mentions: normalizeMentionArray([trade.initiator, trade.counterparty]),
         })
         return true
       }
@@ -2862,7 +2863,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         setTradeState(storage, from, tradeState)
         await sock.sendMessage(from, {
           text: `Falha ao liquidar o trade ${trade.tradeId} (${settled.reason}). Verifiquem saldo/itens e tentem novamente.`,
-          mentions: [trade.initiator, trade.counterparty],
+          mentions: normalizeMentionArray([trade.initiator, trade.counterparty]),
         })
         return true
       }
@@ -2909,9 +2910,9 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       await sock.sendMessage(from, {
         text:
           `Trade ${trade.tradeId} concluído com sucesso.\n` +
-          `Taxa ${trade.initiator.split("@")[0]}: *${settled.fees.initiator}* ${CURRENCY_LABEL}\n` +
-          `Taxa ${trade.counterparty.split("@")[0]}: *${settled.fees.counterparty}* ${CURRENCY_LABEL}`,
-        mentions: [trade.initiator, trade.counterparty],
+          `Taxa ${getMentionHandleFromJid(trade.initiator)}: *${settled.fees.initiator}* ${CURRENCY_LABEL}\n` +
+          `Taxa ${getMentionHandleFromJid(trade.counterparty)}: *${settled.fees.counterparty}* ${CURRENCY_LABEL}`,
+        mentions: normalizeMentionArray([trade.initiator, trade.counterparty]),
       })
       return true
     }
@@ -2961,7 +2962,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
           `Oferta iniciador: ${formatTradeOffer(trade.offers.initiator, economyService)}\n` +
           `Oferta contraparte: ${formatTradeOffer(trade.offers.counterparty, economyService)}\n` +
           `Se concordarem, ambos usem !escambo aceitar ${trade.tradeId}.`,
-        mentions: [trade.initiator, trade.counterparty],
+        mentions: normalizeMentionArray([trade.initiator, trade.counterparty]),
       })
       return true
     }
@@ -2998,7 +2999,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 
       await sock.sendMessage(from, {
         text: `Trade ${trade.tradeId} cancelado. Nenhuma taxa foi cobrada.`,
-        mentions: [trade.initiator, trade.counterparty],
+        mentions: normalizeMentionArray([trade.initiator, trade.counterparty]),
       })
       return true
     }
@@ -3030,7 +3031,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       if (activeExisting.length > 0) {
         await sock.sendMessage(from, {
           text: `Já existe trade ativo entre vocês: ${activeExisting[0].tradeId}.`,
-          mentions: [sender, target],
+          mentions: normalizeMentionArray([sender, target]),
         })
         return true
       }
@@ -3080,9 +3081,9 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       await sock.sendMessage(from, {
         text:
           `Trade ${tradeId} criado.\n` +
-          `Oferta inicial de @${sender.split("@")[0]}: ${formatTradeOffer(parsedOffer.offer, economyService)}\n` +
-          `@${target.split("@")[0]} responda com: !escambo resposta ${tradeId} <coins> [item:quantidade...]`,
-        mentions: [sender, target],
+          `Oferta inicial de ${formatMentionTag(sender)}: ${formatTradeOffer(parsedOffer.offer, economyService)}\n` +
+          `${formatMentionTag(target)} responda com: !escambo resposta ${tradeId} <coins> [item:quantidade...]`,
+        mentions: normalizeMentionArray([sender, target]),
       })
       return true
     }
@@ -3135,7 +3136,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 
     await sock.sendMessage(from, {
       text:
-        `💳 Carteira global de @${targetUser.split("@")[0]}\n` +
+        `💳 Carteira global de ${formatMentionTag(targetUser)}\n` +
         `${CURRENCY_LABEL}: *${profile.coins}*\n` +
         `Escudos: *${profile.shields}*\n` +
         `Nível: *${xp.level}*\n` +
@@ -3144,7 +3145,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         `Posição global XP: *${xp.globalPosition || "N/A"}*\n` +
         `Inventário:\n${buildInventoryText(profile)}${kronosInfo}` +
         cooldownText,
-      mentions: [targetUser],
+      mentions: normalizeMentionArray([targetUser]),
     })
     telemetry.incrementCounter("economy.profile.view", 1, {
       self: targetUser === sender ? "yes" : "no",
@@ -3179,8 +3180,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     })
 
     await sock.sendMessage(from, {
-      text: `📒 Extrato de @${targetUser.split("@")[0]} (últimas 10)\n${lines.join("\n")}`,
-      mentions: [targetUser],
+      text: `📒 Extrato de ${formatMentionTag(targetUser)} (últimas 10)\n${lines.join("\n")}`,
+      mentions: normalizeMentionArray([targetUser]),
     })
     return true
   }
@@ -3374,8 +3375,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       return true
     }
     await sock.sendMessage(from, {
-      text: `✅ Cupom de ${percentage}% criado para @${target.split("@")[0]}.`,
-      mentions: [target],
+      text: `✅ Cupom de ${percentage}% criado para ${formatMentionTag(target)}.`,
+      mentions: normalizeMentionArray([target]),
     })
     return true
   }
@@ -3493,8 +3494,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 
     await sock.sendMessage(from, {
       text:
-        `🎁 @${sender.split("@")[0]} comprou *${bought.quantity}x ${formatItemWithId(economyService, bought.itemKey)}* para @${target.split("@")[0]}.`,
-      mentions: [sender, target],
+        `🎁 ${formatMentionTag(sender)} comprou *${bought.quantity}x ${formatItemWithId(economyService, bought.itemKey)}* para ${formatMentionTag(target)}.`,
+      mentions: normalizeMentionArray([sender, target]),
     })
     return true
   }
@@ -3590,8 +3591,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     }
 
     await sock.sendMessage(from, {
-      text: `🤝 @${sender.split("@")[0]} doou *${transferred.amount}* ${CURRENCY_LABEL} para @${target.split("@")[0]}.`,
-      mentions: [sender, target],
+      text: `🤝 ${formatMentionTag(sender)} doou *${transferred.amount}* ${CURRENCY_LABEL} para ${formatMentionTag(target)}.`,
+      mentions: normalizeMentionArray([sender, target]),
     })
     return true
   }
@@ -3620,8 +3621,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     }
 
     await sock.sendMessage(from, {
-      text: `🎁 @${sender.split("@")[0]} doou *${transferred.quantity}x ${formatItemWithId(economyService, transferred.itemKey)}* para @${target.split("@")[0]}.`,
-      mentions: [sender, target],
+      text: `🎁 ${formatMentionTag(sender)} doou *${transferred.quantity}x ${formatItemWithId(economyService, transferred.itemKey)}* para ${formatMentionTag(target)}.`,
+      mentions: normalizeMentionArray([sender, target]),
     })
     return true
   }
@@ -3669,9 +3670,9 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       if (steal.blockedByShield) {
         await sock.sendMessage(from, {
           text:
-            `🛡️ Roubo bloqueado! @${target.split("@")[0]} consumiu um escudo e você não ganhou nada.\n` +
+            `🛡️ Roubo bloqueado! ${formatMentionTag(target)} consumiu um escudo e você não ganhou nada.\n` +
             "Sua tentativa e cooldown foram consumidos normalmente.",
-          mentions: [sender, target],
+          mentions: normalizeMentionArray([sender, target]),
         })
         return true
       }
@@ -3682,10 +3683,10 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       await handleLevel100Milestone(sock, sender, xpResult)
       await sock.sendMessage(from, {
         text:
-          `🚨 Roubo falhou! @${sender.split("@")[0]} perdeu *${steal.lost}* ${CURRENCY_LABEL}.\n` +
+          `🚨 Roubo falhou! ${formatMentionTag(sender)} perdeu *${steal.lost}* ${CURRENCY_LABEL}.\n` +
           `Chance de sucesso nesta tentativa: ${(steal.successChance * 100).toFixed(0)}%` +
           buildXpRewardText(xpResult, XP_REWARDS.stealAttemptFail, economyService),
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
       return true
     }
@@ -3698,13 +3699,13 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     const kronosText = economyService.hasActiveKronos(sender) ? " (antes de bônus da Coroa Kronos)" : ""
     await sock.sendMessage(from, {
       text:
-        `🕵️ Roubo bem-sucedido! @${sender.split("@")[0]} roubou *${steal.stolenFromVictim}* de @${target.split("@")[0]} e recebeu *${steal.gained}* ${CURRENCY_LABEL}.
+        `🕵️ Roubo bem-sucedido! ${formatMentionTag(sender)} roubou *${steal.stolenFromVictim}* de ${formatMentionTag(target)} e recebeu *${steal.gained}* ${CURRENCY_LABEL}.
 ` +
         `Faixa base do roubo: 90 a 320 ${CURRENCY_LABEL}${kronosText}.
 ` +
         `Chance de sucesso nesta tentativa: ${(steal.successChance * 100).toFixed(0)}%` +
         buildXpRewardText(xpResult, XP_REWARDS.stealAttemptSuccess, economyService),
-      mentions: [sender, target],
+      mentions: normalizeMentionArray([sender, target]),
     })
 
     return true
@@ -3994,12 +3995,12 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
     const redirected = result.results.filter((r) => r.targetIsOther)
     const redirectedPrefix = redirected.length > 0
       ? `\n⚠️ Redirecionamentos: *${redirected.length}* efeito(s) foram para outras pessoas.\n` +
-        `${redirected.map((r) => `- ${r.effect} -> @${r.targetUser.split("@")[0]}`).join("\n")}\n`
+        `${redirected.map((r) => `- ${r.effect} -> ${formatMentionTag(r.targetUser)}`).join("\n")}\n`
       : ""
 
     await sock.sendMessage(from, {
       text:
-        `🎉 @${sender.split("@")[0]} abriu *${quantity}x* Lootbox!\n` +
+        `🎉 ${formatMentionTag(sender)} abriu *${quantity}x* Lootbox!\n` +
         `${redirectedPrefix ? `${redirectedPrefix}\n` : ""}` +
         `${resultLines}`,
       mentions: filteredMentions,
@@ -4137,7 +4138,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
           `${getPunishmentMenuTextForGroup()}\n\n` +
           `Você receberá um aviso faltando 15 segundos para expirar.\n` +
           `Taxa de operação: *${forged.forgeCost}* ${CURRENCY_LABEL}${boostedOdds ? " (modo boost)" : ""}.`,
-        mentions: [sender],
+        mentions: normalizeMentionArray([sender]),
       })
 
       setTimeout(async () => {
@@ -4145,8 +4146,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         if (!pending || pending.expiresAt !== expiresAt || pending.groupId !== from) return
         try {
           await sock.sendMessage(from, {
-            text: `⏳ @${sender.split("@")[0]}, sua escolha de tipo expira em 15 segundos.`,
-            mentions: [sender],
+            text: `⏳ ${formatMentionTag(sender)}, sua escolha de tipo expira em 15 segundos.`,
+            mentions: normalizeMentionArray([sender]),
           })
         } catch (err) {
           console.error("Erro ao avisar expiração próxima da falsificação", err)
@@ -4159,8 +4160,8 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         pendingForgeTypeByUser.delete(sender)
         try {
           await sock.sendMessage(from, {
-            text: `⌛ @${sender.split("@")[0]}, tempo expirado. A conversão por mudança de tipo foi cancelada sem escolha.`,
-            mentions: [sender],
+            text: `⌛ ${formatMentionTag(sender)}, tempo expirado. A conversão por mudança de tipo foi cancelada sem escolha.`,
+            mentions: normalizeMentionArray([sender]),
           })
         } catch (err) {
           console.error("Erro ao avisar expiração da falsificação", err)
@@ -4450,7 +4451,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
               details: `Loteria: ${activeSession.title}`,
               meta: { groupId: from, createdBy: activeSession.createdBy },
             })
-            appliedRewardLines.push(`- @${winner.split("@")[0]}: ${received} ${CURRENCY_LABEL}`)
+            appliedRewardLines.push(`- ${formatMentionTag(winner)}: ${received} ${CURRENCY_LABEL}`)
             continue
           }
 
@@ -4464,12 +4465,12 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
                 meta: { groupId: from, createdBy: activeSession.createdBy, item: reward.itemKey, qty: added },
               })
             }
-            appliedRewardLines.push(`- @${winner.split("@")[0]}: ${added}x ${formatItemWithId(economyService, reward.itemKey)}`)
+            appliedRewardLines.push(`- ${formatMentionTag(winner)}: ${added}x ${formatItemWithId(economyService, reward.itemKey)}`)
             continue
           }
 
           if (reward.type === "text") {
-            appliedRewardLines.push(`- @${winner.split("@")[0]}: ${reward.text}`)
+            appliedRewardLines.push(`- ${formatMentionTag(winner)}: ${reward.text}`)
           }
         }
       }
@@ -4477,7 +4478,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       await sock.sendMessage(from, {
         text:
           `🏆 Resultado da loteria *${activeSession.title}*\n` +
-          `Vencedores:\n${winners.map((winnerId) => `- @${winnerId.split("@")[0]}`).join("\n")}\n` +
+          `Vencedores:\n${winners.map((winnerId) => `- ${formatMentionTag(winnerId)}`).join("\n")}\n` +
           `Prêmios:\n${appliedRewardLines.join("\n")}`,
         mentions: applyMentionPolicy(winners),
       })
@@ -4758,7 +4759,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         meta: { admin: sender },
       })
       await sock.sendMessage(from, {
-        text: `✅ Saldo de @${target.split("@")[0]} ajustado para *${balance}* ${CURRENCY_LABEL}.`,
+        text: `✅ Saldo de ${formatMentionTag(target)} ajustado para *${balance}* ${CURRENCY_LABEL}.`,
         mentions: targetMentions,
       })
       return true
@@ -4774,7 +4775,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         details: `Admin adicionou ${amount}`,
         meta: { admin: sender },
       })
-      await sock.sendMessage(from, { text: `✅ ${credited} ${CURRENCY_LABEL} adicionadas para @${target.split("@")[0]}.`, mentions: targetMentions })
+      await sock.sendMessage(from, { text: `✅ ${credited} ${CURRENCY_LABEL} adicionadas para ${formatMentionTag(target)}.`, mentions: targetMentions })
       return true
     }
 
@@ -4788,7 +4789,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         details: `Admin removeu ${amount}`,
         meta: { admin: sender },
       })
-      await sock.sendMessage(from, { text: `✅ ${removed} ${CURRENCY_LABEL} removidas de @${target.split("@")[0]}.`, mentions: targetMentions })
+      await sock.sendMessage(from, { text: `✅ ${removed} ${CURRENCY_LABEL} removidas de ${formatMentionTag(target)}.`, mentions: targetMentions })
       return true
     }
 
@@ -4833,7 +4834,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         meta: { admin: sender, item: effectiveItem, qty },
       })
       await sock.sendMessage(from, {
-        text: `✅ Item adicionado para @${target.split("@")[0]}: *${qty}x ${itemDisplayName}*`,
+        text: `✅ Item adicionado para ${formatMentionTag(target)}: *${qty}x ${itemDisplayName}*`,
         mentions: targetMentions,
       })
       return true
@@ -4859,7 +4860,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
         meta: { admin: sender, item: normalizedItem, qty },
       })
       await sock.sendMessage(from, {
-        text: `✅ Item removido de @${target.split("@")[0]}: *${qty}x ${itemDisplayName}*`,
+        text: `✅ Item removido de ${formatMentionTag(target)}: *${qty}x ${itemDisplayName}*`,
         mentions: targetMentions,
       })
       return true
@@ -4899,7 +4900,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
 
       economyService.setPublicLabel(target, label)
       await sock.sendMessage(from, {
-        text: `✅ Apelido público de @${target.split("@")[0]} atualizado para: *${label}*`,
+        text: `✅ Apelido público de ${formatMentionTag(target)} atualizado para: *${label}*`,
         mentions: targetMentions,
       })
       return true
@@ -4943,7 +4944,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       if (lines.length === 0) {
         lines.push("Nenhum cooldown registrado.")
       }
-      await sock.sendMessage(from, { text: `Cooldowns de @${target.split("@")[0]}:\n${lines.join("\n")}`, mentions: [target] })
+      await sock.sendMessage(from, { text: `Cooldowns de ${formatMentionTag(target)}:\n${lines.join("\n")}`, mentions: normalizeMentionArray([target]) })
       return true
     }
 
@@ -4972,7 +4973,7 @@ Use ${prefix}${cmdName} aceitar @usuário ${requestedTeamId} (owner/tenente) par
       }
 
       if (!any) return sock.sendMessage(from, { text: "Nenhum cooldown encontrado ou especificador inválido." })
-      await sock.sendMessage(from, { text: `✅ Cooldowns resetados para @${target.split("@")[0]}.`, mentions: [target] })
+      await sock.sendMessage(from, { text: `✅ Cooldowns resetados para ${formatMentionTag(target)}.`, mentions: normalizeMentionArray([target]) })
       return true
     }
 

@@ -33,8 +33,22 @@ function normalizeMentionJid(value = "", options = {}) {
 
 function getMentionHandleFromJid(jid = "") {
   const normalized = normalizeMentionJid(jid)
-  if (!normalized) return ""
-  return normalized.split("@")[0]
+  if (normalized) {
+    const atIndex = normalized.lastIndexOf("@")
+    return atIndex >= 0 ? normalized.slice(0, atIndex) : normalized
+  }
+
+  // Fallback keeps local non-numeric test IDs visible in logs/tests.
+  const raw = String(jid || "").trim()
+  if (!raw) return ""
+  const atIndex = raw.lastIndexOf("@")
+  const local = (atIndex >= 0 ? raw.slice(0, atIndex) : raw).split(":")[0].trim()
+  return local
+}
+
+function formatMentionTag(jid = "") {
+  const handle = getMentionHandleFromJid(jid)
+  return handle ? `@${handle}` : "@usuario"
 }
 
 function normalizeMentionArray(rawMentions = [], options = {}) {
@@ -135,4 +149,5 @@ module.exports = {
   applyMentionSafetyToMessage,
   getFirstMentionedJid,
   getMentionHandleFromJid,
+  formatMentionTag,
 }

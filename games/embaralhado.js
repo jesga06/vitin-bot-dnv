@@ -5,6 +5,7 @@
  * Disparado por threshold de mensagens ou por comando.
  */
 
+const { formatMentionTag } = require("../services/mentionService")
 const gameManager = require("../gameManager")
 
 const words = [
@@ -75,7 +76,7 @@ module.exports = {
       return `Ninguém conseguiu desembaralhar: ${state.word}`
     }
     return includePunishmentNotice
-      ? `🏆 @${state.winner.split("@")[0]} acertou: ${state.word}!\nAgora escolha quem será punido!`
-      : `🏆 @${state.winner.split("@")[0]} acertou: ${state.word}!`
+      ? `🏆 ${formatMentionTag(state.winner)} acertou: ${state.word}!\nAgora escolha quem será punido!`
+      : `🏆 ${formatMentionTag(state.winner)} acertou: ${state.word}!`
   },
 }

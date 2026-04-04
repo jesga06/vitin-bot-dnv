@@ -1,3 +1,4 @@
+const { normalizeMentionArray, getMentionHandleFromJid } = require("./services/mentionService")
 let lobby = {
     active: false,
     players: [],
@@ -43,7 +44,7 @@ async function handleBlackjack({ sock, from, sender, text, prefix, cmd, cmdName,
     // Se não é comando de blackjack, retorna false
     if (cmdName !== 'blackjack' && cmdName !== '21') return false;
 
-    const numero = sender.split("@")[0];
+    const numero = getMentionHandleFromJid(sender);
 
     // Menu inicial
     if (!cmd) {
@@ -82,7 +83,7 @@ ${prefix}21 status ou ${prefix}blackjack status → Mostra o status do jogo
         };
         await sock.sendMessage(from, { 
             text: `✅ @${numero} criou um novo jogo de Blackjack! Use !21 entrar para participar.`, 
-            mentions: [sender] 
+            mentions: normalizeMentionArray([sender]) 
         });
         return true;
     }
@@ -104,7 +105,7 @@ ${prefix}21 status ou ${prefix}blackjack status → Mostra o status do jogo
         lobby.players.push(numero);
         await sock.sendMessage(from, { 
             text: `✅ @${numero} entrou no jogo! (${lobby.players.length}/4)`, 
-            mentions: [sender] 
+            mentions: normalizeMentionArray([sender]) 
         });
         return true;
     }
@@ -168,14 +169,14 @@ ${prefix}21 status ou ${prefix}blackjack status → Mostra o status do jogo
             delete lobby.playerHands[numero];
             await sock.sendMessage(from, { 
                 text: `💥 @${numero} estourou! (Valor: ${value})`, 
-                mentions: [sender] 
+                mentions: normalizeMentionArray([sender]) 
             });
             return true;
         }
 
         await sock.sendMessage(from, { 
             text: `✅ @${numero} pediu uma carta: ${card.rank}${card.suit} (Valor: ${value})`, 
-            mentions: [sender] 
+            mentions: normalizeMentionArray([sender]) 
         });
         return true;
     }
@@ -198,7 +199,7 @@ ${prefix}21 status ou ${prefix}blackjack status → Mostra o status do jogo
         delete lobby.playerHands[numero];
         await sock.sendMessage(from, { 
             text: `✅ @${numero} parou.`, 
-            mentions: [sender] 
+            mentions: normalizeMentionArray([sender]) 
         });
         return true;
     }

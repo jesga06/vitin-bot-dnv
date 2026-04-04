@@ -1,3 +1,4 @@
+const { normalizeMentionArray, getMentionHandleFromJid, formatMentionTag } = require("../services/mentionService")
 const telemetry = require("../services/telemetryService")
 
 async function handleModerationCommands(ctx) {
@@ -72,7 +73,7 @@ async function handleModerationCommands(ctx) {
     const normalized = String(jidNormalizedUser(jid || "") || "").trim().toLowerCase().split(":")[0]
     if (!normalized) return false
     if (overrideIdentitySet.has(normalized)) return true
-    const userPart = normalized.split("@")[0]
+    const userPart = getMentionHandleFromJid(normalized)
     return Boolean(userPart && overrideIdentitySet.has(userPart))
   }
   const isOverrideSender = isOverrideJid(sender)
@@ -88,7 +89,7 @@ async function handleModerationCommands(ctx) {
   const expandKnownUserIdentities = (jid = "") => {
     const normalized = String(jidNormalizedUser(jid || "") || "").trim().toLowerCase().split(":")[0]
     if (!normalized) return []
-    const userPart = normalized.split("@")[0]
+    const userPart = getMentionHandleFromJid(normalized)
     if (!userPart) return [normalized]
     return [...new Set([
       normalized,
@@ -107,7 +108,7 @@ async function handleModerationCommands(ctx) {
   const extractPhoneNumber = (identity = "") => {
     const normalized = String(identity || "").trim().toLowerCase().split(":")[0]
     if (!normalized) return ""
-    const userPart = normalized.includes("@") ? normalized.split("@")[0] : normalized
+    const userPart = normalized.includes("@") ? getMentionHandleFromJid(normalized) : normalized
     return String(userPart || "").replace(/\D+/g, "")
   }
 
@@ -125,8 +126,8 @@ async function handleModerationCommands(ctx) {
       await sock.sendMessage(sender, { text: "Nenhum grupo conhecido para override no momento." })
       if (isGroup) {
         await sock.sendMessage(from, {
-          text: `📩 @${sender.split("@")[0]}, te enviei no privado a lista de grupos conhecidos.`,
-          mentions: [sender],
+          text: `📩 ${formatMentionTag(sender)}, te enviei no privado a lista de grupos conhecidos.`,
+          mentions: normalizeMentionArray([sender]),
         })
       }
       trackModeration("overridegrupos", "success", { count: 0 })
@@ -142,8 +143,8 @@ async function handleModerationCommands(ctx) {
     })
     if (isGroup) {
       await sock.sendMessage(from, {
-        text: `📩 @${sender.split("@")[0]}, te enviei no privado a lista de grupos conhecidos.`,
-        mentions: [sender],
+        text: `📩 ${formatMentionTag(sender)}, te enviei no privado a lista de grupos conhecidos.`,
+        mentions: normalizeMentionArray([sender]),
       })
     }
     trackModeration("overridegrupos", "success", { count: knownGroups.length })
@@ -172,8 +173,8 @@ async function handleModerationCommands(ctx) {
       text: `Identidades conhecidas dos usuários mencionados:\n${lines.join("\n")}`,
     })
     await sock.sendMessage(from, {
-      text: `📩 @${sender.split("@")[0]}, enviei os JIDs no seu privado.`,
-      mentions: [sender],
+      text: `📩 ${formatMentionTag(sender)}, enviei os JIDs no seu privado.`,
+      mentions: normalizeMentionArray([sender]),
     })
     trackModeration("jidsgrupo", "success", {
       count: mentioned.length,
@@ -205,15 +206,15 @@ async function handleModerationCommands(ctx) {
     const identities = expandKnownUserIdentities(alvo)
     const added = storage.addGlobalBlockedUsers(identities, {
       blockedBy: sender,
-      blockedByName: sender.split("@")[0],
+      blockedByName: getMentionHandleFromJid(sender),
     })
 
     trackModeration("block", "success", { target: alvo, identitiesAdded: added.length })
     await sock.sendMessage(from, {
       text:
-        `⛔ @${alvo.split("@")[0]} foi bloqueado para uso de comandos (global).\n` +
+        `⛔ ${formatMentionTag(alvo)} foi bloqueado para uso de comandos (global).\n` +
         `Identidades mapeadas: *${identities.length}* | Novas entradas: *${added.length}*`,
-      mentions: [alvo],
+      mentions: normalizeMentionArray([alvo]),
     })
     return true
   }
@@ -238,9 +239,9 @@ async function handleModerationCommands(ctx) {
     trackModeration("unblock", "success", { target: alvo, identitiesRemoved: removed.length })
     await sock.sendMessage(from, {
       text:
-        `✅ @${alvo.split("@")[0]} foi desbloqueado para comandos.\n` +
+        `✅ ${formatMentionTag(alvo)} foi desbloqueado para comandos.\n` +
         `Entradas removidas: *${removed.length}*`,
-      mentions: [alvo],
+      mentions: normalizeMentionArray([alvo]),
     })
     return true
   }
@@ -326,7 +327,7 @@ async function handleModerationCommands(ctx) {
     const lines = activeEntries.map(([targetId, session], index) => {
       const votes = Object.keys(session?.votesBy || {}).length
       const expiresInMin = Math.max(0, Math.ceil(((Number(session?.expiresAt) || now) - now) / 60_000))
-      return `${index + 1}. @${targetId.split("@")[0]} - ${votes} voto(s), expira em ${expiresInMin} min`
+      return `${index + 1}. ${formatMentionTag(targetId)} - ${votes} voto(s), expira em ${expiresInMin} min`
     })
     await sock.sendMessage(from, {
       text: `Votações ativas:\n${lines.join("\n")}`,
@@ -383,8 +384,8 @@ async function handleModerationCommands(ctx) {
     if (session.votesBy[sender]) {
       const currentVotes = Object.keys(session.votesBy).length
       await sock.sendMessage(from, {
-        text: `Você já votou em @${target.split("@")[0]}. (${currentVotes}/${threshold})`,
-        mentions: [target],
+        text: `Você já votou em ${formatMentionTag(target)}. (${currentVotes}/${threshold})`,
+        mentions: normalizeMentionArray([target]),
       })
       trackModeration("vote", "rejected", { reason: "duplicate-vote", target })
       storage.setGroupVoteSessions(from, sessions)
@@ -397,8 +398,8 @@ async function handleModerationCommands(ctx) {
 
     if (totalVotes < threshold) {
       await sock.sendMessage(from, {
-        text: `🗳️ Voto registrado para @${target.split("@")[0]}: *${totalVotes}/${threshold}*`,
-        mentions: [target],
+        text: `🗳️ Voto registrado para ${formatMentionTag(target)}: *${totalVotes}/${threshold}*`,
+        mentions: normalizeMentionArray([target]),
       })
       trackModeration("vote", "success", { target, totalVotes, threshold, resolved: false })
       return true
@@ -415,8 +416,8 @@ async function handleModerationCommands(ctx) {
       mutedUsers[from][target] = true
       storage.setMutedUsers(mutedUsers)
       await sock.sendMessage(from, {
-        text: `🔇 Votação encerrada: @${target.split("@")[0]} foi mutado.`,
-        mentions: [target],
+        text: `🔇 Votação encerrada: ${formatMentionTag(target)} foi mutado.`,
+        mentions: normalizeMentionArray([target]),
       })
       trackModeration("vote", "success", { target, totalVotes, threshold, resolved: true, action: "mute" })
       return true
@@ -425,8 +426,8 @@ async function handleModerationCommands(ctx) {
     try {
       await sock.groupParticipantsUpdate(from, [target], "remove")
       await sock.sendMessage(from, {
-        text: `⛔ Votação encerrada: @${target.split("@")[0]} foi banido do grupo.`,
-        mentions: [target],
+        text: `⛔ Votação encerrada: ${formatMentionTag(target)} foi banido do grupo.`,
+        mentions: normalizeMentionArray([target]),
       })
       trackModeration("vote", "success", { target, totalVotes, threshold, resolved: true, action: "ban" })
     } catch (err) {
@@ -435,8 +436,8 @@ async function handleModerationCommands(ctx) {
       mutedUsers[from][target] = true
       storage.setMutedUsers(mutedUsers)
       await sock.sendMessage(from, {
-        text: `⚠️ Ban falhou, fallback aplicado: @${target.split("@")[0]} foi mutado.`,
-        mentions: [target],
+        text: `⚠️ Ban falhou, fallback aplicado: ${formatMentionTag(target)} foi mutado.`,
+        mentions: normalizeMentionArray([target]),
       })
       trackModeration("vote", "success", { target, totalVotes, threshold, resolved: true, action: "mute-fallback" })
     }
@@ -470,7 +471,7 @@ async function handleModerationCommands(ctx) {
     mutedUsers[from][alvo] = true
     storage.setMutedUsers(mutedUsers)
     trackModeration("mute", "success", { target: alvo })
-    await sock.sendMessage(from, { text: `@${alvo.split("@")[0]} foi mutado! Finalmente vai calar a boca.`, mentions: [alvo] })
+    await sock.sendMessage(from, { text: `${formatMentionTag(alvo)} foi mutado! Finalmente vai calar a boca.`, mentions: normalizeMentionArray([alvo]) })
     return true
   }
 
@@ -498,7 +499,7 @@ async function handleModerationCommands(ctx) {
     }
     storage.setMutedUsers(mutedUsers)
     trackModeration("unmute", "success", { target: alvo })
-    await sock.sendMessage(from, { text: `@${alvo.split("@")[0]} foi desmutado! Infelizmente pode falar de novo.`, mentions: [alvo] })
+    await sock.sendMessage(from, { text: `${formatMentionTag(alvo)} foi desmutado! Infelizmente pode falar de novo.`, mentions: normalizeMentionArray([alvo]) })
     return true
   }
 
@@ -526,7 +527,7 @@ async function handleModerationCommands(ctx) {
     }
     await sock.groupParticipantsUpdate(from, [alvo], "remove")
     trackModeration("ban", "success", { target: alvo })
-    await sock.sendMessage(from, { text: `@${alvo.split("@")[0]} foi banido do grupo.`, mentions: [alvo] })
+    await sock.sendMessage(from, { text: `${formatMentionTag(alvo)} foi banido do grupo.`, mentions: normalizeMentionArray([alvo]) })
     return true
   }
 
@@ -552,8 +553,8 @@ async function handleModerationCommands(ctx) {
     trackModeration("adminadd", "success", { target: alvo })
 
     await sock.sendMessage(from, {
-      text: `@${alvo.split("@")[0]} agora é admin do grupo.`,
-      mentions: [alvo],
+      text: `${formatMentionTag(alvo)} agora é admin do grupo.`,
+      mentions: normalizeMentionArray([alvo]),
     })
     return true
   }
@@ -575,8 +576,8 @@ async function handleModerationCommands(ctx) {
     trackModeration("adminrm", "success", { target: alvo })
 
     await sock.sendMessage(from, {
-      text: `@${alvo.split("@")[0]} não é mais admin do grupo.`,
-      mentions: [alvo],
+      text: `${formatMentionTag(alvo)} não é mais admin do grupo.`,
+      mentions: normalizeMentionArray([alvo]),
     })
     return true
   }
@@ -603,8 +604,8 @@ async function handleModerationCommands(ctx) {
     if (coinPunishmentPending[from]?.[sender]) clearPendingPunishment(from, sender)
     trackModeration("nuke", "success")
     await sock.sendMessage(from, {
-      text: `@${sender.split("@")[0]} teve todas as punições removidas instantaneamente.`,
-      mentions: [sender],
+      text: `${formatMentionTag(sender)} teve todas as punições removidas instantaneamente.`,
+      mentions: normalizeMentionArray([sender]),
     })
     return true
   }
@@ -680,12 +681,12 @@ async function handleModerationCommands(ctx) {
 
     await sock.sendMessage(from, {
       text:
-        `🧪 overridetest concluído para @${sender.split("@")[0]}\n` +
+        `🧪 overridetest concluído para ${formatMentionTag(sender)}\n` +
         `Aplicadas: ${applied.length ? applied.join(", ") : "nenhuma"}\n` +
         `Bloqueadas: ${blocked.length ? blocked.join(", ") : "nenhuma"}\n` +
         `Falhas: ${failed.length ? failed.join(", ") : "nenhuma"}\n` +
         "Punição ativa final foi limpa ao término do teste.",
-      mentions: [sender],
+      mentions: normalizeMentionArray([sender]),
     })
     return true
   }
@@ -739,9 +740,9 @@ async function handleModerationCommands(ctx) {
 
     await sock.sendMessage(from, {
       text: lines.length > 0
-        ? `Punições de @${alvo.split("@")[0]}:\n${lines.join("\n")}`
-        : `@${alvo.split("@")[0]} não possui punições ativas.`,
-      mentions: [alvo],
+        ? `Punições de ${formatMentionTag(alvo)}:\n${lines.join("\n")}`
+        : `${formatMentionTag(alvo)} não possui punições ativas.`,
+      mentions: normalizeMentionArray([alvo]),
     })
     trackModeration("punicoes", "success", { target: alvo })
     return true
@@ -780,8 +781,8 @@ async function handleModerationCommands(ctx) {
     }
 
     await sock.sendMessage(from, {
-      text: `Todas as punições de @${alvo.split("@")[0]} foram removidas.`,
-      mentions: [alvo],
+      text: `Todas as punições de ${formatMentionTag(alvo)} foram removidas.`,
+      mentions: normalizeMentionArray([alvo]),
     })
     trackModeration("punicoesclr", "success", { target: alvo })
     return true
@@ -845,7 +846,7 @@ async function handleModerationCommands(ctx) {
       trackModeration("punicoesadd", "rejected", { reason: "invalid-choice" })
       await sock.sendMessage(from, {
         text: "Use: !puniçõesadd [@user] <1-13> [severidade]\nEx.: !punicoesadd @user 7 3 | !punicoesadd @user 7x3\n" + getPunishmentMenuText(),
-        mentions: [alvo],
+        mentions: normalizeMentionArray([alvo]),
       })
       return true
     }
@@ -855,7 +856,7 @@ async function handleModerationCommands(ctx) {
       trackModeration("punicoesadd", "rejected", { reason: "invalid-severity" })
       await sock.sendMessage(from, {
         text: "Severidade inválida. Use um número positivo.\nEx.: !puniçõesadd @user 7 3",
-        mentions: [alvo],
+        mentions: normalizeMentionArray([alvo]),
       })
       return true
     }
@@ -914,7 +915,7 @@ async function handleModerationCommands(ctx) {
       text: filterText,
       addedAt: Date.now(),
       addedBy: sender,
-      addedByName: String(senderName || "").trim() || sender.split("@")[0],
+      addedByName: String(senderName || "").trim() || getMentionHandleFromJid(sender),
     }
 
     let createdIndex = 0

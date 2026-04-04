@@ -1,3 +1,4 @@
+const { formatMentionTag } = require("../services/mentionService")
 /**
  * ADIVINHACAO
  * 1-4 jogadores tentam adivinhar um número (1-100).
@@ -112,7 +113,7 @@ module.exports = {
 		let msg = `🎰 O número era: ${secret}\n\n`
 
 		Object.entries(state.guesses).forEach(([pid, guess]) => {
-			msg += `@${pid.split("@")[0]}: ${guess}\n`
+			msg += `${formatMentionTag(pid)}: ${guess}\n`
 		})
 
 		msg += `\n`
@@ -120,7 +121,7 @@ module.exports = {
 		if (results.type === "no_guesses") {
 			msg += `Ninguém adivinhou!`
 		} else {
-			msg += `✅ Mais perto(s): ${results.closestPlayers.map((p) => `@${p.split("@")[0]}`).join(", ")}\n`
+			msg += `✅ Mais perto(s): ${results.closestPlayers.map((p) => `${formatMentionTag(p)}`).join(", ")}\n`
 
 			if (includePunishmentWarnings) {
 				if (!results.punishments || results.punishments.length === 0) {
@@ -128,13 +129,13 @@ module.exports = {
 				} else {
 					msg += `\nPunidos automáticos:\n`
 					results.punishments.forEach((entry) => {
-						msg += `- @${entry.playerId.split("@")[0]} (${entry.severity}x)\n`
+						msg += `- ${formatMentionTag(entry.playerId)} (${entry.severity}x)\n`
 					})
 				}
 			}
 
 			if (results.chooser && includePunishmentWarnings) {
-				msg += `\n🎯 @${results.chooser.split("@")[0]} acertou exatamente e pode escolher 1 alvo para punição 2x.`
+				msg += `\n🎯 ${formatMentionTag(results.chooser)} acertou exatamente e pode escolher 1 alvo para punição 2x.`
 			}
 		}
 

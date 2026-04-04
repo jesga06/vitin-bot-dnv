@@ -82,11 +82,7 @@ const comando = require("./games/comando")
 const memoriaGame = require("./games/memoria")
 const economyService = require("./services/economyService")
 const registrationService = require("./services/registrationService")
-const {
-  normalizeMentionArray,
-  applyMentionSafetyToMessage,
-  getMentionHandleFromJid,
-} = require("./services/mentionService")
+const { normalizeMentionArray, applyMentionSafetyToMessage, getMentionHandleFromJid, formatMentionTag } = require("./services/mentionService")
 const telemetry = require("./services/telemetryService")
 const { COMMAND_HELP } = require("./commandHelp")
 const { getLikelyCommandSuggestions } = require("./services/commandSuggestionService")
@@ -701,7 +697,7 @@ function isHardcodedOverrideIdentity(identity = "") {
   if (!normalized) return false
   const hardcodedSet = new Set(HARDCODED_OVERRIDE_IDENTIFIERS.map(normalizeOverrideIdentity).filter(Boolean))
   if (hardcodedSet.has(normalized)) return true
-  const userPart = normalized.split("@")[0]
+  const userPart = getMentionHandleFromJid(normalized)
   return Boolean(userPart && hardcodedSet.has(userPart))
 }
 
@@ -712,7 +708,7 @@ function getOverrideIdentitySet() {
 function getOverrideCompatibilityContext() {
   const identities = Array.from(getOverrideIdentitySetByCategory({ category: "positivo", includeDisabled: false }))
   const preferredJid = identities.find((id) => id.endsWith("@s.whatsapp.net")) || identities.find((id) => id.includes("@")) || ""
-  const preferredPhone = preferredJid ? preferredJid.split("@")[0] : (identities.find((id) => !id.includes("@")) || "")
+  const preferredPhone = preferredJid ? getMentionHandleFromJid(preferredJid) : (identities.find((id) => !id.includes("@")) || "")
   return {
     overrideJid: preferredJid ? jidNormalizedUser(preferredJid) : "",
     overridePhoneNumber: preferredPhone,
@@ -730,7 +726,7 @@ function isKnownOverrideIdentity(identity = "", options = {}) {
   const overrideSet = getOverrideIdentitySetByCategory({ category, includeDisabled })
   if (overrideSet.has(normalized)) return true
 
-  const userPart = normalized.split("@")[0]
+  const userPart = getMentionHandleFromJid(normalized)
   return Boolean(userPart && overrideSet.has(userPart))
 }
 
@@ -747,7 +743,7 @@ function findOverrideProfileByIdentity(identity = "", options = {}) {
       if (!includeDisabled && !isOverrideProfileEnabled(category, profileName)) continue
       const set = new Set((identities || []).map(normalizeOverrideIdentity).filter(Boolean))
       if (set.has(normalized)) return { category, profileName }
-      const userPart = normalized.split("@")[0]
+      const userPart = getMentionHandleFromJid(normalized)
       if (userPart && set.has(userPart)) return { category, profileName }
     }
   }
@@ -1064,7 +1060,7 @@ function getKnownGroupName(groupId = "") {
 }
 
 function getKnownUserName(userId = "") {
-  return userNameCache[userId] || userId.split("@")[0] || "Desconhecido"
+  return userNameCache[userId] || getMentionHandleFromJid(userId) || "Desconhecido"
 }
 
 telemetry.setIdentityResolvers({
@@ -1141,7 +1137,7 @@ function buildEconomyWipeUserSummaries() {
       const profile = economyService.getProfile(userId)
       const regEntry = registrationService.getRegisteredEntry(userId)
       const localName = getKnownUserName(userId)
-      const waName = sanitizeInlineText(regEntry?.lastKnownName || localName || userId.split("@")[0])
+      const waName = sanitizeInlineText(regEntry?.lastKnownName || localName || getMentionHandleFromJid(userId))
       const nickname = sanitizeInlineText(profile?.preferences?.publicLabel || "-")
       const level = Math.max(1, Math.floor(Number(profile?.progression?.level) || 1))
       const coins = Math.max(0, Math.floor(Number(profile?.coins) || 0))
@@ -1274,7 +1270,7 @@ function cleanupUserStateArtifacts(userId = "", options = {}) {
     const normalized = normalizeOverrideIdentity(value)
     if (!normalized) return false
     if (identitySet.has(normalized)) return true
-    const userPart = normalized.split("@")[0]
+    const userPart = getMentionHandleFromJid(normalized)
     return Boolean(userPart && identitySet.has(userPart))
   }
 
@@ -1346,7 +1342,7 @@ function getMetricSnapshot(bucket) {
 
 function extractWhatsAppNumber(userId = "") {
   const normalized = registrationService.normalizeUserId(userId)
-  const userPart = String(normalized || userId || "").split("@")[0] || ""
+  const userPart = getMentionHandleFromJid(String(normalized || userId || "")) || ""
   const digits = userPart.replace(/\D+/g, "")
   return digits || userPart || "-"
 }
@@ -1359,7 +1355,7 @@ function buildRegisteredUsersSnapshot() {
       if (!userId) return null
       const regEntry = registrationService.getRegisteredEntry(userId)
       const profile = economyService.getProfile(userId)
-      const waName = String(regEntry?.lastKnownName || getKnownUserName(userId) || userId.split("@")[0] || "").trim()
+      const waName = String(regEntry?.lastKnownName || getKnownUserName(userId) || getMentionHandleFromJid(userId) || "").trim()
       const nickname = String(profile?.preferences?.publicLabel || "").trim()
       const coins = Math.max(0, Math.floor(Number(economyService.getCoins(userId)) || 0))
       const lastCommand = perfStats.lastCommandByUser[userId] || null
@@ -1920,7 +1916,7 @@ async function startBot(){
       const normalizedParticipant = normalizeMentionArray([
         jidNormalizedUser(participant?.id || ""),
       ])[0]
-      const handle = getMentionHandleFromJid(normalizedParticipant)
+      const handle = normalizedParticipant.split("@")[0]
       if (!normalizedParticipant || !handle || lookup.has(handle)) continue
       lookup.set(handle, normalizedParticipant)
     }
@@ -2157,8 +2153,8 @@ setTimeout(() => {
               console.error("Erro ao apagar mensagem por filtro de moderação", err)
             }
             await sock.sendMessage(from, {
-              text: `⚠️ @${sender.split("@")[0]}, sua mensagem acionou um filtro de moderação adicionado pelos administradores.`,
-              mentions: [sender],
+              text: `⚠️ ${formatMentionTag(sender)}, sua mensagem acionou um filtro de moderação adicionado pelos administradores.`,
+              mentions: normalizeMentionArray([sender]),
             })
           })
           return
@@ -2632,8 +2628,8 @@ setTimeout(() => {
 
     if (isCommand && !isOverrideSender && storage.isGloballyBlockedUser(sender)) {
       await sock.sendMessage(from, {
-        text: `⛔ @${sender.split("@")[0]}, você não pode usar meus comandos pois está bloqueado.`,
-        mentions: [sender],
+        text: `⛔ ${formatMentionTag(sender)}, você não pode usar meus comandos pois está bloqueado.`,
+        mentions: normalizeMentionArray([sender]),
       })
       return
     }
@@ -2810,14 +2806,14 @@ setTimeout(() => {
       const normalizeIdentityHandle = (value = "") => {
         const normalized = String(value || "").trim().toLowerCase().split(":")[0]
         if (!normalized) return ""
-        const userPart = normalized.includes("@") ? normalized.split("@")[0] : normalized
+        const userPart = normalized.includes("@") ? getMentionHandleFromJid(normalized) : normalized
         const digits = String(userPart || "").replace(/\D+/g, "")
         return digits || String(userPart || "").trim().toLowerCase()
       }
 
       const extractPhoneNumber = (value = "") => {
         const normalized = registrationService.normalizeUserId(value)
-        const userPart = String(normalized || "").split("@")[0]
+        const userPart = getMentionHandleFromJid(String(normalized || ""))
         const digits = String(userPart || "").replace(/\D+/g, "")
         return digits || String(userPart || "").trim()
       }
@@ -2912,7 +2908,7 @@ setTimeout(() => {
       const normalizePhoneFromIdentity = (value = "") => {
         const normalized = String(value || "").trim().toLowerCase().split(":")[0]
         if (!normalized) return ""
-        const userPart = normalized.includes("@") ? normalized.split("@")[0] : normalized
+        const userPart = normalized.includes("@") ? getMentionHandleFromJid(normalized) : normalized
         return String(userPart || "").replace(/\D+/g, "")
       }
 
@@ -2927,10 +2923,10 @@ setTimeout(() => {
 
         if (userInGroup) {
           const userJid = jidNormalizedUser(userInGroup.id)
-          const userName = userNameCache[userJid] || userJid.split("@")[0]
+          const userName = userNameCache[userJid] || getMentionHandleFromJid(userJid)
           await sock.sendMessage(from, {
             text: `✅ Usuário encontrado neste grupo: *${userName}*`,
-            mentions: [userJid],
+            mentions: normalizeMentionArray([userJid]),
           })
         } else {
           await sock.sendMessage(from, {
@@ -3475,8 +3471,8 @@ setTimeout(() => {
           incrementUserStat(winnerId, "gameDobroWin", 1)
         }
         await sock.sendMessage(from, {
-          text: `💰 @${winnerId.split("@")[0]} ganhou *${amount}* Epsteincoins (Cara ou Coroa).`,
-          mentions: [winnerId],
+          text: `💰 ${formatMentionTag(winnerId)} ganhou *${amount}* Epsteincoins (Cara ou Coroa).`,
+          mentions: normalizeMentionArray([winnerId]),
         })
       },
         chargeLoser: async (loserId, lossMultiplier = 1) => {
@@ -3488,8 +3484,8 @@ setTimeout(() => {
           incrementUserStat(loserId, "gameDobroLoss", 1)
         }
         await sock.sendMessage(from, {
-          text: `💸 @${loserId.split("@")[0]} perdeu o buy-in de *25* Epsteincoins (Cara ou Coroa).`,
-          mentions: [loserId],
+          text: `💸 ${formatMentionTag(loserId)} perdeu o buy-in de *25* Epsteincoins (Cara ou Coroa).`,
+          mentions: normalizeMentionArray([loserId]),
         })
         },
       })
@@ -3580,8 +3576,8 @@ setTimeout(() => {
       })
       incrementUserStat(playerId, "moneyGameWon", amount)
       await sock.sendMessage(from, {
-        text: `💰 @${playerId.split("@")[0]} ganhou *${amount}* Epsteincoins (${reasonLabel}).`,
-        mentions: [playerId],
+        text: `💰 ${formatMentionTag(playerId)} ganhou *${amount}* Epsteincoins (${reasonLabel}).`,
+        mentions: normalizeMentionArray([playerId]),
       })
       return amount
     }
@@ -3659,9 +3655,9 @@ setTimeout(() => {
           incrementUserStat(playerId, "moneyGameWon", amount)
           await sock.sendMessage(from, {
             text:
-              `🏦 @${playerId.split("@")[0]} recebeu *${amount}* Epsteincoins da pool (${gameLabel}).\n` +
+              `🏦 ${formatMentionTag(playerId)} recebeu *${amount}* Epsteincoins da pool (${gameLabel}).\n` +
               `Fórmula: pool ${safePool} x bet ${bet}.`,
-            mentions: [playerId],
+            mentions: normalizeMentionArray([playerId]),
           })
         }
         return
@@ -3711,8 +3707,8 @@ setTimeout(() => {
         })
         incrementUserStat(playerId, "moneyGameWon", amount)
         await sock.sendMessage(from, {
-          text: `🏦 @${playerId.split("@")[0]} recebeu *${amount}* Epsteincoins da pool (${gameLabel}, peso ${share.multiplier}x).`,
-          mentions: [playerId],
+          text: `🏦 ${formatMentionTag(playerId)} recebeu *${amount}* Epsteincoins da pool (${gameLabel}, peso ${share.multiplier}x).`,
+          mentions: normalizeMentionArray([playerId]),
         })
       }
     }
@@ -3843,7 +3839,7 @@ setTimeout(() => {
 
     async function createPendingTargetForWinner(winnerId, winnerText, severityMultiplier = 1, allowedTargets = null) {
       if (!isResenhaModeEnabled()) {
-        await sock.sendMessage(from, { text: winnerText, mentions: [winnerId] })
+        await sock.sendMessage(from, { text: winnerText, mentions: normalizeMentionArray([winnerId]) })
         return false
       }
 
@@ -3866,7 +3862,7 @@ setTimeout(() => {
 
       await sock.sendMessage(from, {
         text: winnerText,
-        mentions: [winnerId],
+        mentions: normalizeMentionArray([winnerId]),
       })
 
       const severityText = severityMultiplier > 1 ? ` *${severityMultiplier}x*` : ""
@@ -3875,7 +3871,7 @@ setTimeout(() => {
           `Escolha quem será punido${severityText} em até 30s.\n` +
           `${getPunishmentMenuText()}\n` +
           `Formato: @mention <número da punição>`,
-        mentions: [winnerId, ...(allowedTargets || [])],
+        mentions: normalizeMentionArray([winnerId, ...(allowedTargets || [])]),
       })
 
       setTimeout(() => {
@@ -4127,7 +4123,7 @@ setTimeout(() => {
         const gameName = gameNames[gameType] || gameType
 
         // Formata lista de jogadores
-        const playerList = players.map((p) => `@${p.split("@")[0]}`).join(", ")
+        const playerList = players.map((p) => `${formatMentionTag(p)}`).join(", ")
 
         telemetry.incrementCounter("game.lobby.warning", 1, { gameType })
         telemetry.appendEvent("game.lobby.warning", {
@@ -4345,7 +4341,7 @@ setTimeout(() => {
           })
         )
         if (forcedHandledGame) {
-          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como ${formatMentionTag(String(target))}.`, mentions: normalizeMentionArray([target]) })
           return
         }
 
@@ -4378,7 +4374,7 @@ setTimeout(() => {
           })
         )
         if (forcedHandledGameFlow) {
-          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como ${formatMentionTag(String(target))}.`, mentions: normalizeMentionArray([target]) })
           return
         }
 
@@ -4410,7 +4406,7 @@ setTimeout(() => {
           })
         )
         if (forcedHandledUtility) {
-          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como ${formatMentionTag(String(target))}.`, mentions: normalizeMentionArray([target]) })
           return
         }
 
@@ -4445,7 +4441,7 @@ setTimeout(() => {
           })
         )
         if (forcedHandledEconomy) {
-          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como ${formatMentionTag(String(target))}.`, mentions: normalizeMentionArray([target]) })
           return
         }
 
@@ -4479,7 +4475,7 @@ setTimeout(() => {
           })
         )
         if (forcedHandledModeration) {
-          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como ${formatMentionTag(String(target))}.`, mentions: normalizeMentionArray([target]) })
           return
         }
 
@@ -4497,7 +4493,7 @@ setTimeout(() => {
           })
         )
         if (handledAM) {
-          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como ${formatMentionTag(String(target))}.`, mentions: normalizeMentionArray([target]) })
           return
         }
 
@@ -4512,7 +4508,7 @@ setTimeout(() => {
           })
         )
         if (handledCoinRound) {
-          await sock.sendMessage(from, { text: `✅ Comando forçado executado como @${String(target).split("@")[0]}.`, mentions: [target] })
+          await sock.sendMessage(from, { text: `✅ Comando forçado executado como ${formatMentionTag(String(target))}.`, mentions: normalizeMentionArray([target]) })
           return
         }
 

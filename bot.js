@@ -126,6 +126,7 @@ const COMMAND_HISTORY_LIMIT = 10
 const TERMINAL_MIRROR_LIMIT = 500
 const OVERRIDE_DATA_PASSWORD_COMMAND = prefix + "vaultkey"
 const OVERRIDE_BROADCAST_COMMAND = prefix + "msg"
+const LINK_DM_COMMAND = prefix + "linkdm"
 const OVERRIDE_PENDING_TIMEOUT_MS = 5 * 60 * 1000
 const ECONOMY_WIPE_COMMAND = prefix + "wipeeconomia"
 const ECONOMY_WIPE_COMMAND_ALIAS = prefix + "wipeeconomy"
@@ -133,9 +134,11 @@ const ECONOMY_WIPE_CONFIRM_PHRASE = "CONFIRMAR WIPE ECONOMIA"
 const MASS_MENTION_OPT_OUT_HINT = "Cansado de ser mencionado? Use *!mention off* para o bot utilizar seu apelido ao invés de te mencionar!"
 const DATA_EXPORT_PASSWORD = String(process.env.PROFILER_PASSWORD || "").trim() || crypto.randomBytes(24).toString("hex")
 const pendingBroadcastBySender = new Map()
+const pendingJidLinkByCode = new Map()
 const pendingOverrideAddBySender = new Map()
 const pendingEconomyWipeBySender = new Map()
 const pendingUnregisterBySender = new Map()
+const PENDING_JID_LINK_TTL_MS = 10 * 60 * 1000
 const knownGroupIds = new Set()
 const groupNameCache = {}
 const userNameCache = {}
@@ -1005,6 +1008,87 @@ function parseBroadcastMentionModeToken(value = "") {
   return null
 }
 
+function isLinkDmCommand(cmdName = "") {
+  const normalized = String(cmdName || "").trim().toLowerCase()
+  return normalized === LINK_DM_COMMAND || normalized === prefix + "linkjid" || normalized === prefix + "vincularjid"
+}
+
+function purgeExpiredPendingJidLinks(now = Date.now()) {
+  for (const [code, payload] of pendingJidLinkByCode.entries()) {
+    const expiresAt = Math.floor(Number(payload?.expiresAt) || 0)
+    if (expiresAt > 0 && expiresAt <= now) {
+      pendingJidLinkByCode.delete(code)
+    }
+  }
+}
+
+function generateJidLinkCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+  for (let attempt = 0; attempt < 64; attempt++) {
+    let next = ""
+    for (let i = 0; i < 6; i++) {
+      next += alphabet[Math.floor(Math.random() * alphabet.length)]
+    }
+    if (!pendingJidLinkByCode.has(next)) {
+      return next
+    }
+  }
+  return crypto.randomBytes(4).toString("hex").slice(0, 6).toUpperCase()
+}
+
+async function resolveDmJidFromCandidates(sock, candidates = []) {
+  if (typeof sock?.onWhatsApp !== "function") {
+    return ""
+  }
+
+  const normalizedCandidates = [...new Set((candidates || [])
+    .map((candidate) => {
+      if (typeof registrationService?.normalizeIdentityJid === "function") {
+        return registrationService.normalizeIdentityJid(candidate)
+      }
+      return jidNormalizedUser(candidate)
+    })
+    .filter(Boolean)
+    .filter((candidate) => !String(candidate || "").endsWith("@g.us"))
+  )]
+
+  if (normalizedCandidates.length === 0) {
+    return ""
+  }
+
+  const priority = (value = "") => {
+    if (value.endsWith("@s.whatsapp.net")) return 0
+    if (value.endsWith("@lid")) return 1
+    return 2
+  }
+
+  const orderedCandidates = normalizedCandidates
+    .slice()
+    .sort((a, b) => priority(a) - priority(b))
+
+  for (const candidate of orderedCandidates) {
+    try {
+      const lookup = await sock.onWhatsApp(candidate)
+      const existing = Array.isArray(lookup)
+        ? lookup.find((entry) => entry?.exists && (entry?.jid || entry?.id || entry?.lid || candidate))
+        : null
+      if (!existing) continue
+
+      const resolvedRaw = existing?.jid || existing?.id || existing?.lid || candidate
+      const resolved = typeof registrationService?.normalizeIdentityJid === "function"
+        ? registrationService.normalizeIdentityJid(resolvedRaw)
+        : jidNormalizedUser(resolvedRaw)
+      if (resolved && !resolved.endsWith("@g.us")) {
+        return resolved
+      }
+    } catch (_err) {
+      // Ignore lookup failures and continue trying remaining identity aliases.
+    }
+  }
+
+  return ""
+}
+
 function shouldAppendMassMentionHint(messageContent = {}) {
   const mentions = Array.isArray(messageContent?.mentions) ? messageContent.mentions.filter(Boolean) : []
   if (mentions.length <= 3) return false
@@ -1851,16 +1935,18 @@ setTimeout(() => {
       ...getIdentityAliases(sender),
     ])
     const botIdentityAliasSet = buildIdentityAliasSet(sock.user?.id || "")
-    const senderRegistrationCandidates = [...new Set([
+    const senderRegistrationRawCandidates = [...new Set([
       senderRaw,
       msg?.key?.participantPn,
       msg?.key?.remoteJid,
       msg?.key?.remoteJidAlt,
       contextInfo?.participant,
       sender,
-    ]
-      .map((candidate) => registrationService.normalizeUserId(candidate))
-      .filter(Boolean)
+    ].map((candidate) => String(candidate || "").trim()).filter(Boolean))]
+    const senderRegistrationCandidates = [...new Set(
+      senderRegistrationRawCandidates
+        .map((candidate) => registrationService.normalizeUserId(candidate))
+        .filter(Boolean)
     )]
     const senderRegisteredId = senderRegistrationCandidates.find((candidate) => registrationService.isRegistered(candidate)) || ""
     const senderIsRegistered = Boolean(senderRegisteredId)
@@ -2953,6 +3039,135 @@ setTimeout(() => {
       return
     }
 
+    if (isLinkDmCommand(cmdName)) {
+      const now = Date.now()
+      purgeExpiredPendingJidLinks(now)
+      const action = String(cmdArg1 || "").trim().toLowerCase()
+
+      if (action === "cancelar") {
+        let removed = 0
+        for (const [code, payload] of pendingJidLinkByCode.entries()) {
+          if (payload?.requestedBy === sender) {
+            pendingJidLinkByCode.delete(code)
+            removed += 1
+          }
+        }
+        await sock.sendMessage(from, {
+          text: removed > 0
+            ? "✅ Sessão de vinculação cancelada."
+            : "Nenhuma sessão ativa de vinculação para cancelar.",
+        })
+        return
+      }
+
+      if (isGroup) {
+        const groupIdentity = typeof registrationService?.normalizeIdentityJid === "function"
+          ? registrationService.normalizeIdentityJid(senderRaw || sender)
+          : jidNormalizedUser(senderRaw || sender)
+        if (!groupIdentity || groupIdentity.endsWith("@g.us")) {
+          await sock.sendMessage(from, {
+            text: "Não consegui identificar seu JID de usuário neste grupo. Tente novamente em outra mensagem.",
+          })
+          return
+        }
+
+        const code = generateJidLinkCode()
+        pendingJidLinkByCode.set(code, {
+          groupIdentity,
+          groupId: from,
+          requestedBy: sender,
+          profileName: senderProfileName,
+          createdAt: now,
+          expiresAt: now + PENDING_JID_LINK_TTL_MS,
+        })
+
+        await sock.sendMessage(from, {
+          text:
+            `🔗 Vinculação de JID iniciada para ${formatMentionTag(sender)}.\n` +
+            `1) Abra o privado com o bot.\n` +
+            `2) Envie: *${LINK_DM_COMMAND} ${code}*\n` +
+            `3) Pronto, suas identidades de grupo e DM ficarão unificadas.\n\n` +
+            `Esse código expira em 10 minutos.`,
+          mentions: normalizeMentionArray([sender]),
+        })
+        return
+      }
+
+      const code = String(cmdArg1 || "").trim().toUpperCase()
+      if (!code) {
+        await sock.sendMessage(from, {
+          text:
+            `Use em grupo: *${LINK_DM_COMMAND}*\n` +
+            `Depois, no privado, envie: *${LINK_DM_COMMAND} <CODIGO>*`,
+        })
+        return
+      }
+
+      const pendingLink = pendingJidLinkByCode.get(code)
+      if (!pendingLink || (Number(pendingLink.expiresAt) || 0) <= now) {
+        pendingJidLinkByCode.delete(code)
+        await sock.sendMessage(from, {
+          text: "Código inválido ou expirado. Rode !linkdm novamente no grupo.",
+        })
+        return
+      }
+
+      let linkResult = registrationService.linkDmToGroupIdentity({
+        dmJid: sender,
+        groupJid: pendingLink.groupIdentity,
+        profileName: senderProfileName || pendingLink.profileName || "",
+      })
+
+      if (!linkResult?.ok && linkResult?.reason === "not-registered") {
+        const ensureRegistration = registrationService.registerUser(pendingLink.groupIdentity, {
+          profileName: pendingLink.profileName || senderProfileName || "",
+        })
+        if (ensureRegistration?.ok || ensureRegistration?.reason === "already-registered") {
+          linkResult = registrationService.linkDmToGroupIdentity({
+            dmJid: sender,
+            groupJid: pendingLink.groupIdentity,
+            profileName: senderProfileName || pendingLink.profileName || "",
+          })
+        }
+      }
+
+      if (!linkResult?.ok) {
+        await sock.sendMessage(from, {
+          text: "Não consegui concluir a vinculação agora. Tente novamente com !linkdm no grupo.",
+        })
+        return
+      }
+
+      if (linkResult?.mergedFrom && typeof economyService?.linkUserIds === "function") {
+        economyService.linkUserIds(linkResult.userId, linkResult.mergedFrom)
+      }
+
+      if (linkResult?.userId && typeof economyService?.setMentionOptIn === "function") {
+        economyService.setMentionOptIn(linkResult.userId, true)
+      }
+
+      pendingJidLinkByCode.delete(code)
+
+      await sock.sendMessage(from, {
+        text:
+          `✅ Vinculação concluída com sucesso.\n` +
+          `Conta unificada: *${linkResult.userId}*\n` +
+          `DM preferida para envios: *${linkResult.dmJid || sender}*`,
+      })
+
+      if (pendingLink?.groupId) {
+        try {
+          await sock.sendMessage(pendingLink.groupId, {
+            text: `✅ ${formatMentionTag(pendingLink.requestedBy)}, sua conta de DM foi vinculada ao registro do grupo.`,
+            mentions: normalizeMentionArray([pendingLink.requestedBy]),
+          })
+        } catch (_err) {
+          // Ignore group ack failures to avoid breaking DM link completion.
+        }
+      }
+      return
+    }
+
     if (cmdName === prefix + "register") {
       if (!isGroup) {
         await sock.sendMessage(from, {
@@ -2960,16 +3175,82 @@ setTimeout(() => {
         })
         return
       }
+
+      const registerGroupIdentity = typeof registrationService?.normalizeIdentityJid === "function"
+        ? registrationService.normalizeIdentityJid(senderRaw || sender)
+        : jidNormalizedUser(senderRaw || sender)
+      const resolvedDmJid = await resolveDmJidFromCandidates(sock, senderRegistrationRawCandidates)
+
       if (senderIsRegistered) {
+        let linkedDm = ""
+        if (resolvedDmJid) {
+          const linkResult = registrationService.linkDmToGroupIdentity({
+            dmJid: resolvedDmJid,
+            groupJid: registerGroupIdentity,
+            profileName: senderProfileName,
+          })
+          if (linkResult?.ok) {
+            linkedDm = linkResult.dmJid || resolvedDmJid
+            if (linkResult?.mergedFrom && typeof economyService?.linkUserIds === "function") {
+              economyService.linkUserIds(linkResult.userId, linkResult.mergedFrom)
+            }
+          }
+        }
+
+        await sock.sendMessage(from, {
+          text: linkedDm
+            ? `Você já está registrado no sistema.\n🔗 DM vinculada/confirmada: *${linkedDm}*`
+            : "Você já está registrado no sistema.",
+        })
+        return
+      }
+
+      if (resolvedDmJid && registrationService.isRegistered(resolvedDmJid)) {
+        const autoLink = registrationService.linkDmToGroupIdentity({
+          dmJid: resolvedDmJid,
+          groupJid: registerGroupIdentity,
+          profileName: senderProfileName,
+        })
+        if (autoLink?.ok) {
+          if (autoLink?.mergedFrom && typeof economyService?.linkUserIds === "function") {
+            economyService.linkUserIds(autoLink.userId, autoLink.mergedFrom)
+          }
+          if (autoLink?.userId && typeof economyService?.setMentionOptIn === "function") {
+            economyService.setMentionOptIn(autoLink.userId, true)
+          }
+          await sock.sendMessage(from, {
+            text:
+              "✅ Registro existente detectado e vinculado automaticamente para este novo JID de grupo.\n" +
+              `DM para envios: *${autoLink.dmJid || resolvedDmJid}*`,
+          })
+          return
+        }
+      }
+
+      const registerBaseId = registerGroupIdentity || senderRegistrationCandidates[0] || sender
+      const reg = registrationService.registerUser(registerBaseId, {
+        profileName: senderProfileName,
+        dmJid: resolvedDmJid || "",
+        linkedJids: senderRegistrationRawCandidates,
+      })
+      if (!reg.ok && reg.reason === "already-registered") {
         await sock.sendMessage(from, { text: "Você já está registrado no sistema." })
         return
       }
 
-      const registerBaseId = senderRegistrationCandidates[0] || sender
-      const reg = registrationService.registerUser(registerBaseId, { profileName: senderProfileName })
-      if (!reg.ok && reg.reason === "already-registered") {
-        await sock.sendMessage(from, { text: "Você já está registrado no sistema." })
-        return
+      let linkedDm = ""
+      if (resolvedDmJid) {
+        const linkResult = registrationService.linkDmToGroupIdentity({
+          dmJid: resolvedDmJid,
+          groupJid: registerGroupIdentity || registerBaseId,
+          profileName: senderProfileName,
+        })
+        if (linkResult?.ok) {
+          linkedDm = linkResult.dmJid || resolvedDmJid
+          if (linkResult?.mergedFrom && typeof economyService?.linkUserIds === "function") {
+            economyService.linkUserIds(linkResult.userId, linkResult.mergedFrom)
+          }
+        }
       }
 
       if (reg?.userId && typeof economyService?.setMentionOptIn === "function") {
@@ -2977,9 +3258,12 @@ setTimeout(() => {
       }
 
       await sock.sendMessage(from, {
-        text: reg.migratedEconomy
+        text: (reg.migratedEconomy
           ? "✅ Registro concluído. Perfil na economia anterior detectado e portado para o novo sistema."
-          : "✅ Registro concluído. Você já pode usar comandos de economia e figurinhas no privado.",
+          : "✅ Registro concluído. Você já pode usar comandos de economia e figurinhas no privado.") +
+          (linkedDm
+            ? `\n🔗 DM vinculada automaticamente: *${linkedDm}*`
+            : `\nℹ️ Se seu JID de grupo e DM forem diferentes, rode *${LINK_DM_COMMAND}* no grupo para vincular.`),
       })
       return
     }

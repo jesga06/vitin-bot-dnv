@@ -106,6 +106,7 @@ Observações de lobby:
 
 ### Economia
 - !register / !unregister
+- !linkdm / !linkjid / !vincularjid
 - !perfil / !perfil @user / !perfil stats
 - !economia
 - !coinsranking
@@ -144,6 +145,8 @@ Observações de economia:
 - !register e !unregister funcionam somente em grupos.
 - Comandos de economia exigem cadastro via !register.
 - !unregister remove o cadastro e exclui o perfil econômico do usuário.
+- Quando o WhatsApp usar JIDs diferentes no grupo e no DM, use !linkdm (grupo -> DM) para unificar as identidades.
+- !msg em modo DM usa o JID de DM vinculado (quando disponível), mantendo o mesmo perfil econômico entre IDs vinculados.
 - !falsificar usa boost binário [S|N] e a escolha de tipo pendente é feita no grupo com !falsificar tipo <1-13>.
 - !loteria só pode ser iniciada por overrides em grupos.
 - Com opt-in = N, o sorteio fecha em 5 segundos (participantes = grupo, exceto quem criou).

@@ -2,6 +2,7 @@ const { getMentionHandleFromJid } = require("./mentionService")
 const fs = require("fs")
 const path = require("path")
 const telemetry = require("./telemetryService")
+const registrationService = require("./registrationService")
 const {
   openLootboxEngine,
 } = require("./lootboxService")
@@ -775,7 +776,7 @@ function canonicalUserHandle(userPart = "") {
   return digits || cleaned
 }
 
-function normalizeUserId(userId = "") {
+function normalizeLegacyUserId(userId = "") {
   const { base, userPart, domain } = parseUserParts(userId)
   if (!base || !userPart) return ""
   if (domain === "s.whatsapp.net" || domain === "lid") {
@@ -784,10 +785,10 @@ function normalizeUserId(userId = "") {
   return base
 }
 
-function getUserIdAliases(userId = "") {
+function getLegacyUserIdAliases(userId = "") {
   const aliases = new Set()
   const { base, userPart, domain } = parseUserParts(userId)
-  const normalized = normalizeUserId(userId)
+  const normalized = normalizeLegacyUserId(userId)
   if (normalized) aliases.add(normalized)
   if (base) aliases.add(base)
 
@@ -797,6 +798,50 @@ function getUserIdAliases(userId = "") {
       aliases.add(`${canonical}@s.whatsapp.net`)
       aliases.add(`${canonical}@lid`)
     }
+  }
+
+  return Array.from(aliases).filter(Boolean)
+}
+
+function resolveRegisteredLinkedUserId(userId = "") {
+  const normalizedLegacy = normalizeLegacyUserId(userId)
+  if (!normalizedLegacy) return ""
+  try {
+    if (typeof registrationService?.resolveLinkedUserId === "function") {
+      const resolved = registrationService.resolveLinkedUserId(normalizedLegacy)
+      if (resolved) return resolved
+    }
+    if (typeof registrationService?.normalizeUserId === "function") {
+      const normalizedByRegistration = registrationService.normalizeUserId(normalizedLegacy)
+      if (normalizedByRegistration) return normalizedByRegistration
+    }
+  } catch (_err) {
+    // Ignore transient registration lookup failures and keep legacy normalization.
+  }
+  return ""
+}
+
+function normalizeUserId(userId = "") {
+  const normalizedLegacy = normalizeLegacyUserId(userId)
+  if (!normalizedLegacy) return ""
+  const resolvedLinked = resolveRegisteredLinkedUserId(normalizedLegacy)
+  return resolvedLinked || normalizedLegacy
+}
+
+function getUserIdAliases(userId = "") {
+  const aliases = new Set(getLegacyUserIdAliases(userId))
+  const normalized = normalizeUserId(userId)
+  if (normalized) aliases.add(normalized)
+
+  try {
+    if (typeof registrationService?.getUserIdAliases === "function") {
+      const registrationAliases = registrationService.getUserIdAliases(userId)
+      for (const alias of registrationAliases || []) {
+        aliases.add(String(alias || "").trim().toLowerCase())
+      }
+    }
+  } catch (_err) {
+    // Ignore registration alias resolution failures.
   }
 
   return Array.from(aliases).filter(Boolean)
@@ -1449,6 +1494,88 @@ function wipeUserData(userId) {
   migrateUserShape(economyCache.users[targetKey])
   saveEconomy(true)
   return true
+}
+
+function getMatchingUserKeysByLegacyIdentity(userId = "") {
+  const aliases = new Set(getLegacyUserIdAliases(userId))
+  const normalizedLegacy = normalizeLegacyUserId(userId)
+  const { userPart } = parseUserParts(normalizedLegacy || userId)
+  const canonicalTarget = canonicalUserHandle(userPart)
+  const matchedKeys = []
+
+  for (const key of Object.keys(economyCache.users || {})) {
+    let shouldMatch = aliases.has(key)
+
+    if (!shouldMatch) {
+      const keyAliases = getLegacyUserIdAliases(key)
+      shouldMatch = keyAliases.some((alias) => aliases.has(alias))
+    }
+
+    if (!shouldMatch && canonicalTarget) {
+      const parsed = parseUserParts(key)
+      const canonicalKey = canonicalUserHandle(parsed.userPart)
+      shouldMatch = Boolean(canonicalKey && canonicalKey === canonicalTarget)
+    }
+
+    if (shouldMatch) matchedKeys.push(key)
+  }
+
+  return matchedKeys
+}
+
+function linkUserIds(primaryUserId = "", secondaryUserId = "") {
+  const targetKey = normalizeUserId(primaryUserId)
+  if (!targetKey) {
+    return { ok: false, reason: "invalid-primary" }
+  }
+
+  const primaryKeys = new Set(getMatchingUserKeysByLegacyIdentity(primaryUserId))
+  const secondaryKeys = getMatchingUserKeysByLegacyIdentity(secondaryUserId)
+  let targetUser = economyCache.users[targetKey] || null
+  let mergedKeys = 0
+  let changed = false
+
+  for (const key of primaryKeys) {
+    if (key === targetKey) continue
+    const candidate = economyCache.users[key]
+    if (!candidate) continue
+    targetUser = pickPreferredUserRecord(targetUser, candidate)
+    delete economyCache.users[key]
+    mergedKeys += 1
+    changed = true
+  }
+
+  for (const key of secondaryKeys) {
+    if (key === targetKey || primaryKeys.has(key)) continue
+    const candidate = economyCache.users[key]
+    if (!candidate) continue
+    targetUser = pickPreferredUserRecord(targetUser, candidate)
+    delete economyCache.users[key]
+    mergedKeys += 1
+    changed = true
+  }
+
+  if (!targetUser || typeof targetUser !== "object") {
+    targetUser = ensureUser(targetKey)
+    if (!targetUser) {
+      return { ok: false, reason: "target-unavailable" }
+    }
+  }
+
+  economyCache.users[targetKey] = targetUser
+  migrateUserShape(economyCache.users[targetKey])
+  touchUser(economyCache.users[targetKey])
+
+  if (changed) {
+    saveEconomy(true)
+  }
+
+  return {
+    ok: true,
+    changed,
+    mergedKeys,
+    targetUserId: targetKey,
+  }
 }
 
 function touchUser(user) {
@@ -3324,6 +3451,7 @@ module.exports = {
   getOperationLimits,
   wipeUserData,
   deleteUserProfile,
+  linkUserIds,
   levelThresholds,
   getLevelThresholds,
   getSeasonState,

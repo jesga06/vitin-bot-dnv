@@ -385,6 +385,21 @@ const COMMAND_HELP = {
     details: "Sua conta é então bloqueada para economia no privado.",
   },
 
+  linkdm: {
+    name: "Vincular JID DM",
+    aliases: ["linkdm", "linkjid", "vincularjid"],
+    description: "Vincula automaticamente seu JID de grupo ao JID de DM para unificar economia e envios privados",
+    usage: "!linkdm [codigo|cancelar]",
+    commonUsage: [
+      "!linkdm - (no grupo) gerar código de vinculação",
+      "!linkdm ABC123 - (no privado) confirmar a vinculação",
+      "!linkdm cancelar - cancelar sessão pendente",
+    ],
+    details:
+      "Fluxo em 2 passos: rode no grupo, depois confirme no privado com o código gerado. " +
+      "Isso evita perfis duplicados quando o WhatsApp usa JIDs diferentes no grupo e no DM.",
+  },
+
   deletarconta: {
     name: "Deletar Conta",
     aliases: ["deletarconta", "deleteconta"],

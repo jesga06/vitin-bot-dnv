@@ -1988,18 +1988,57 @@ setTimeout(() => {
 
         const title = getBroadcastTitle(broadcastState.type)
         const finalText = `${title}\n\n${broadcastState.message}`
-        console.log(`[!msg] finalText length: ${finalText?.length || 0}, type: ${typeof finalText}`)
-        console.log(`[!msg] Socket status - user: ${sock.user?.id || "no-user"}, auth: ${sock.authState?.creds ? "yes" : "no"}`)
         const users = registrationService.getRegisteredUsersForNotifications()
-        console.log(`[!msg] Usuários a enviar (${users.length}):`, users.slice(0, 3).map(u => `${u}`))
-        const usersSet = new Set(users)
         const groups = collectKnownGroupsFromStorage()
         const mentionMode = String(broadcastState.mentionMode || "N").toUpperCase()
         const botSelfIds = new Set(expandOverrideIdentityVariants(sock.user?.id || "").map(jidNormalizedUser).filter(Boolean))
+        const resolvedJidByUser = new Map()
         let usersOk = 0
         let usersFail = 0
         let groupsOk = 0
         let groupsFail = 0
+
+        const resolveSendableJid = async (baseUserId = "") => {
+          const normalizedInput = String(baseUserId || "").trim().toLowerCase()
+          if (!normalizedInput) return ""
+          if (resolvedJidByUser.has(normalizedInput)) {
+            return resolvedJidByUser.get(normalizedInput) || ""
+          }
+
+          const aliasSet = new Set([normalizedInput])
+          if (typeof registrationService.getUserIdAliases === "function") {
+            const aliases = registrationService.getUserIdAliases(normalizedInput)
+            for (const alias of aliases) aliasSet.add(alias)
+          } else if (normalizedInput.includes("@")) {
+            const [handle, domain] = normalizedInput.split("@")
+            if (handle && domain === "s.whatsapp.net") aliasSet.add(`${handle}@lid`)
+            if (handle && domain === "lid") aliasSet.add(`${handle}@s.whatsapp.net`)
+          }
+
+          let resolved = ""
+          if (typeof sock.onWhatsApp === "function") {
+            for (const candidate of aliasSet) {
+              try {
+                const lookup = await sock.onWhatsApp(candidate)
+                const existing = Array.isArray(lookup)
+                  ? lookup.find((entry) => entry?.exists && entry?.jid)
+                  : null
+                if (!existing?.jid) continue
+                resolved = jidNormalizedUser(existing.jid)
+                break
+              } catch (_err) {
+                // Ignore lookup errors and keep trying aliases.
+              }
+            }
+          }
+
+          if (!resolved) {
+            resolved = jidNormalizedUser(normalizedInput)
+          }
+
+          resolvedJidByUser.set(normalizedInput, resolved)
+          return resolved
+        }
 
         if (mentionMode === "A") {
           const adminUsers = new Set()
@@ -2011,7 +2050,7 @@ setTimeout(() => {
                 if (!participant?.admin) continue
                 const normalizedAdmin = jidNormalizedUser(participant?.id || "")
                 if (!normalizedAdmin || botSelfIds.has(normalizedAdmin)) continue
-                if (!usersSet.has(normalizedAdmin)) continue
+                if (!registrationService.isRegistered(normalizedAdmin)) continue
                 adminUsers.add(normalizedAdmin)
               }
             } catch (err) {
@@ -2021,9 +2060,15 @@ setTimeout(() => {
 
           for (const userId of adminUsers) {
             try {
-              await new Promise(resolve => setTimeout(resolve, 500))
-              await sock.sendMessage(userId, { text: finalText })
+              const targetJid = await resolveSendableJid(userId)
+              if (!targetJid) {
+                usersFail += 1
+                console.warn("!msg admin pulado por JID não resolvido", userId)
+                continue
+              }
+              await sock.sendMessage(targetJid, { text: finalText })
               usersOk += 1
+              await new Promise((resolve) => setTimeout(resolve, 200))
             } catch (err) {
               usersFail += 1
               console.error("Falha ao enviar !msg para admin via DM", userId, err)
@@ -2032,32 +2077,18 @@ setTimeout(() => {
         } else {
           for (const userId of users) {
             try {
-              console.log(`[!msg] Enviando para usuário: ${userId}`)
-              console.log(`[!msg] Detalhes - JID format: ${userId.includes("@") ? "has-@" : "no-@"}, length: ${userId.length}`)
-              // Adiciona delay para evitar problema de fila de mensagens não entregues no Baileys
-              await new Promise(resolve => setTimeout(resolve, 1000))
-              
-              // Tenta enviar com retry logic
-              let result
-              let retries = 0
-              while(retries < 3) {
-                try {
-                  const messagePayload = { text: finalText }
-                  console.log(`[!msg] Sending payload to ${userId}: type=${typeof messagePayload}, keys=${Object.keys(messagePayload).join(",")}`)
-                  result = await sock.sendMessage(userId, messagePayload, { retry: 10 })
-                  console.log(`[!msg] Sucesso ao enviar para ${userId}:`, result?.key?.id || "OK")
-                  break
-                } catch(err) {
-                  retries++
-                  if(retries >= 3) throw err
-                  console.log(`[!msg] Retry ${retries}/${3} para ${userId}`)
-                  await new Promise(resolve => setTimeout(resolve, 500))
-                }
+              const targetJid = await resolveSendableJid(userId)
+              if (!targetJid) {
+                usersFail += 1
+                console.warn("!msg usuário pulado por JID não resolvido", userId)
+                continue
               }
+              await sock.sendMessage(targetJid, { text: finalText })
               usersOk += 1
+              await new Promise((resolve) => setTimeout(resolve, 200))
             } catch (err) {
               usersFail += 1
-              console.error("Falha ao enviar update para usuário registrado", userId, err?.message || err)
+              console.error("Falha ao enviar update para usuário registrado", userId, err)
             }
           }
 
@@ -2068,9 +2099,9 @@ setTimeout(() => {
           for (const groupId of groups) {
             if (!sendGroups) continue
             try {
-              await new Promise(resolve => setTimeout(resolve, 500))
               await sock.sendMessage(groupId, { text: finalText })
               groupsOk += 1
+              await new Promise((resolve) => setTimeout(resolve, 200))
             } catch (err) {
               groupsFail += 1
               console.error("Falha ao enviar update para grupo", groupId, err)
@@ -2080,9 +2111,6 @@ setTimeout(() => {
 
         pendingBroadcastBySender.delete(sender)
         const modeLabel = mentionMode
-        
-        // Aguarda um pouco para garantir que as mensagens foram processadas pelo socket
-        await new Promise(resolve => setTimeout(resolve, 1000))
         
         await sock.sendMessage(from, {
           text:

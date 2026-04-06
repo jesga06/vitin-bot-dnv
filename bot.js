@@ -1989,6 +1989,7 @@ setTimeout(() => {
         const title = getBroadcastTitle(broadcastState.type)
         const finalText = `${title}\n\n${broadcastState.message}`
         const users = registrationService.getRegisteredUsersForNotifications()
+        console.log(`[!msg] Usuários a enviar (${users.length}):`, users.slice(0, 3).map(u => `${u}`))
         const usersSet = new Set(users)
         const groups = collectKnownGroupsFromStorage()
         const mentionMode = String(broadcastState.mentionMode || "N").toUpperCase()
@@ -2028,17 +2029,19 @@ setTimeout(() => {
         } else {
           for (const userId of users) {
             try {
-              await sock.sendMessage(userId, { text: finalText })
+              console.log(`[!msg] Enviando para usuário: ${userId}`)
+              const result = await sock.sendMessage(userId, { text: finalText })
+              console.log(`[!msg] Sucesso ao enviar para ${userId}:`, result?.key?.id || "OK")
               usersOk += 1
             } catch (err) {
               usersFail += 1
-              console.error("Falha ao enviar update para usuário registrado", userId, err)
+              console.error("Falha ao enviar update para usuário registrado", userId, err?.message || err)
             }
           }
 
           const sendGroups = mentionMode === "N"
           if (!sendGroups) {
-            groupsOk = groups.length
+            groupsOk = 0
           }
           for (const groupId of groups) {
             if (!sendGroups) continue

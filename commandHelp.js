@@ -835,8 +835,9 @@ blackjack: {
     commonUsage: [
       "!enquete Pesquisa de update S - Iniciar enquete para DM de registrados",
       "!enquete ABC12 responder - Ativar resposta da enquete",
+      "Y/N/Q - Responda com Y (sim), N (não) ou Q (cancelar) durante a criação",
     ],
-    details: "No modo S, envia para DMs registradas. No modo N, envia para grupos registrados. Respostas são encaminhadas para override.",
+    details: "No modo S, envia para DMs registradas. No modo N, envia para grupos registrados. Respostas são encaminhadas para override. Durante qualquer etapa, responda com Q para cancelar a enquete.",
   },
 
   sticker: {

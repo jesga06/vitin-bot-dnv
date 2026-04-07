@@ -288,6 +288,9 @@ async function handleUtilityCommands(ctx) {
     economyService,
     registrationService,
     botHasGroupAdminPrivileges,
+    isYesToken,
+    isNoToken,
+    isQuitToken,
   } = ctx
 
   const buildCommandManualPages = ({ section = "todos", detailed = false } = {}) => {
@@ -1446,13 +1449,19 @@ Envie a mensagem da enquete na próxima mensagem.`,
   const pendingEnquete = pendingEnqueteBySender.get(sender)
   if (pendingEnquete && (cmd === prefix + "enquete" || cmd.startsWith(prefix + "enquete ")) === false && (isOverrideSender || isKnownOverrideSender)) {
     if (pendingEnquete.phase === "await-content") {
+      if (isQuitToken(cmd)) {
+        pendingEnqueteBySender.delete(sender)
+        trackUtility("enquete", "cancelled", { phase: "await-content" })
+        await sock.sendMessage(from, { text: "❌ Enquete cancelada." })
+        return true
+      }
       pendingEnquete.phase = "confirm-message"
       pendingEnquete.message = rawText
       pendingEnqueteBySender.set(sender, pendingEnquete)
 
       await sock.sendMessage(from, {
         text:
-`Confirma o envio? (Y/N)
+`Confirma o envio? (Y/N/Q)
 
 *${pendingEnquete.title}*
 
@@ -1463,14 +1472,20 @@ ${pendingEnquete.message}`,
     }
 
     if (pendingEnquete.phase === "confirm-message") {
-      if (!["y", "yes", "s", "sim"].includes(cmd.toLowerCase())) {
-        if (["n", "no", "nao", "não"].includes(cmd.toLowerCase())) {
-          pendingEnquete.phase = "await-content"
-          pendingEnqueteBySender.set(sender, pendingEnquete)
-          await sock.sendMessage(from, { text: "Reenvie a mensagem da enquete." })
-          return true
-        }
-        await sock.sendMessage(from, { text: "Responda com Y/N." })
+      if (isQuitToken(cmd)) {
+        pendingEnqueteBySender.delete(sender)
+        trackUtility("enquete", "cancelled", { phase: "confirm-message" })
+        await sock.sendMessage(from, { text: "❌ Enquete cancelada." })
+        return true
+      }
+      if (isNoToken(cmd)) {
+        pendingEnquete.phase = "await-content"
+        pendingEnqueteBySender.set(sender, pendingEnquete)
+        await sock.sendMessage(from, { text: "Reenvie a mensagem da enquete." })
+        return true
+      }
+      if (!isYesToken(cmd)) {
+        await sock.sendMessage(from, { text: "Responda com Y/N/Q." })
         return true
       }
 

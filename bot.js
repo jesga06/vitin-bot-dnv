@@ -4585,6 +4585,9 @@ setTimeout(() => {
         getPunishmentDetailsText,
         registrationService,
         botHasGroupAdminPrivileges: botIsAdmin,
+        isYesToken,
+        isNoToken,
+        isQuitToken,
       })
     )
     if (handledUtilityCommand) return
